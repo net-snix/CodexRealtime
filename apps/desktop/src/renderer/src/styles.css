@@ -339,10 +339,108 @@ button {
   letter-spacing: 0.14em;
 }
 
+.status-pill-live {
+  background: rgba(211, 110, 58, 0.2);
+  border-color: rgba(211, 110, 58, 0.38);
+  color: #ffd3b6;
+}
+
+.timeline-composer {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(239, 229, 206, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(211, 110, 58, 0.14), transparent 32%),
+    rgba(255, 248, 234, 0.04);
+}
+
+.timeline-composer-disabled {
+  opacity: 0.78;
+}
+
+.composer-copy p {
+  margin: 10px 0 0;
+  color: rgba(239, 229, 206, 0.72);
+  line-height: 1.55;
+}
+
+.composer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.timeline-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 88px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(239, 229, 206, 0.1);
+  background: rgba(10, 8, 6, 0.34);
+  color: var(--paper);
+  outline: none;
+}
+
+.timeline-input::placeholder {
+  color: rgba(239, 229, 206, 0.38);
+}
+
+.timeline-input:focus {
+  border-color: rgba(211, 110, 58, 0.44);
+  box-shadow: 0 0 0 4px rgba(211, 110, 58, 0.08);
+}
+
+.timeline-submit {
+  min-width: 138px;
+  border: none;
+  border-radius: 16px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(211, 110, 58, 0.9), rgba(180, 84, 49, 0.88));
+  color: #fff1e2;
+  box-shadow: 0 12px 28px rgba(211, 110, 58, 0.18);
+}
+
+.timeline-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
 .timeline-stream {
   display: grid;
   gap: 14px;
   align-content: start;
+}
+
+.timeline-empty-state {
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px dashed rgba(239, 229, 206, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 248, 234, 0.05), rgba(255, 248, 234, 0.03)),
+    rgba(0, 0, 0, 0.12);
+}
+
+.timeline-empty-state-muted {
+  opacity: 0.88;
+}
+
+.timeline-empty-state h3 {
+  margin: 14px 0 8px;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+}
+
+.timeline-empty-state p {
+  margin: 0;
+  max-width: 46ch;
+  color: rgba(239, 229, 206, 0.68);
+  line-height: 1.6;
 }
 
 .timeline-item {

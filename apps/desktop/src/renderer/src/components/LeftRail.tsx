@@ -45,7 +45,7 @@ export function LeftRail({
           <h1>Speaking terminal.</h1>
           <p>A voice-native SWE shell. Warm paper. Sharp edges.</p>
         </div>
-        <div className="brand-chip">Phase 3</div>
+        <div className="brand-chip">Phase 4</div>
       </div>
 
       <button type="button" className="open-workspace-button" onClick={() => void onOpenWorkspace()}>

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { realpathSync } from "node:fs";
-import type { ThreadSummary, WorkspaceState, WorkspaceSummary } from "@shared";
+import type { ThreadSummary, TimelineEvent, TimelineState, WorkspaceState, WorkspaceSummary } from "@shared";
 import { codexBridge } from "./codex-bridge";
 
 type PersistedWorkspace = WorkspaceSummary & {
@@ -26,6 +26,64 @@ type ThreadListResult = {
   }>;
 };
 
+type ThreadItem =
+  | {
+      type: "userMessage";
+      id?: string;
+      content?: Array<{ type?: string; text?: string }>;
+    }
+  | {
+      type: "agentMessage";
+      id?: string;
+      text?: string;
+    }
+  | {
+      type: "plan";
+      id?: string;
+      text?: string;
+    }
+  | {
+      type: "reasoning";
+      id?: string;
+      summary?: string[];
+      content?: string[];
+    }
+  | {
+      type: "commandExecution";
+      id?: string;
+      command?: string;
+      aggregatedOutput?: string | null;
+    }
+  | {
+      type: "fileChange";
+      id?: string;
+      changes?: Array<{ path?: string }>;
+    }
+  | {
+      type: string;
+      id?: string;
+    };
+
+type TurnRecord = {
+  id?: string;
+  status?: "completed" | "interrupted" | "failed" | "inProgress";
+  items?: ThreadItem[];
+};
+
+type ThreadReadResult = {
+  thread?: {
+    id?: string;
+    turns?: TurnRecord[];
+  };
+};
+
+type UserMessageItem = Extract<ThreadItem, { type: "userMessage" }>;
+type AgentMessageItem = Extract<ThreadItem, { type: "agentMessage" }>;
+type PlanItem = Extract<ThreadItem, { type: "plan" }>;
+type ReasoningItem = Extract<ThreadItem, { type: "reasoning" }>;
+type CommandExecutionItem = Extract<ThreadItem, { type: "commandExecution" }>;
+type FileChangeItem = Extract<ThreadItem, { type: "fileChange" }>;
+
 const EMPTY_STATE: PersistedState = {
   currentWorkspaceId: null,
   workspaces: {}
@@ -46,6 +104,87 @@ const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => 
   name: workspace.name,
   path: workspace.path
 });
+
+const isUserMessage = (item: ThreadItem): item is UserMessageItem => item.type === "userMessage";
+const isAgentMessage = (item: ThreadItem): item is AgentMessageItem => item.type === "agentMessage";
+const isPlanItem = (item: ThreadItem): item is PlanItem => item.type === "plan";
+const isReasoningItem = (item: ThreadItem): item is ReasoningItem => item.type === "reasoning";
+const isCommandExecutionItem = (item: ThreadItem): item is CommandExecutionItem =>
+  item.type === "commandExecution";
+const isFileChangeItem = (item: ThreadItem): item is FileChangeItem => item.type === "fileChange";
+
+const toTimelineEvent = (item: ThreadItem, turnId: string): TimelineEvent | null => {
+  const base = {
+    id: item.id ?? `${turnId}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: "Thread history"
+  };
+
+  if (isUserMessage(item)) {
+    const text = (item.content ?? [])
+      .filter((entry): entry is { type: "text"; text: string } =>
+        entry.type === "text" && typeof entry.text === "string"
+      )
+      .map((entry) => entry.text.trim())
+      .filter(Boolean)
+      .join("\n");
+
+    return text
+      ? {
+          ...base,
+          kind: "user",
+          text
+        }
+      : null;
+  }
+
+  if (isAgentMessage(item) && item.text) {
+    return {
+      ...base,
+      kind: "assistant",
+      text: item.text
+    };
+  }
+
+  if (isPlanItem(item) && item.text) {
+    return {
+      ...base,
+      kind: "commentary",
+      text: `Plan update: ${item.text}`
+    };
+  }
+
+  if (isReasoningItem(item)) {
+    const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n");
+
+    return text
+      ? {
+          ...base,
+          kind: "commentary",
+          text
+        }
+      : null;
+  }
+
+  if (isCommandExecutionItem(item) && item.command) {
+    return {
+      ...base,
+      kind: "system",
+      text: `Command: ${item.command}${item.aggregatedOutput ? `\n${item.aggregatedOutput}` : ""}`
+    };
+  }
+
+  if (isFileChangeItem(item)) {
+    const changeCount = item.changes?.length ?? 0;
+
+    return {
+      ...base,
+      kind: "system",
+      text: `File changes proposed: ${changeCount}`
+    };
+  }
+
+  return null;
+};
 
 class WorkspaceService {
   private get statePath() {
@@ -121,6 +260,75 @@ class WorkspaceService {
     return this.getWorkspaceState();
   }
 
+  async getTimelineState(): Promise<TimelineState> {
+    const persisted = this.readState();
+
+    if (!persisted.currentWorkspaceId) {
+      return {
+        threadId: null,
+        events: [],
+        isRunning: false,
+        statusLabel: null
+      };
+    }
+
+    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
+
+    if (!workspace?.threadId) {
+      return {
+        threadId: null,
+        events: [],
+        isRunning: false,
+        statusLabel: null
+      };
+    }
+
+    try {
+      const timeline = await this.readThreadTimeline(workspace.threadId);
+      return timeline;
+    } catch {
+      return {
+        threadId: workspace.threadId,
+        events: [],
+        isRunning: false,
+        statusLabel: "History unavailable"
+      };
+    }
+  }
+
+  async startTurn(prompt: string): Promise<TimelineState> {
+    const trimmedPrompt = prompt.trim();
+
+    if (!trimmedPrompt) {
+      return this.getTimelineState();
+    }
+
+    const persisted = this.readState();
+
+    if (!persisted.currentWorkspaceId) {
+      throw new Error("Open a workspace first.");
+    }
+
+    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
+
+    if (!workspace) {
+      throw new Error("Current workspace is missing.");
+    }
+
+    const threadId = await this.ensureThread(workspace);
+    workspace.threadId = threadId;
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    const started = (await codexBridge.startTurn(threadId, trimmedPrompt)) as {
+      turn?: { id?: string };
+    };
+    const startedTurnId = started.turn?.id ?? null;
+
+    return this.pollTimelineState(threadId, startedTurnId);
+  }
+
   private async ensureThread(workspace: PersistedWorkspace) {
     await codexBridge.start();
 
@@ -147,6 +355,49 @@ class WorkspaceService {
     }
 
     return started.thread.id;
+  }
+
+  private async readThreadTimeline(threadId: string): Promise<TimelineState> {
+    await codexBridge.start();
+    const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+    const turns = result.thread?.turns ?? [];
+    const events = turns.flatMap((turn) =>
+      (turn.items ?? [])
+        .map((item) => toTimelineEvent(item, turn.id ?? "turn"))
+        .filter((event): event is TimelineEvent => event !== null)
+    );
+    const activeTurn = turns.find((turn) => turn.status === "inProgress") ?? null;
+
+    return {
+      threadId,
+      events,
+      isRunning: Boolean(activeTurn),
+      statusLabel: activeTurn ? "Working" : turns.at(-1)?.status ?? "Idle"
+    };
+  }
+
+  private async pollTimelineState(threadId: string, turnId: string | null): Promise<TimelineState> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const timeline = await this.readThreadTimeline(threadId);
+
+      if (!timeline.isRunning) {
+        return timeline;
+      }
+
+      if (turnId) {
+        const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+        const turns = result.thread?.turns ?? [];
+        const matchingTurn = turns.find((turn) => turn.id === turnId) ?? null;
+
+        if (!matchingTurn || matchingTurn.status !== "inProgress") {
+          return this.readThreadTimeline(threadId);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    return this.readThreadTimeline(threadId);
   }
 
   private async listThreads(workspacePath: string): Promise<ThreadSummary[]> {

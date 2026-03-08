@@ -30,6 +30,8 @@ export interface AppBridge {
   getSessionState: () => Promise<SessionState>;
   getWorkspaceState: () => Promise<WorkspaceState>;
   openWorkspace: () => Promise<WorkspaceState>;
+  getTimelineState: () => Promise<TimelineState>;
+  startTurn: (prompt: string) => Promise<TimelineState>;
 }
 
 export interface WorkspaceSummary {
@@ -48,6 +50,13 @@ export interface WorkspaceState {
   currentWorkspace: WorkspaceSummary | null;
   recentWorkspaces: WorkspaceSummary[];
   threads: ThreadSummary[];
+}
+
+export interface TimelineState {
+  threadId: string | null;
+  events: TimelineEvent[];
+  isRunning: boolean;
+  statusLabel: string | null;
 }
 
 export type VoiceState =

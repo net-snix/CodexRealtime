@@ -89,6 +89,30 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async readThread(threadId: string) {
+    await this.start();
+
+    return this.request("thread/read", {
+      threadId,
+      includeTurns: true
+    });
+  }
+
+  async startTurn(threadId: string, prompt: string) {
+    await this.start();
+
+    return this.request("turn/start", {
+      threadId,
+      input: [
+        {
+          type: "text",
+          text: prompt,
+          text_elements: []
+        }
+      ]
+    });
+  }
+
   async refreshState(): Promise<SessionState> {
     try {
       await this.start();

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type {
   AppInfo,
   SessionState,
-  TimelineEvent,
+  TimelineState,
   VoiceState,
   WorkspaceState
 } from "@shared";
@@ -10,27 +10,6 @@ import { LeftRail } from "./components/LeftRail";
 import { RightPane } from "./components/RightPane";
 import { Timeline } from "./components/Timeline";
 import { VoiceBar } from "./components/VoiceBar";
-
-const mockEvents: TimelineEvent[] = [
-  {
-    id: "event-user-1",
-    kind: "user",
-    text: "Build the shell first. Keep it visible. Keep it calm.",
-    createdAt: "Now",
-  },
-  {
-    id: "event-assistant-1",
-    kind: "assistant",
-    text: "Phase 1 only. Static UI. No Codex, no mic, no false promises.",
-    createdAt: "Now",
-  },
-  {
-    id: "event-system-1",
-    kind: "system",
-    text: "App server, approvals, and voice transport arrive in later slices.",
-    createdAt: "Commit 1",
-  },
-];
 
 const initialVoiceState: VoiceState = "idle";
 
@@ -44,15 +23,23 @@ export default function App() {
     recentWorkspaces: [],
     threads: []
   });
+  const [timelineState, setTimelineState] = useState<TimelineState>({
+    threadId: null,
+    events: [],
+    isRunning: false,
+    statusLabel: null
+  });
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
+  const [isStartingTurn, setIsStartingTurn] = useState(false);
   const [activePane, setActivePane] = useState<PaneKey>("plan");
 
   useEffect(() => {
     void Promise.allSettled([
       window.appBridge.getAppInfo(),
       window.appBridge.getSessionState(),
-      window.appBridge.getWorkspaceState()
-    ]).then(([appInfoResult, sessionResult, workspaceResult]) => {
+      window.appBridge.getWorkspaceState(),
+      window.appBridge.getTimelineState()
+    ]).then(([appInfoResult, sessionResult, workspaceResult, timelineResult]) => {
       if (appInfoResult.status === "fulfilled") {
         setAppInfo(appInfoResult.value);
       } else {
@@ -83,6 +70,17 @@ export default function App() {
       if (workspaceResult.status === "fulfilled") {
         setWorkspaceState(workspaceResult.value);
       }
+
+      if (timelineResult.status === "fulfilled") {
+        setTimelineState(timelineResult.value);
+      } else {
+        setTimelineState({
+          threadId: null,
+          events: [],
+          isRunning: false,
+          statusLabel: "timeline unavailable"
+        });
+      }
     });
   }, []);
 
@@ -92,8 +90,23 @@ export default function App() {
     try {
       const nextState = await window.appBridge.openWorkspace();
       setWorkspaceState(nextState);
+      const nextTimeline = await window.appBridge.getTimelineState();
+      setTimelineState(nextTimeline);
     } finally {
       setIsOpeningWorkspace(false);
+    }
+  };
+
+  const handleStartTurn = async (prompt: string) => {
+    setIsStartingTurn(true);
+
+    try {
+      const nextTimeline = await window.appBridge.startTurn(prompt);
+      setTimelineState(nextTimeline);
+      const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+      setWorkspaceState(nextWorkspaceState);
+    } finally {
+      setIsStartingTurn(false);
     }
   };
 
@@ -108,7 +121,12 @@ export default function App() {
           isOpeningWorkspace={isOpeningWorkspace}
           onOpenWorkspace={handleOpenWorkspace}
         />
-        <Timeline events={mockEvents} />
+        <Timeline
+          timelineState={timelineState}
+          workspaceState={workspaceState}
+          isStartingTurn={isStartingTurn}
+          onStartTurn={handleStartTurn}
+        />
         <RightPane activePane={activePane} onSelect={setActivePane} />
       </main>
       <VoiceBar sessionState={sessionState} state={initialVoiceState} />
