@@ -1,10 +1,31 @@
-import type { VoiceState } from "@shared";
+import type { SessionState, VoiceState } from "@shared";
 
 interface VoiceBarProps {
+  sessionState: SessionState | null;
   state: VoiceState;
 }
 
-export function VoiceBar({ state }: VoiceBarProps) {
+const helperCopy = (sessionState: SessionState | null) => {
+  if (!sessionState) {
+    return "Loading Codex session...";
+  }
+
+  if (sessionState.status === "connected" && sessionState.features.realtimeConversation) {
+    return "Codex realtime available. Voice transport lands next.";
+  }
+
+  if (sessionState.status === "connected") {
+    return "Codex connected. Waiting on realtime support.";
+  }
+
+  if (sessionState.status === "connecting") {
+    return "Connecting app-server...";
+  }
+
+  return sessionState.error ?? "Codex session failed.";
+};
+
+export function VoiceBar({ sessionState, state }: VoiceBarProps) {
   return (
     <footer className="voice-bar stagger-4">
       <div className="voice-cluster">
@@ -23,7 +44,7 @@ export function VoiceBar({ state }: VoiceBarProps) {
       <div className="voice-status">
         <span className="panel-eyebrow">State</span>
         <strong>{state}</strong>
-        <small>Open mic later. Static shell now.</small>
+        <small>{helperCopy(sessionState)}</small>
       </div>
 
       <div className="voice-actions">

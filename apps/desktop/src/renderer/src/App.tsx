@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import type { AppInfo, ThreadSummary, TimelineEvent, VoiceState, WorkspaceSummary } from "@shared";
+import type {
+  AppInfo,
+  SessionState,
+  ThreadSummary,
+  TimelineEvent,
+  VoiceState,
+  WorkspaceSummary
+} from "@shared";
 import { LeftRail } from "./components/LeftRail";
 import { RightPane } from "./components/RightPane";
 import { Timeline } from "./components/Timeline";
@@ -58,30 +65,57 @@ type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [activePane, setActivePane] = useState<PaneKey>("plan");
 
   useEffect(() => {
-    void window.appBridge
-      .getAppInfo()
-      .then(setAppInfo)
-      .catch(() => {
+    void Promise.allSettled([
+      window.appBridge.getAppInfo(),
+      window.appBridge.getSessionState()
+    ]).then(([appInfoResult, sessionResult]) => {
+      if (appInfoResult.status === "fulfilled") {
+        setAppInfo(appInfoResult.value);
+      } else {
         setAppInfo({
           name: "Codex Realtime",
           version: "0.1.0",
-          platform: "darwin",
+          platform: "darwin"
         });
-      });
+      }
+
+      if (sessionResult.status === "fulfilled") {
+        setSessionState(sessionResult.value);
+      } else {
+        setSessionState({
+          status: "error",
+          account: null,
+          features: {
+            defaultModeRequestUserInput: false,
+            realtimeConversation: false,
+            voiceTranscription: false
+          },
+          requiresOpenaiAuth: true,
+          error: "Could not read Codex session state",
+          lastUpdatedAt: null
+        });
+      }
+    });
   }, []);
 
   return (
     <div className="app-shell">
       <div className="backdrop" aria-hidden="true" />
       <main className="workspace-frame">
-        <LeftRail appInfo={appInfo} workspaces={mockWorkspaces} threads={mockThreads} />
+        <LeftRail
+          appInfo={appInfo}
+          sessionState={sessionState}
+          workspaces={mockWorkspaces}
+          threads={mockThreads}
+        />
         <Timeline events={mockEvents} />
         <RightPane activePane={activePane} onSelect={setActivePane} />
       </main>
-      <VoiceBar state={initialVoiceState} />
+      <VoiceBar sessionState={sessionState} state={initialVoiceState} />
     </div>
   );
 }

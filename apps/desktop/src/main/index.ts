@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
+import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
 
 const createMainWindow = () => {
@@ -30,6 +31,7 @@ const createMainWindow = () => {
 };
 
 app.whenReady().then(() => {
+  void codexBridge.start().then(() => codexBridge.refreshState());
   registerIpcHandlers();
   createMainWindow();
 
@@ -44,4 +46,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  void codexBridge.stop();
 });

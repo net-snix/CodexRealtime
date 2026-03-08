@@ -4,8 +4,30 @@ export interface AppInfo {
   platform: string;
 }
 
+export interface CodexAccountSummary {
+  type: "chatgpt" | "apiKey" | "unknown";
+  email?: string;
+  planType?: string;
+}
+
+export interface CodexFeatureFlags {
+  defaultModeRequestUserInput: boolean;
+  realtimeConversation: boolean;
+  voiceTranscription: boolean;
+}
+
+export interface SessionState {
+  status: "connecting" | "connected" | "error";
+  account: CodexAccountSummary | null;
+  features: CodexFeatureFlags;
+  requiresOpenaiAuth: boolean;
+  error: string | null;
+  lastUpdatedAt: string | null;
+}
+
 export interface AppBridge {
   getAppInfo: () => Promise<AppInfo>;
+  getSessionState: () => Promise<SessionState>;
 }
 
 export interface WorkspaceSummary {

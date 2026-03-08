@@ -178,9 +178,66 @@ button {
   padding: 16px;
 }
 
+.session-row,
+.feature-badges,
+.session-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .session-name,
 .list-title {
   font-weight: 600;
+}
+
+.session-state-pill,
+.feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.session-state-pill {
+  border: 1px solid rgba(239, 229, 206, 0.12);
+  color: rgba(239, 229, 206, 0.82);
+}
+
+.feature-badge {
+  border: 1px solid rgba(106, 108, 59, 0.34);
+  background: rgba(106, 108, 59, 0.18);
+  color: #d5d69d;
+}
+
+.feature-badge.muted,
+.session-account.muted {
+  border-color: rgba(239, 229, 206, 0.08);
+  color: rgba(239, 229, 206, 0.52);
+}
+
+.state-connected {
+  border-color: rgba(106, 108, 59, 0.42);
+  background: rgba(106, 108, 59, 0.18);
+  color: #d5d69d;
+}
+
+.state-connecting,
+.state-loading {
+  border-color: rgba(211, 110, 58, 0.42);
+  background: rgba(211, 110, 58, 0.18);
+  color: #ffd0b4;
+}
+
+.state-error {
+  border-color: rgba(211, 84, 58, 0.42);
+  background: rgba(211, 84, 58, 0.16);
+  color: #ffb9a5;
 }
 
 .session-meta,
@@ -188,6 +245,25 @@ button {
 .pane-body p,
 .timeline-item p {
   color: rgba(239, 229, 206, 0.72);
+}
+
+.session-account {
+  margin-top: 12px;
+}
+
+.session-account strong {
+  font-size: 0.94rem;
+}
+
+.session-account span,
+.session-error {
+  color: rgba(239, 229, 206, 0.66);
+  font-size: 0.84rem;
+}
+
+.session-error {
+  margin-top: 12px;
+  line-height: 1.5;
 }
 
 .rail-list {
