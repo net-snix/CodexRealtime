@@ -149,6 +149,29 @@ button {
   font-size: 0.78rem;
 }
 
+.open-workspace-button {
+  border: 1px solid rgba(211, 110, 58, 0.42);
+  background: linear-gradient(180deg, rgba(211, 110, 58, 0.22), rgba(211, 110, 58, 0.12));
+  color: #ffd8bf;
+  border-radius: 16px;
+  padding: 12px 14px;
+  text-align: left;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.open-workspace-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(211, 110, 58, 0.6);
+  background: linear-gradient(180deg, rgba(211, 110, 58, 0.28), rgba(211, 110, 58, 0.16));
+}
+
+.workspace-focus {
+  border-radius: 18px;
+  border: 1px solid rgba(239, 229, 206, 0.08);
+  background: rgba(255, 248, 234, 0.04);
+  padding: 14px;
+}
+
 .rail-section {
   display: grid;
   gap: 12px;

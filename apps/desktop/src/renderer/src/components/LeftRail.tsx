@@ -1,10 +1,11 @@
-import type { AppInfo, SessionState, ThreadSummary, WorkspaceSummary } from "@shared";
+import type { AppInfo, SessionState, WorkspaceState } from "@shared";
 
 interface LeftRailProps {
   appInfo: AppInfo | null;
   sessionState: SessionState | null;
-  workspaces: WorkspaceSummary[];
-  threads: ThreadSummary[];
+  workspaceState: WorkspaceState;
+  isOpeningWorkspace: boolean;
+  onOpenWorkspace: () => void | Promise<void>;
 }
 
 const sessionLabel = (sessionState: SessionState | null) => {
@@ -23,7 +24,13 @@ const sessionLabel = (sessionState: SessionState | null) => {
   return "Error";
 };
 
-export function LeftRail({ appInfo, sessionState, workspaces, threads }: LeftRailProps) {
+export function LeftRail({
+  appInfo,
+  sessionState,
+  workspaceState,
+  isOpeningWorkspace,
+  onOpenWorkspace
+}: LeftRailProps) {
   const featureBadges = [
     sessionState?.features.realtimeConversation ? "realtime" : null,
     sessionState?.features.defaultModeRequestUserInput ? "ask-first" : null,
@@ -38,8 +45,12 @@ export function LeftRail({ appInfo, sessionState, workspaces, threads }: LeftRai
           <h1>Speaking terminal.</h1>
           <p>A voice-native SWE shell. Warm paper. Sharp edges.</p>
         </div>
-        <div className="brand-chip">Commit 1</div>
+        <div className="brand-chip">Phase 3</div>
       </div>
+
+      <button type="button" className="open-workspace-button" onClick={() => void onOpenWorkspace()}>
+        {isOpeningWorkspace ? "Opening..." : "Open repo"}
+      </button>
 
       <section className="rail-section">
         <header>
@@ -86,11 +97,31 @@ export function LeftRail({ appInfo, sessionState, workspaces, threads }: LeftRai
 
       <section className="rail-section">
         <header>
+          <span>Current workspace</span>
+          <span>{workspaceState.currentWorkspace ? "bound" : "none"}</span>
+        </header>
+        <div className="workspace-focus">
+          {workspaceState.currentWorkspace ? (
+            <>
+              <div className="list-title">{workspaceState.currentWorkspace.name}</div>
+              <div className="list-subtitle">{workspaceState.currentWorkspace.path}</div>
+            </>
+          ) : (
+            <>
+              <div className="list-title">No repo open</div>
+              <div className="list-subtitle">Pick a repo to create or resume its primary thread.</div>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section className="rail-section">
+        <header>
           <span>Recent workspaces</span>
-          <span>{workspaces.length}</span>
+          <span>{workspaceState.recentWorkspaces.length}</span>
         </header>
         <ul className="rail-list">
-          {workspaces.map((workspace) => (
+          {workspaceState.recentWorkspaces.map((workspace) => (
             <li key={workspace.id} className="rail-list-item">
               <div className="list-title">{workspace.name}</div>
               <div className="list-subtitle">{workspace.path}</div>
@@ -102,10 +133,10 @@ export function LeftRail({ appInfo, sessionState, workspaces, threads }: LeftRai
       <section className="rail-section">
         <header>
           <span>Thread memory</span>
-          <span>{threads.length}</span>
+          <span>{workspaceState.threads.length}</span>
         </header>
         <ul className="rail-list compact">
-          {threads.map((thread) => (
+          {workspaceState.threads.map((thread) => (
             <li key={thread.id} className="rail-list-item">
               <div className="list-title">{thread.title}</div>
               <div className="list-subtitle">{thread.updatedAt}</div>

@@ -58,6 +58,37 @@ class CodexBridge extends EventEmitter {
     return this.state;
   }
 
+  async startThread(cwd: string) {
+    await this.start();
+
+    return this.request("thread/start", {
+      cwd,
+      approvalPolicy: "untrusted",
+      experimentalRawEvents: false,
+      persistExtendedHistory: true
+    });
+  }
+
+  async resumeThread(threadId: string, cwd: string) {
+    await this.start();
+
+    return this.request("thread/resume", {
+      threadId,
+      cwd,
+      persistExtendedHistory: true
+    });
+  }
+
+  async listThreads(cwd: string) {
+    await this.start();
+
+    return this.request("thread/list", {
+      cwd,
+      archived: false,
+      limit: 20
+    });
+  }
+
   async refreshState(): Promise<SessionState> {
     try {
       await this.start();

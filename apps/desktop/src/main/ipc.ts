@@ -1,9 +1,12 @@
 import { app, ipcMain } from "electron";
 import type { AppInfo } from "@shared";
 import { codexBridge } from "./codex-bridge";
+import { workspaceService } from "./workspace-service";
 
 const APP_GET_INFO = "app:get-info";
 const SESSION_GET_STATE = "session:get-state";
+const WORKSPACE_GET_STATE = "workspace:get-state";
+const WORKSPACE_OPEN = "workspace:open";
 
 const readAppInfo = (): AppInfo => ({
   name: app.getName(),
@@ -16,4 +19,8 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(APP_GET_INFO, () => readAppInfo());
   ipcMain.removeHandler(SESSION_GET_STATE);
   ipcMain.handle(SESSION_GET_STATE, () => codexBridge.refreshState());
+  ipcMain.removeHandler(WORKSPACE_GET_STATE);
+  ipcMain.handle(WORKSPACE_GET_STATE, () => workspaceService.getWorkspaceState());
+  ipcMain.removeHandler(WORKSPACE_OPEN);
+  ipcMain.handle(WORKSPACE_OPEN, () => workspaceService.openWorkspace());
 };

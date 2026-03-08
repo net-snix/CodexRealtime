@@ -2,41 +2,14 @@ import { useEffect, useState } from "react";
 import type {
   AppInfo,
   SessionState,
-  ThreadSummary,
   TimelineEvent,
   VoiceState,
-  WorkspaceSummary
+  WorkspaceState
 } from "@shared";
 import { LeftRail } from "./components/LeftRail";
 import { RightPane } from "./components/RightPane";
 import { Timeline } from "./components/Timeline";
 import { VoiceBar } from "./components/VoiceBar";
-
-const mockWorkspaces: WorkspaceSummary[] = [
-  {
-    id: "wksp-codex-realtime",
-    name: "CodexRealtime",
-    path: "~/Code/CodexRealtime",
-  },
-  {
-    id: "wksp-oracle",
-    name: "oracle",
-    path: "~/Code/oss/oracle",
-  },
-];
-
-const mockThreads: ThreadSummary[] = [
-  {
-    id: "thread-primary",
-    title: "Voice-native SWE MVP",
-    updatedAt: "Last active now",
-  },
-  {
-    id: "thread-empty",
-    title: "Fresh start",
-    updatedAt: "Ready when needed",
-  },
-];
 
 const mockEvents: TimelineEvent[] = [
   {
@@ -66,13 +39,20 @@ type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
+    currentWorkspace: null,
+    recentWorkspaces: [],
+    threads: []
+  });
+  const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [activePane, setActivePane] = useState<PaneKey>("plan");
 
   useEffect(() => {
     void Promise.allSettled([
       window.appBridge.getAppInfo(),
-      window.appBridge.getSessionState()
-    ]).then(([appInfoResult, sessionResult]) => {
+      window.appBridge.getSessionState(),
+      window.appBridge.getWorkspaceState()
+    ]).then(([appInfoResult, sessionResult, workspaceResult]) => {
       if (appInfoResult.status === "fulfilled") {
         setAppInfo(appInfoResult.value);
       } else {
@@ -99,8 +79,23 @@ export default function App() {
           lastUpdatedAt: null
         });
       }
+
+      if (workspaceResult.status === "fulfilled") {
+        setWorkspaceState(workspaceResult.value);
+      }
     });
   }, []);
+
+  const handleOpenWorkspace = async () => {
+    setIsOpeningWorkspace(true);
+
+    try {
+      const nextState = await window.appBridge.openWorkspace();
+      setWorkspaceState(nextState);
+    } finally {
+      setIsOpeningWorkspace(false);
+    }
+  };
 
   return (
     <div className="app-shell">
@@ -109,8 +104,9 @@ export default function App() {
         <LeftRail
           appInfo={appInfo}
           sessionState={sessionState}
-          workspaces={mockWorkspaces}
-          threads={mockThreads}
+          workspaceState={workspaceState}
+          isOpeningWorkspace={isOpeningWorkspace}
+          onOpenWorkspace={handleOpenWorkspace}
         />
         <Timeline events={mockEvents} />
         <RightPane activePane={activePane} onSelect={setActivePane} />

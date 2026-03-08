@@ -28,6 +28,8 @@ export interface SessionState {
 export interface AppBridge {
   getAppInfo: () => Promise<AppInfo>;
   getSessionState: () => Promise<SessionState>;
+  getWorkspaceState: () => Promise<WorkspaceState>;
+  openWorkspace: () => Promise<WorkspaceState>;
 }
 
 export interface WorkspaceSummary {
@@ -40,6 +42,12 @@ export interface ThreadSummary {
   id: string;
   title: string;
   updatedAt: string;
+}
+
+export interface WorkspaceState {
+  currentWorkspace: WorkspaceSummary | null;
+  recentWorkspaces: WorkspaceSummary[];
+  threads: ThreadSummary[];
 }
 
 export type VoiceState =
