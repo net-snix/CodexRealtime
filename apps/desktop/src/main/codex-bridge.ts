@@ -8,6 +8,7 @@ import type {
 } from "@shared";
 
 type JsonRpcMessage = {
+  jsonrpc?: string;
   id?: string;
   method?: string;
   params?: unknown;
@@ -21,6 +22,17 @@ type JsonRpcMessage = {
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+};
+
+type ServerNotificationMessage = {
+  method: string;
+  params?: unknown;
+};
+
+type ServerRequestMessage = {
+  id: string;
+  method: string;
+  params?: unknown;
 };
 
 const emptyFeatures = (): CodexFeatureFlags => ({
@@ -232,6 +244,24 @@ class CodexBridge extends EventEmitter {
         } else {
           pending.resolve(message.result);
         }
+
+        continue;
+      }
+
+      if (message.method && typeof message.id === "string") {
+        this.emit("serverRequest", {
+          id: message.id,
+          method: message.method,
+          params: message.params
+        } satisfies ServerRequestMessage);
+        continue;
+      }
+
+      if (message.method) {
+        this.emit("notification", {
+          method: message.method,
+          params: message.params
+        } satisfies ServerNotificationMessage);
       }
     }
   }

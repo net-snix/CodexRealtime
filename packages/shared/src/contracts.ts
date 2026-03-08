@@ -55,6 +55,10 @@ export interface WorkspaceState {
 export interface TimelineState {
   threadId: string | null;
   events: TimelineEvent[];
+  planSteps: TimelinePlanStep[];
+  diff: string;
+  approvals: TimelineApproval[];
+  userInputs: TimelineUserInputRequest[];
   isRunning: boolean;
   statusLabel: string | null;
 }
@@ -72,4 +76,22 @@ export interface TimelineEvent {
   kind: "user" | "assistant" | "commentary" | "system";
   text: string;
   createdAt: string;
+}
+
+export interface TimelinePlanStep {
+  step: string;
+  status: string;
+}
+
+export interface TimelineApproval {
+  id: string;
+  kind: "command" | "fileChange";
+  title: string;
+  detail: string;
+}
+
+export interface TimelineUserInputRequest {
+  id: string;
+  title: string;
+  questions: string[];
 }

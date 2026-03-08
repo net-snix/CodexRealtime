@@ -1,8 +1,15 @@
 import { useState, type KeyboardEventHandler } from "react";
 import type { TimelineState, WorkspaceState } from "@shared";
 
+type LiveTimelineState = TimelineState & {
+  planSteps?: Array<{ step: string; status: string }>;
+  diff?: string;
+  approvals?: Array<{ id: string; kind: "command" | "fileChange"; title: string; detail: string }>;
+  userInputs?: Array<{ id: string; title: string; questions: string[] }>;
+};
+
 interface TimelineProps {
-  timelineState: TimelineState;
+  timelineState: LiveTimelineState;
   workspaceState: WorkspaceState;
   isStartingTurn: boolean;
   onStartTurn: (prompt: string) => void | Promise<void>;
@@ -19,6 +26,10 @@ export function Timeline({
   const statusLabel = timelineState.isRunning
     ? timelineState.statusLabel ?? "turn running"
     : timelineState.statusLabel ?? (hasWorkspace ? "idle" : "repo required");
+  const planCount = timelineState.planSteps?.length ?? 0;
+  const approvalCount = timelineState.approvals?.length ?? 0;
+  const userInputCount = timelineState.userInputs?.length ?? 0;
+  const hasDiff = Boolean(timelineState.diff?.trim());
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -83,6 +94,38 @@ export function Timeline({
           </button>
         </div>
       </div>
+
+      {hasWorkspace && (planCount > 0 || hasDiff || approvalCount > 0 || userInputCount > 0) ? (
+        <div className="timeline-briefing">
+          <span className="panel-eyebrow">Live briefing</span>
+          <div className="timeline-briefing-grid">
+            {planCount > 0 ? (
+              <div className="briefing-card">
+                <strong>{planCount}</strong>
+                <span>plan steps tracked</span>
+              </div>
+            ) : null}
+            {hasDiff ? (
+              <div className="briefing-card briefing-card-warm">
+                <strong>Diff ready</strong>
+                <span>Preview waiting in the side rail</span>
+              </div>
+            ) : null}
+            {approvalCount > 0 ? (
+              <div className="briefing-card briefing-card-alert">
+                <strong>{approvalCount}</strong>
+                <span>approval {approvalCount === 1 ? "request" : "requests"} pending</span>
+              </div>
+            ) : null}
+            {userInputCount > 0 ? (
+              <div className="briefing-card briefing-card-olive">
+                <strong>{userInputCount}</strong>
+                <span>clarification {userInputCount === 1 ? "prompt" : "prompts"} queued</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {hasWorkspace ? (
         timelineState.events.length > 0 ? (
