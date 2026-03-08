@@ -40,6 +40,12 @@ export interface AppBridge {
     requestId: string,
     answers: Record<string, string | string[]>
   ) => Promise<TimelineState>;
+  getRealtimeState: () => Promise<RealtimeState>;
+  startRealtime: (prompt?: string) => Promise<RealtimeState>;
+  stopRealtime: () => Promise<RealtimeState>;
+  appendRealtimeAudio: (audio: RealtimeAudioChunk) => Promise<void>;
+  appendRealtimeText: (text: string) => Promise<void>;
+  subscribeRealtimeEvents: (listener: RealtimeEventListener) => () => void;
 }
 
 export interface WorkspaceSummary {
@@ -121,3 +127,25 @@ export interface TimelineUserInputOption {
 }
 
 export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
+
+export interface RealtimeAudioChunk {
+  data: string;
+  sampleRate: number;
+  numChannels: number;
+  samplesPerChannel: number | null;
+}
+
+export interface RealtimeState {
+  status: "idle" | "connecting" | "live" | "error";
+  threadId: string | null;
+  sessionId: string | null;
+  error: string | null;
+}
+
+export type RealtimeEvent =
+  | { type: "state"; state: RealtimeState }
+  | { type: "audio"; audio: RealtimeAudioChunk }
+  | { type: "item"; item: unknown }
+  | { type: "error"; message: string };
+
+export type RealtimeEventListener = (event: RealtimeEvent) => void;

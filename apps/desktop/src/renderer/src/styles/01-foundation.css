@@ -1,0 +1,112 @@
+:root {
+  color-scheme: dark;
+  --paper: #efe5ce;
+  --paper-shadow: rgba(25, 17, 8, 0.12);
+  --ink: #18120c;
+  --ink-soft: rgba(24, 18, 12, 0.7);
+  --ember: #d36e3a;
+  --olive: #6a6c3b;
+  --slate: #25211a;
+  --slate-soft: rgba(37, 33, 26, 0.88);
+  --line: rgba(24, 18, 12, 0.12);
+  --line-strong: rgba(24, 18, 12, 0.2);
+  --panel-radius: 26px;
+  --shadow: 0 24px 60px rgba(13, 10, 7, 0.28);
+  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(211, 110, 58, 0.24), transparent 26%),
+    radial-gradient(circle at top right, rgba(106, 108, 59, 0.18), transparent 24%),
+    linear-gradient(140deg, #120f0a 0%, #1b1711 50%, #12100c 100%);
+  color: var(--paper);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 28px 28px 20px;
+  position: relative;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgba(239, 229, 206, 0.08);
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.015) 0,
+      rgba(255, 255, 255, 0.015) 1px,
+      transparent 1px,
+      transparent 24px
+    );
+  pointer-events: none;
+}
+
+.workspace-frame {
+  position: relative;
+  display: grid;
+  grid-template-columns: 320px minmax(520px, 1fr) 340px;
+  gap: 18px;
+  min-height: calc(100vh - 136px);
+}
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--panel-radius);
+  border: 1px solid rgba(239, 229, 206, 0.08);
+  background: linear-gradient(180deg, rgba(27, 23, 17, 0.92), rgba(20, 17, 13, 0.94));
+  box-shadow: var(--shadow);
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(239, 229, 206, 0.08), transparent 30%);
+  pointer-events: none;
+}
+
+.panel-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.67rem;
+  color: rgba(239, 229, 206, 0.56);
+}
+
+.panel-eyebrow::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: currentColor;
+}

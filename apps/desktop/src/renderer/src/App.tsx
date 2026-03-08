@@ -4,15 +4,13 @@ import type {
   AppInfo,
   SessionState,
   TimelineState,
-  VoiceState,
   WorkspaceState
 } from "@shared";
 import { LeftRail } from "./components/LeftRail";
 import { RightPane } from "./components/RightPane";
 import { Timeline } from "./components/Timeline";
+import { useRealtimeVoice } from "./use-realtime-voice";
 import { VoiceBar } from "./components/VoiceBar";
-
-const initialVoiceState: VoiceState = "idle";
 
 type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
 
@@ -59,6 +57,15 @@ export default function App() {
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
   const [submittingUserInputs, setSubmittingUserInputs] = useState<Record<string, boolean>>({});
   const [userInputErrors, setUserInputErrors] = useState<Record<string, string>>({});
+  const realtimeEnabled = Boolean(
+    sessionState?.status === "connected" &&
+      sessionState.features.realtimeConversation &&
+      workspaceState.currentWorkspace
+  );
+  const { voiceState, isActive: isVoiceActive, start: startVoice, stop: stopVoice } =
+    useRealtimeVoice({
+      enabled: realtimeEnabled
+    });
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
   const submittingApprovalCount = Object.keys(submittingApprovals).length;
@@ -260,7 +267,14 @@ export default function App() {
           onSubmitUserInput={handleSubmitUserInput}
         />
       </main>
-      <VoiceBar sessionState={sessionState} state={initialVoiceState} />
+      <VoiceBar
+        sessionState={sessionState}
+        state={voiceState}
+        disabled={!realtimeEnabled}
+        isActive={isVoiceActive}
+        onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}
+        onStop={stopVoice}
+      />
     </div>
   );
 }

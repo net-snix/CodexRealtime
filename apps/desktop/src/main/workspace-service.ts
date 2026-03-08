@@ -4,20 +4,20 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { realpathSync } from "node:fs";
-import type {
-  ApprovalDecision,
-  ThreadSummary,
-  TimelineApproval,
-  TimelineEvent,
-  TimelinePlanStep,
-  TimelineState,
-  TimelineUserInputOption,
-  TimelineUserInputQuestion,
-  TimelineUserInputRequest,
-  WorkspaceState,
-  WorkspaceSummary
-} from "@shared";
+import type { ApprovalDecision, ThreadSummary, TimelineState, WorkspaceState, WorkspaceSummary } from "@shared";
 import { codexBridge } from "./codex-bridge";
+import {
+  applyBridgeNotification,
+  applyBridgeRequest,
+  buildTimelineState,
+  cloneTimelineState,
+  emptyTimelineState,
+  markApprovalSubmitting,
+  markUserInputSubmitting,
+  type NotificationPayload,
+  type RequestPayload,
+  type TurnRecord
+} from "./workspace-timeline";
 
 type PersistedWorkspace = WorkspaceSummary & {
   lastOpenedAt: string;
@@ -38,75 +38,11 @@ type ThreadListResult = {
   }>;
 };
 
-type ThreadItem =
-  | {
-      type: "userMessage";
-      id?: string;
-      content?: Array<{ type?: string; text?: string }>;
-    }
-  | {
-      type: "agentMessage";
-      id?: string;
-      text?: string;
-    }
-  | {
-      type: "plan";
-      id?: string;
-      text?: string;
-    }
-  | {
-      type: "reasoning";
-      id?: string;
-      summary?: string[];
-      content?: string[];
-    }
-  | {
-      type: "commandExecution";
-      id?: string;
-      command?: string;
-      aggregatedOutput?: string | null;
-    }
-  | {
-      type: "fileChange";
-      id?: string;
-      changes?: Array<{ path?: string }>;
-    }
-  | {
-      type: string;
-      id?: string;
-    };
-
-type TurnRecord = {
-  id?: string;
-  status?: "completed" | "interrupted" | "failed" | "inProgress";
-  items?: ThreadItem[];
-};
-
 type ThreadReadResult = {
   thread?: {
     id?: string;
     turns?: TurnRecord[];
   };
-};
-
-type UserMessageItem = Extract<ThreadItem, { type: "userMessage" }>;
-type AgentMessageItem = Extract<ThreadItem, { type: "agentMessage" }>;
-type PlanItem = Extract<ThreadItem, { type: "plan" }>;
-type ReasoningItem = Extract<ThreadItem, { type: "reasoning" }>;
-type CommandExecutionItem = Extract<ThreadItem, { type: "commandExecution" }>;
-type FileChangeItem = Extract<ThreadItem, { type: "fileChange" }>;
-type ThreadRef = { id?: string };
-type TurnRef = ThreadRef & {
-  status?: "completed" | "interrupted" | "failed" | "inProgress";
-};
-type NotificationPayload = {
-  method: string;
-  params?: unknown;
-};
-type RequestPayload = {
-  id: string;
-  method: string;
-  params?: unknown;
 };
 
 const EMPTY_STATE: PersistedState = {
@@ -129,115 +65,6 @@ const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => 
   name: workspace.name,
   path: workspace.path
 });
-
-const isUserMessage = (item: ThreadItem): item is UserMessageItem => item.type === "userMessage";
-const isAgentMessage = (item: ThreadItem): item is AgentMessageItem => item.type === "agentMessage";
-const isPlanItem = (item: ThreadItem): item is PlanItem => item.type === "plan";
-const isReasoningItem = (item: ThreadItem): item is ReasoningItem => item.type === "reasoning";
-const isCommandExecutionItem = (item: ThreadItem): item is CommandExecutionItem =>
-  item.type === "commandExecution";
-const isFileChangeItem = (item: ThreadItem): item is FileChangeItem => item.type === "fileChange";
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object";
-const emptyTimelineState = (threadId: string | null = null): TimelineState => ({
-  threadId,
-  events: [],
-  planSteps: [],
-  diff: "",
-  approvals: [],
-  userInputs: [],
-  isRunning: false,
-  statusLabel: null
-});
-const cloneTimelineState = (state: TimelineState): TimelineState => ({
-  ...state,
-  events: [...state.events],
-  planSteps: [...state.planSteps],
-  approvals: state.approvals.map((approval) => ({
-    ...approval,
-    availableDecisions: [...approval.availableDecisions]
-  })),
-  userInputs: state.userInputs.map((request) => ({
-    ...request,
-    questions: request.questions.map((question) => ({
-      ...question,
-      options: [...question.options]
-    }))
-  }))
-});
-
-const toTimelineEvent = (item: ThreadItem, turnId: string): TimelineEvent | null => {
-  const base = {
-    id: item.id ?? `${turnId}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: "Thread history"
-  };
-
-  if (isUserMessage(item)) {
-    const text = (item.content ?? [])
-      .filter((entry): entry is { type: "text"; text: string } =>
-        entry.type === "text" && typeof entry.text === "string"
-      )
-      .map((entry) => entry.text.trim())
-      .filter(Boolean)
-      .join("\n");
-
-    return text
-      ? {
-          ...base,
-          kind: "user",
-          text
-        }
-      : null;
-  }
-
-  if (isAgentMessage(item) && item.text) {
-    return {
-      ...base,
-      kind: "assistant",
-      text: item.text
-    };
-  }
-
-  if (isPlanItem(item) && item.text) {
-    return {
-      ...base,
-      kind: "commentary",
-      text: `Plan update: ${item.text}`
-    };
-  }
-
-  if (isReasoningItem(item)) {
-    const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n");
-
-    return text
-      ? {
-          ...base,
-          kind: "commentary",
-          text
-        }
-      : null;
-  }
-
-  if (isCommandExecutionItem(item) && item.command) {
-    return {
-      ...base,
-      kind: "system",
-      text: `Command: ${item.command}${item.aggregatedOutput ? `\n${item.aggregatedOutput}` : ""}`
-    };
-  }
-
-  if (isFileChangeItem(item)) {
-    const changeCount = item.changes?.length ?? 0;
-
-    return {
-      ...base,
-      kind: "system",
-      text: `File changes proposed: ${changeCount}`
-    };
-  }
-
-  return null;
-};
 
 class WorkspaceService {
   private liveTimelineState = emptyTimelineState();
@@ -391,6 +218,28 @@ class WorkspaceService {
     return cloneTimelineState(this.liveTimelineState);
   }
 
+  async getCurrentThreadId(): Promise<string> {
+    const persisted = this.readState();
+
+    if (!persisted.currentWorkspaceId) {
+      throw new Error("Open a workspace first.");
+    }
+
+    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
+
+    if (!workspace) {
+      throw new Error("Current workspace is missing.");
+    }
+
+    const threadId = await this.ensureThread(workspace);
+    workspace.threadId = threadId;
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    return threadId;
+  }
+
   async respondToApproval(
     requestId: string,
     decision: ApprovalDecision
@@ -405,13 +254,13 @@ class WorkspaceService {
       throw new Error(`Decision ${decision} is not available for this request.`);
     }
 
-    this.liveTimelineState = this.markApprovalSubmitting(requestId, true);
+    this.liveTimelineState = markApprovalSubmitting(this.liveTimelineState, requestId, true);
 
     try {
       await codexBridge.respond(requestId, { decision });
       return cloneTimelineState(this.liveTimelineState);
     } catch (error) {
-      this.liveTimelineState = this.markApprovalSubmitting(requestId, false);
+      this.liveTimelineState = markApprovalSubmitting(this.liveTimelineState, requestId, false);
       throw error;
     }
   }
@@ -441,13 +290,13 @@ class WorkspaceService {
       })
     );
 
-    this.liveTimelineState = this.markUserInputSubmitting(requestId, true);
+    this.liveTimelineState = markUserInputSubmitting(this.liveTimelineState, requestId, true);
 
     try {
       await codexBridge.respond(requestId, { answers: normalizedAnswers });
       return cloneTimelineState(this.liveTimelineState);
     } catch (error) {
-      this.liveTimelineState = this.markUserInputSubmitting(requestId, false);
+      this.liveTimelineState = markUserInputSubmitting(this.liveTimelineState, requestId, false);
       throw error;
     }
   }
@@ -483,24 +332,7 @@ class WorkspaceService {
   private async readThreadTimeline(threadId: string): Promise<TimelineState> {
     await codexBridge.start();
     const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
-    const turns = result.thread?.turns ?? [];
-    const events = turns.flatMap((turn) =>
-      (turn.items ?? [])
-        .map((item) => toTimelineEvent(item, turn.id ?? "turn"))
-        .filter((event): event is TimelineEvent => event !== null)
-    );
-    const activeTurn = turns.find((turn) => turn.status === "inProgress") ?? null;
-
-    return {
-      threadId,
-      events,
-      planSteps: [],
-      diff: "",
-      approvals: [],
-      userInputs: [],
-      isRunning: Boolean(activeTurn),
-      statusLabel: activeTurn ? "Working" : turns.at(-1)?.status ?? "Idle"
-    };
+    return buildTimelineState(threadId, result.thread?.turns ?? []);
   }
 
   private async listThreads(workspacePath: string): Promise<ThreadSummary[]> {
@@ -561,209 +393,28 @@ class WorkspaceService {
   }
 
   private async handleBridgeNotification(payload: NotificationPayload) {
-    const params = isRecord(payload.params) ? payload.params : {};
-    const threadId = typeof params.threadId === "string" ? params.threadId : null;
-
-    if (!threadId || !this.isCurrentThread(threadId)) {
-      return;
-    }
-
-    switch (payload.method) {
-      case "turn/started": {
-        const turn = isRecord(params.turn) ? (params.turn as TurnRef) : null;
-        this.liveTimelineState = {
-          ...this.ensureLiveTimeline(threadId),
-          isRunning: true,
-          statusLabel: turn?.id ? "Working" : "Starting"
-        };
-        return;
-      }
-
-      case "turn/plan/updated": {
-        const planSteps = Array.isArray(params.plan)
-          ? params.plan
-              .map((entry) =>
-                isRecord(entry) && typeof entry.step === "string"
-                  ? {
-                      step: entry.step,
-                      status: typeof entry.status === "string" ? entry.status : "pending"
-                    }
-                  : null
-              )
-              .filter((entry): entry is TimelinePlanStep => entry !== null)
-          : [];
-        const explanation =
-          typeof params.explanation === "string" ? params.explanation.trim() : "";
-        const nextState = this.ensureLiveTimeline(threadId);
-        nextState.planSteps = planSteps;
-
-        if (explanation) {
-          this.upsertTimelineEvent(nextState, {
-            id: `plan-${threadId}`,
-            kind: "commentary",
-            text: explanation,
-            createdAt: "Live update"
-          });
-        }
-
-        this.liveTimelineState = cloneTimelineState(nextState);
-        return;
-      }
-
-      case "turn/diff/updated": {
-        const diff = typeof params.diff === "string" ? params.diff : "";
-        this.liveTimelineState = {
-          ...this.ensureLiveTimeline(threadId),
-          diff
-        };
-        return;
-      }
-
-      case "item/started":
-      case "item/completed": {
-        const item = isRecord(params.item) ? (params.item as ThreadItem) : null;
-        const turnId = typeof params.turnId === "string" ? params.turnId : "turn";
-
-        if (!item) {
-          return;
-        }
-
-        const event = toTimelineEvent(item, turnId);
-
-        if (!event) {
-          return;
-        }
-
-        const nextState = this.ensureLiveTimeline(threadId);
-        this.upsertTimelineEvent(nextState, {
-          ...event,
-          createdAt: payload.method === "item/started" ? "Live start" : "Live update"
-        });
-        this.liveTimelineState = cloneTimelineState(nextState);
-        return;
-      }
-
-      case "item/agentMessage/delta": {
-        const itemId = typeof params.itemId === "string" ? params.itemId : randomUUID();
-        const delta = typeof params.delta === "string" ? params.delta : "";
-
-        if (!delta) {
-          return;
-        }
-
-        const nextState = this.ensureLiveTimeline(threadId);
-        const existingIndex = nextState.events.findIndex((event) => event.id === itemId);
-
-        if (existingIndex >= 0) {
-          const existing = nextState.events[existingIndex];
-          nextState.events[existingIndex] = {
-            ...existing,
-            text: `${existing.text}${delta}`,
-            createdAt: "Streaming"
-          };
-        } else {
-          nextState.events.push({
-            id: itemId,
-            kind: "assistant",
-            text: delta,
-            createdAt: "Streaming"
-          });
-        }
-
-        this.liveTimelineState = cloneTimelineState(nextState);
-        return;
-      }
-
-      case "serverRequest/resolved": {
-        const requestId = typeof params.requestId === "string" ? params.requestId : null;
-
-        if (!requestId) {
-          return;
-        }
-
-        const nextState = this.ensureLiveTimeline(threadId);
-        nextState.approvals = nextState.approvals.filter((approval) => approval.id !== requestId);
-        nextState.userInputs = nextState.userInputs.filter((request) => request.id !== requestId);
-        this.liveTimelineState = cloneTimelineState(nextState);
-        return;
-      }
-
-      case "turn/completed": {
-        const turn = isRecord(params.turn) ? (params.turn as TurnRef) : null;
-        this.liveTimelineState = {
-          ...this.ensureLiveTimeline(threadId),
-          isRunning: false,
-          statusLabel: turn?.status ?? "completed"
-        };
-        this.liveTimelineState = await this.hydrateLiveTimeline(threadId);
-        return;
-      }
-
-      default:
-        return;
-    }
+    this.liveTimelineState = await applyBridgeNotification(
+      this.liveTimelineState,
+      payload,
+      (threadId) => this.isCurrentThread(threadId),
+      (threadId, currentState) => this.hydrateLiveTimeline(threadId, currentState)
+    );
   }
 
   private handleBridgeRequest(payload: RequestPayload) {
-    const params = isRecord(payload.params) ? payload.params : {};
-    const threadId = typeof params.threadId === "string" ? params.threadId : null;
-
-    if (!threadId || !this.isCurrentThread(threadId)) {
-      return;
-    }
-
-    const nextState = this.ensureLiveTimeline(threadId);
-
-    if (payload.method === "item/commandExecution/requestApproval") {
-      const command = typeof params.command === "string" ? params.command.trim() : "";
-      const cwd = typeof params.cwd === "string" ? params.cwd.trim() : "";
-      const reason = typeof params.reason === "string" ? params.reason.trim() : "";
-
-      this.upsertApproval(nextState, {
-        id: payload.id,
-        kind: "command",
-        title: command ? `Run command: ${command}` : "Run command",
-        detail: [cwd ? `cwd: ${cwd}` : null, reason || null].filter(Boolean).join("\n"),
-        availableDecisions: this.mapCommandApprovalDecisions(params.availableDecisions),
-        isSubmitting: false
-      });
-    }
-
-    if (payload.method === "item/fileChange/requestApproval") {
-      const reason = typeof params.reason === "string" ? params.reason.trim() : "";
-      const grantRoot = typeof params.grantRoot === "string" ? params.grantRoot.trim() : "";
-
-      this.upsertApproval(nextState, {
-        id: payload.id,
-        kind: "fileChange",
-        title: "Apply file changes",
-        detail: [reason || null, grantRoot ? `grant root: ${grantRoot}` : null]
-          .filter(Boolean)
-          .join("\n"),
-        availableDecisions: grantRoot
-          ? ["accept", "acceptForSession", "decline", "cancel"]
-          : ["accept", "decline", "cancel"],
-        isSubmitting: false
-      });
-    }
-
-    if (payload.method === "item/tool/requestUserInput") {
-      const questions = this.mapUserInputQuestions(params.questions);
-
-      this.upsertUserInput(nextState, {
-        id: payload.id,
-        title: "Clarification requested",
-        questions,
-        isSubmitting: false
-      });
-    }
-
-    this.liveTimelineState = cloneTimelineState(nextState);
+    this.liveTimelineState = applyBridgeRequest(
+      this.liveTimelineState,
+      payload,
+      (threadId) => this.isCurrentThread(threadId)
+    );
   }
 
-  private async hydrateLiveTimeline(threadId: string): Promise<TimelineState> {
+  private async hydrateLiveTimeline(
+    threadId: string,
+    currentState: TimelineState = this.liveTimelineState
+  ): Promise<TimelineState> {
     const snapshot = await this.readThreadTimeline(threadId);
-    const existing = this.liveTimelineState.threadId === threadId ? this.liveTimelineState : null;
+    const existing = currentState.threadId === threadId ? currentState : null;
 
     this.liveTimelineState = {
       ...snapshot,
@@ -792,115 +443,6 @@ class WorkspaceService {
     }
 
     return state.workspaces[state.currentWorkspaceId]?.threadId === threadId;
-  }
-
-  private upsertTimelineEvent(state: TimelineState, event: TimelineEvent) {
-    const index = state.events.findIndex((entry) => entry.id === event.id);
-
-    if (index >= 0) {
-      state.events[index] = event;
-      return;
-    }
-
-    state.events.push(event);
-  }
-
-  private upsertApproval(state: TimelineState, approval: TimelineApproval) {
-    const index = state.approvals.findIndex((entry) => entry.id === approval.id);
-
-    if (index >= 0) {
-      state.approvals[index] = approval;
-      return;
-    }
-
-    state.approvals.push(approval);
-  }
-
-  private upsertUserInput(state: TimelineState, request: TimelineUserInputRequest) {
-    const index = state.userInputs.findIndex((entry) => entry.id === request.id);
-
-    if (index >= 0) {
-      state.userInputs[index] = request;
-      return;
-    }
-
-    state.userInputs.push(request);
-  }
-
-  private mapCommandApprovalDecisions(value: unknown): ApprovalDecision[] {
-    const supported: ApprovalDecision[] = [];
-
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        if (
-          entry === "accept" ||
-          entry === "acceptForSession" ||
-          entry === "decline" ||
-          entry === "cancel"
-        ) {
-          supported.push(entry);
-        }
-      }
-    }
-
-    return supported.length > 0 ? supported : ["accept", "decline", "cancel"];
-  }
-
-  private mapUserInputQuestions(value: unknown): TimelineUserInputQuestion[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-
-    return value
-      .map((entry) => {
-        if (!isRecord(entry) || typeof entry.id !== "string") {
-          return null;
-        }
-
-        return {
-          id: entry.id,
-          header: typeof entry.header === "string" ? entry.header : "Question",
-          question: typeof entry.question === "string" ? entry.question : "Provide input",
-          isSecret: entry.isSecret === true,
-          options: this.mapUserInputOptions(entry.options)
-        } satisfies TimelineUserInputQuestion;
-      })
-      .filter((entry): entry is TimelineUserInputQuestion => entry !== null);
-  }
-
-  private mapUserInputOptions(value: unknown): TimelineUserInputOption[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-
-    return value
-      .map((entry) => {
-        if (!isRecord(entry) || typeof entry.label !== "string") {
-          return null;
-        }
-
-        return {
-          label: entry.label,
-          description: typeof entry.description === "string" ? entry.description : ""
-        } satisfies TimelineUserInputOption;
-      })
-      .filter((entry): entry is TimelineUserInputOption => entry !== null);
-  }
-
-  private markApprovalSubmitting(requestId: string, isSubmitting: boolean) {
-    const nextState = cloneTimelineState(this.liveTimelineState);
-    nextState.approvals = nextState.approvals.map((approval) =>
-      approval.id === requestId ? { ...approval, isSubmitting } : approval
-    );
-    return nextState;
-  }
-
-  private markUserInputSubmitting(requestId: string, isSubmitting: boolean) {
-    const nextState = cloneTimelineState(this.liveTimelineState);
-    nextState.userInputs = nextState.userInputs.map((request) =>
-      request.id === requestId ? { ...request, isSubmitting } : request
-    );
-    return nextState;
   }
 }
 

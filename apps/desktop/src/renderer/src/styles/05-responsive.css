@@ -1,0 +1,29 @@
+@media (max-width: 1280px) {
+  .workspace-frame {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .right-pane {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    padding: 18px 18px 16px;
+  }
+
+  .workspace-frame {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .composer-row {
+    grid-template-columns: 1fr;
+  }
+
+  .voice-bar {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+}

@@ -3,6 +3,10 @@ import type { SessionState, VoiceState } from "@shared";
 interface VoiceBarProps {
   sessionState: SessionState | null;
   state: VoiceState;
+  disabled: boolean;
+  isActive: boolean;
+  onToggle: () => void | Promise<void>;
+  onStop: () => void | Promise<void>;
 }
 
 const helperCopy = (sessionState: SessionState | null) => {
@@ -25,12 +29,24 @@ const helperCopy = (sessionState: SessionState | null) => {
   return sessionState.error ?? "Codex session failed.";
 };
 
-export function VoiceBar({ sessionState, state }: VoiceBarProps) {
+export function VoiceBar({
+  sessionState,
+  state,
+  disabled,
+  isActive,
+  onToggle,
+  onStop
+}: VoiceBarProps) {
   return (
     <footer className="voice-bar stagger-4">
       <div className="voice-cluster">
-        <button type="button" className="voice-button primary" disabled>
-          Mic
+        <button
+          type="button"
+          className="voice-button primary"
+          disabled={disabled}
+          onClick={() => void onToggle()}
+        >
+          {isActive ? "Mic live" : "Start mic"}
         </button>
         <div className="voice-meter" aria-hidden="true">
           <span />
@@ -51,7 +67,12 @@ export function VoiceBar({ sessionState, state }: VoiceBarProps) {
         <button type="button" className="voice-button ghost" disabled>
           Devices
         </button>
-        <button type="button" className="voice-button danger" disabled>
+        <button
+          type="button"
+          className="voice-button danger"
+          disabled={!isActive}
+          onClick={() => void onStop()}
+        >
           Stop
         </button>
       </div>

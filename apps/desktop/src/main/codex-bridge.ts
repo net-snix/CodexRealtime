@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import type {
   CodexAccountSummary,
   CodexFeatureFlags,
+  RealtimeAudioChunk,
   SessionState
 } from "@shared";
 
@@ -122,6 +123,42 @@ class CodexBridge extends EventEmitter {
           text_elements: []
         }
       ]
+    });
+  }
+
+  async startRealtime(threadId: string, prompt: string, sessionId?: string | null) {
+    await this.start();
+
+    return this.request("thread/realtime/start", {
+      threadId,
+      prompt,
+      sessionId
+    });
+  }
+
+  async appendRealtimeAudio(threadId: string, audio: RealtimeAudioChunk) {
+    await this.start();
+
+    return this.request("thread/realtime/appendAudio", {
+      threadId,
+      audio
+    });
+  }
+
+  async appendRealtimeText(threadId: string, text: string) {
+    await this.start();
+
+    return this.request("thread/realtime/appendText", {
+      threadId,
+      text
+    });
+  }
+
+  async stopRealtime(threadId: string) {
+    await this.start();
+
+    return this.request("thread/realtime/stop", {
+      threadId
     });
   }
 

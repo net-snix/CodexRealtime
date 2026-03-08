@@ -1,0 +1,40 @@
+.stagger-1,
+.stagger-2,
+.stagger-3,
+.stagger-4 {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: rise-in 0.7s ease forwards;
+}
+
+.stagger-2 {
+  animation-delay: 0.08s;
+}
+
+.stagger-3 {
+  animation-delay: 0.16s;
+}
+
+.stagger-4 {
+  animation-delay: 0.24s;
+}
+
+@keyframes rise-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scaleY(0.82);
+    opacity: 0.66;
+  }
+
+  50% {
+    transform: scaleY(1.08);
+    opacity: 1;
+  }
+}

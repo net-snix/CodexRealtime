@@ -9,6 +9,12 @@ const TIMELINE_GET_STATE = "timeline:get-state";
 const TURN_START = "turn:start";
 const APPROVAL_RESPOND = "approval:respond";
 const USER_INPUT_SUBMIT = "user-input:submit";
+const REALTIME_GET_STATE = "realtime:get-state";
+const REALTIME_START = "realtime:start";
+const REALTIME_STOP = "realtime:stop";
+const REALTIME_APPEND_AUDIO = "realtime:append-audio";
+const REALTIME_APPEND_TEXT = "realtime:append-text";
+const REALTIME_EVENT = "realtime:event";
 
 const appBridge: AppBridge = {
   getAppInfo: () => ipcRenderer.invoke(APP_GET_INFO),
@@ -20,7 +26,19 @@ const appBridge: AppBridge = {
   respondToApproval: (requestId, decision) =>
     ipcRenderer.invoke(APPROVAL_RESPOND, requestId, decision),
   submitUserInput: (requestId, answers) =>
-    ipcRenderer.invoke(USER_INPUT_SUBMIT, requestId, answers)
+    ipcRenderer.invoke(USER_INPUT_SUBMIT, requestId, answers),
+  getRealtimeState: () => ipcRenderer.invoke(REALTIME_GET_STATE),
+  startRealtime: (prompt) => ipcRenderer.invoke(REALTIME_START, prompt),
+  stopRealtime: () => ipcRenderer.invoke(REALTIME_STOP),
+  appendRealtimeAudio: (audio) => ipcRenderer.invoke(REALTIME_APPEND_AUDIO, audio),
+  appendRealtimeText: (text) => ipcRenderer.invoke(REALTIME_APPEND_TEXT, text),
+  subscribeRealtimeEvents: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]) =>
+      listener(payload);
+
+    ipcRenderer.on(REALTIME_EVENT, wrapped);
+    return () => ipcRenderer.removeListener(REALTIME_EVENT, wrapped);
+  }
 };
 
 contextBridge.exposeInMainWorld("appBridge", appBridge);

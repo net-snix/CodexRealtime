@@ -7,4 +7,10 @@ export const IPC_CHANNELS = {
   turnStart: "turn:start",
   approvalRespond: "approval:respond",
   userInputSubmit: "user-input:submit",
+  realtimeGetState: "realtime:get-state",
+  realtimeStart: "realtime:start",
+  realtimeStop: "realtime:stop",
+  realtimeAppendAudio: "realtime:append-audio",
+  realtimeAppendText: "realtime:append-text",
+  realtimeEvent: "realtime:event",
 } as const;
