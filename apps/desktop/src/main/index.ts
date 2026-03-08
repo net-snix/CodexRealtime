@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
+import { workspaceService } from "./workspace-service";
 
 const createMainWindow = () => {
   const window = new BrowserWindow({
@@ -30,9 +31,10 @@ const createMainWindow = () => {
   return window;
 };
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   void codexBridge.start().then(() => codexBridge.refreshState());
   registerIpcHandlers();
+  await workspaceService.restoreLastWorkspace();
   createMainWindow();
 
   app.on("activate", () => {
