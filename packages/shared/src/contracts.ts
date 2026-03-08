@@ -32,6 +32,14 @@ export interface AppBridge {
   openWorkspace: () => Promise<WorkspaceState>;
   getTimelineState: () => Promise<TimelineState>;
   startTurn: (prompt: string) => Promise<TimelineState>;
+  respondToApproval: (
+    requestId: string,
+    decision: ApprovalDecision
+  ) => Promise<TimelineState>;
+  submitUserInput: (
+    requestId: string,
+    answers: Record<string, string | string[]>
+  ) => Promise<TimelineState>;
 }
 
 export interface WorkspaceSummary {
@@ -88,10 +96,28 @@ export interface TimelineApproval {
   kind: "command" | "fileChange";
   title: string;
   detail: string;
+  availableDecisions: ApprovalDecision[];
+  isSubmitting: boolean;
 }
 
 export interface TimelineUserInputRequest {
   id: string;
   title: string;
-  questions: string[];
+  questions: TimelineUserInputQuestion[];
+  isSubmitting: boolean;
 }
+
+export interface TimelineUserInputQuestion {
+  id: string;
+  header: string;
+  question: string;
+  isSecret: boolean;
+  options: TimelineUserInputOption[];
+}
+
+export interface TimelineUserInputOption {
+  label: string;
+  description: string;
+}
+
+export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";

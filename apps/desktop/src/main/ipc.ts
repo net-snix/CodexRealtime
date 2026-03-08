@@ -9,6 +9,8 @@ const WORKSPACE_GET_STATE = "workspace:get-state";
 const WORKSPACE_OPEN = "workspace:open";
 const TIMELINE_GET_STATE = "timeline:get-state";
 const TURN_START = "turn:start";
+const APPROVAL_RESPOND = "approval:respond";
+const USER_INPUT_SUBMIT = "user-input:submit";
 
 const readAppInfo = (): AppInfo => ({
   name: app.getName(),
@@ -29,4 +31,12 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(TIMELINE_GET_STATE, () => workspaceService.getTimelineState());
   ipcMain.removeHandler(TURN_START);
   ipcMain.handle(TURN_START, (_event, prompt: string) => workspaceService.startTurn(prompt));
+  ipcMain.removeHandler(APPROVAL_RESPOND);
+  ipcMain.handle(APPROVAL_RESPOND, (_event, requestId: string, decision) =>
+    workspaceService.respondToApproval(requestId, decision)
+  );
+  ipcMain.removeHandler(USER_INPUT_SUBMIT);
+  ipcMain.handle(USER_INPUT_SUBMIT, (_event, requestId: string, answers) =>
+    workspaceService.submitUserInput(requestId, answers)
+  );
 };

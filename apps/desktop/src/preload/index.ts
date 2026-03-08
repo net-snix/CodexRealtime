@@ -7,6 +7,8 @@ const WORKSPACE_GET_STATE = "workspace:get-state";
 const WORKSPACE_OPEN = "workspace:open";
 const TIMELINE_GET_STATE = "timeline:get-state";
 const TURN_START = "turn:start";
+const APPROVAL_RESPOND = "approval:respond";
+const USER_INPUT_SUBMIT = "user-input:submit";
 
 const appBridge: AppBridge = {
   getAppInfo: () => ipcRenderer.invoke(APP_GET_INFO),
@@ -14,7 +16,11 @@ const appBridge: AppBridge = {
   getWorkspaceState: () => ipcRenderer.invoke(WORKSPACE_GET_STATE),
   openWorkspace: () => ipcRenderer.invoke(WORKSPACE_OPEN),
   getTimelineState: () => ipcRenderer.invoke(TIMELINE_GET_STATE),
-  startTurn: (prompt) => ipcRenderer.invoke(TURN_START, prompt)
+  startTurn: (prompt) => ipcRenderer.invoke(TURN_START, prompt),
+  respondToApproval: (requestId, decision) =>
+    ipcRenderer.invoke(APPROVAL_RESPOND, requestId, decision),
+  submitUserInput: (requestId, answers) =>
+    ipcRenderer.invoke(USER_INPUT_SUBMIT, requestId, answers)
 };
 
 contextBridge.exposeInMainWorld("appBridge", appBridge);

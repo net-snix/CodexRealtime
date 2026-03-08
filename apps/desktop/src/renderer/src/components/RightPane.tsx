@@ -1,46 +1,58 @@
-import type { TimelineState } from "@shared";
+import { useEffect, useState } from "react";
+import type { ApprovalDecision, TimelineState } from "@shared";
 
 const PANELS = {
   plan: {
     title: "Plan",
-    eyebrow: "Live orchestration",
+    eyebrow: "Live orchestration"
   },
   diff: {
     title: "Diff",
-    eyebrow: "Change preview",
+    eyebrow: "Change preview"
   },
   commands: {
     title: "Commands",
-    eyebrow: "Operator feed",
+    eyebrow: "Operator feed"
   },
   approvals: {
     title: "Approvals",
-    eyebrow: "Human gate",
+    eyebrow: "Human gate"
   },
   errors: {
     title: "Errors",
-    eyebrow: "Debug rail",
-  },
+    eyebrow: "Debug rail"
+  }
 } as const;
 
 type PaneKey = keyof typeof PANELS;
-type LiveTimelineState = TimelineState & {
-  planSteps?: Array<{ step: string; status: string }>;
-  diff?: string;
-  approvals?: Array<{ id: string; kind: "command" | "fileChange"; title: string; detail: string }>;
-  userInputs?: Array<{ id: string; title: string; questions: string[] }>;
-};
 
 interface RightPaneProps {
   activePane: PaneKey;
   onSelect: (pane: PaneKey) => void;
-  timelineState: LiveTimelineState;
+  timelineState: TimelineState;
+  submittingApprovals: Record<string, ApprovalDecision>;
+  approvalErrors: Record<string, string>;
+  submittingUserInputs: Record<string, boolean>;
+  userInputErrors: Record<string, string>;
+  onApproveRequest: (id: string, decision?: ApprovalDecision) => void | Promise<void>;
+  onDenyRequest: (id: string) => void | Promise<void>;
+  onSubmitUserInput: (
+    id: string,
+    answers: Record<string, string | string[]>
+  ) => void | Promise<void>;
 }
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   in_progress: "In progress",
   completed: "Completed"
+};
+
+const APPROVAL_LABELS: Record<ApprovalDecision, string> = {
+  accept: "Approve",
+  acceptForSession: "Approve for session",
+  decline: "Decline",
+  cancel: "Cancel"
 };
 
 const truncateDiff = (diff: string) => {
@@ -50,20 +62,50 @@ const truncateDiff = (diff: string) => {
     return trimmed;
   }
 
-  return `${trimmed.slice(0, 1800)}\n\n…diff preview truncated`;
+  return `${trimmed.slice(0, 1800)}\n\n...diff preview truncated`;
 };
 
-export function RightPane({ activePane, onSelect, timelineState }: RightPaneProps) {
+export function RightPane({
+  activePane,
+  onSelect,
+  timelineState,
+  submittingApprovals,
+  approvalErrors,
+  submittingUserInputs,
+  userInputErrors,
+  onApproveRequest,
+  onDenyRequest,
+  onSubmitUserInput
+}: RightPaneProps) {
+  const [draftAnswers, setDraftAnswers] = useState<Record<string, Record<string, string>>>({});
   const pane = PANELS[activePane];
-  const planSteps = timelineState.planSteps ?? [];
-  const approvals = timelineState.approvals ?? [];
-  const userInputs = timelineState.userInputs ?? [];
-  const diff = timelineState.diff ?? "";
-  const pendingApprovals = approvals.length;
-  const pendingPrompts = userInputs.length;
+  const planSteps = timelineState.planSteps;
+  const approvals = timelineState.approvals;
+  const userInputs = timelineState.userInputs;
+  const diff = timelineState.diff;
   const paneBadges: Partial<Record<PaneKey, number>> = {
     plan: planSteps.length,
-    approvals: pendingApprovals + pendingPrompts
+    approvals: approvals.length + userInputs.length
+  };
+
+  useEffect(() => {
+    const activePromptIds = new Set(userInputs.map((prompt) => prompt.id));
+
+    setDraftAnswers((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([requestId]) => activePromptIds.has(requestId))
+      ) as Record<string, Record<string, string>>
+    );
+  }, [userInputs]);
+
+  const setDraftAnswer = (requestId: string, questionId: string, value: string) => {
+    setDraftAnswers((current) => ({
+      ...current,
+      [requestId]: {
+        ...(current[requestId] ?? {}),
+        [questionId]: value
+      }
+    }));
   };
 
   const renderPaneBody = () => {
@@ -129,39 +171,131 @@ export function RightPane({ activePane, onSelect, timelineState }: RightPaneProp
     }
 
     if (activePane === "approvals") {
-      return pendingApprovals > 0 || pendingPrompts > 0 ? (
+      return approvals.length > 0 || userInputs.length > 0 ? (
         <div className="dossier-stack">
-          {approvals.map((approval) => (
-            <article key={approval.id} className="dossier-card dossier-card-alert">
-              <div className="dossier-row">
-                <span className="dossier-status dossier-status-alert">
-                  {approval.kind === "command" ? "Command approval" : "File approval"}
-                </span>
-                <span className="dossier-index">Pending</span>
-              </div>
-              <h3>{approval.title}</h3>
-              <p>{approval.detail}</p>
-            </article>
-          ))}
-          {userInputs.map((prompt) => (
-            <article key={prompt.id} className="dossier-card dossier-card-olive">
-              <div className="dossier-row">
-                <span className="dossier-status dossier-status-olive">Request user input</span>
-                <span className="dossier-index">{prompt.questions.length} questions</span>
-              </div>
-              <h3>{prompt.title}</h3>
-              <ul className="question-list">
-                {prompt.questions.map((question, index) => (
-                  <li key={`${prompt.id}-${index}`}>{question}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
+          {approvals.map((approval) => {
+            const pendingDecision = submittingApprovals[approval.id] ?? null;
+            const isApprovalSubmitting = approval.isSubmitting || pendingDecision !== null;
+
+            return (
+              <article key={approval.id} className="dossier-card dossier-card-alert">
+                <div className="dossier-row">
+                  <span className="dossier-status dossier-status-alert">
+                    {approval.kind === "command" ? "Command approval" : "File approval"}
+                  </span>
+                  <span className="dossier-index">
+                    {isApprovalSubmitting ? "Sending" : "Pending"}
+                  </span>
+                </div>
+                <h3>{approval.title}</h3>
+                <p>{approval.detail || "No extra context from Codex."}</p>
+                <div className="approval-actions">
+                  {approval.availableDecisions.map((decision) => (
+                    <button
+                      key={decision}
+                      type="button"
+                      className={`request-action-button ${
+                        decision === "decline" || decision === "cancel"
+                          ? "request-action-button-ghost"
+                          : "request-action-button-primary"
+                      }`}
+                      disabled={isApprovalSubmitting}
+                      onClick={() =>
+                        decision === "decline"
+                          ? void onDenyRequest(approval.id)
+                          : void onApproveRequest(approval.id, decision)
+                      }
+                    >
+                      {pendingDecision === decision ? "Sending..." : APPROVAL_LABELS[decision]}
+                    </button>
+                  ))}
+                </div>
+                {approval.availableDecisions.length === 0 ? (
+                  <p className="request-note">No decisions surfaced for this approval yet.</p>
+                ) : null}
+                {approvalErrors[approval.id] ? (
+                  <p className="request-error">{approvalErrors[approval.id]}</p>
+                ) : null}
+              </article>
+            );
+          })}
+
+          {userInputs.map((prompt) => {
+            const promptDrafts = draftAnswers[prompt.id] ?? {};
+            const isPromptSubmitting = submittingUserInputs[prompt.id] || prompt.isSubmitting;
+            const hasIncompleteAnswer = prompt.questions.some(
+              (question) => (promptDrafts[question.id] ?? "").trim().length === 0
+            );
+
+            return (
+              <article key={prompt.id} className="dossier-card dossier-card-olive">
+                <div className="dossier-row">
+                  <span className="dossier-status dossier-status-olive">Request user input</span>
+                  <span className="dossier-index">
+                    {isPromptSubmitting ? "Sending" : `${prompt.questions.length} questions`}
+                  </span>
+                </div>
+                <h3>{prompt.title}</h3>
+                <div className="request-input-list">
+                  {prompt.questions.map((question) => (
+                    <label key={question.id} className="request-question">
+                      <span>{question.header}</span>
+                      <span className="request-note">{question.question}</span>
+                      {question.options.length > 0 ? (
+                        <div className="option-pill-row">
+                          {question.options.map((option) => (
+                            <button
+                              key={`${question.id}-${option.label}`}
+                              type="button"
+                              className="option-pill"
+                              title={option.description || option.label}
+                              onClick={() =>
+                                setDraftAnswer(prompt.id, question.id, option.label)
+                              }
+                              disabled={isPromptSubmitting}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      <input
+                        className="request-input"
+                        type={question.isSecret ? "password" : "text"}
+                        value={promptDrafts[question.id] ?? ""}
+                        placeholder={question.options[0]?.label ?? "Type your answer"}
+                        disabled={isPromptSubmitting}
+                        onChange={(event) =>
+                          setDraftAnswer(prompt.id, question.id, event.target.value)
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="approval-actions">
+                  <button
+                    type="button"
+                    className="request-action-button request-action-button-primary"
+                    disabled={isPromptSubmitting || hasIncompleteAnswer}
+                    onClick={() => void onSubmitUserInput(prompt.id, promptDrafts)}
+                  >
+                    {isPromptSubmitting
+                      ? "Submitting..."
+                      : "Send answers"}
+                  </button>
+                </div>
+                <p className="request-note">All answers required.</p>
+                {userInputErrors[prompt.id] ? (
+                  <p className="request-error">{userInputErrors[prompt.id]}</p>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="pane-empty-state">
           <h3>No blockers</h3>
-          <p>Approvals and clarification prompts will queue here as read-only cards.</p>
+          <p>Approvals and clarification prompts will queue here as action cards.</p>
         </div>
       );
     }

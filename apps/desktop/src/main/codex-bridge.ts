@@ -125,6 +125,16 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async respond(id: string, result: unknown) {
+    await this.start();
+
+    if (!this.child) {
+      throw new Error("Codex app-server is not running");
+    }
+
+    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+  }
+
   async refreshState(): Promise<SessionState> {
     try {
       await this.start();

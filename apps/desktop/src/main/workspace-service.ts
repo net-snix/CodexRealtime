@@ -5,11 +5,14 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { realpathSync } from "node:fs";
 import type {
+  ApprovalDecision,
   ThreadSummary,
   TimelineApproval,
   TimelineEvent,
   TimelinePlanStep,
   TimelineState,
+  TimelineUserInputOption,
+  TimelineUserInputQuestion,
   TimelineUserInputRequest,
   WorkspaceState,
   WorkspaceSummary
@@ -150,8 +153,17 @@ const cloneTimelineState = (state: TimelineState): TimelineState => ({
   ...state,
   events: [...state.events],
   planSteps: [...state.planSteps],
-  approvals: [...state.approvals],
-  userInputs: [...state.userInputs]
+  approvals: state.approvals.map((approval) => ({
+    ...approval,
+    availableDecisions: [...approval.availableDecisions]
+  })),
+  userInputs: state.userInputs.map((request) => ({
+    ...request,
+    questions: request.questions.map((question) => ({
+      ...question,
+      options: [...question.options]
+    }))
+  }))
 });
 
 const toTimelineEvent = (item: ThreadItem, turnId: string): TimelineEvent | null => {
@@ -377,6 +389,67 @@ class WorkspaceService {
     };
 
     return cloneTimelineState(this.liveTimelineState);
+  }
+
+  async respondToApproval(
+    requestId: string,
+    decision: ApprovalDecision
+  ): Promise<TimelineState> {
+    const approval = this.liveTimelineState.approvals.find((entry) => entry.id === requestId);
+
+    if (!approval) {
+      throw new Error("Approval request no longer exists.");
+    }
+
+    if (!approval.availableDecisions.includes(decision)) {
+      throw new Error(`Decision ${decision} is not available for this request.`);
+    }
+
+    this.liveTimelineState = this.markApprovalSubmitting(requestId, true);
+
+    try {
+      await codexBridge.respond(requestId, { decision });
+      return cloneTimelineState(this.liveTimelineState);
+    } catch (error) {
+      this.liveTimelineState = this.markApprovalSubmitting(requestId, false);
+      throw error;
+    }
+  }
+
+  async submitUserInput(
+    requestId: string,
+    answers: Record<string, string | string[]>
+  ): Promise<TimelineState> {
+    const request = this.liveTimelineState.userInputs.find((entry) => entry.id === requestId);
+
+    if (!request) {
+      throw new Error("Clarification request no longer exists.");
+    }
+
+    const normalizedAnswers = Object.fromEntries(
+      request.questions.map((question) => {
+        const rawValue = answers[question.id];
+        const values = (Array.isArray(rawValue) ? rawValue : [rawValue ?? ""])
+          .map((value) => `${value}`.trim())
+          .filter(Boolean);
+
+        if (values.length === 0) {
+          throw new Error(`Answer required for ${question.header}.`);
+        }
+
+        return [question.id, { answers: values }];
+      })
+    );
+
+    this.liveTimelineState = this.markUserInputSubmitting(requestId, true);
+
+    try {
+      await codexBridge.respond(requestId, { answers: normalizedAnswers });
+      return cloneTimelineState(this.liveTimelineState);
+    } catch (error) {
+      this.liveTimelineState = this.markUserInputSubmitting(requestId, false);
+      throw error;
+    }
   }
 
   private async ensureThread(workspace: PersistedWorkspace) {
@@ -650,7 +723,9 @@ class WorkspaceService {
         id: payload.id,
         kind: "command",
         title: command ? `Run command: ${command}` : "Run command",
-        detail: [cwd ? `cwd: ${cwd}` : null, reason || null].filter(Boolean).join("\n")
+        detail: [cwd ? `cwd: ${cwd}` : null, reason || null].filter(Boolean).join("\n"),
+        availableDecisions: this.mapCommandApprovalDecisions(params.availableDecisions),
+        isSubmitting: false
       });
     }
 
@@ -664,35 +739,22 @@ class WorkspaceService {
         title: "Apply file changes",
         detail: [reason || null, grantRoot ? `grant root: ${grantRoot}` : null]
           .filter(Boolean)
-          .join("\n")
+          .join("\n"),
+        availableDecisions: grantRoot
+          ? ["accept", "acceptForSession", "decline", "cancel"]
+          : ["accept", "decline", "cancel"],
+        isSubmitting: false
       });
     }
 
     if (payload.method === "item/tool/requestUserInput") {
-      const questions = Array.isArray(params.questions)
-        ? params.questions
-            .map((question) => {
-              if (!isRecord(question)) {
-                return null;
-              }
-
-              if (typeof question.question === "string") {
-                return question.question;
-              }
-
-              if (typeof question.header === "string") {
-                return question.header;
-              }
-
-              return null;
-            })
-            .filter((question): question is string => Boolean(question))
-        : [];
+      const questions = this.mapUserInputQuestions(params.questions);
 
       this.upsertUserInput(nextState, {
         id: payload.id,
         title: "Clarification requested",
-        questions
+        questions,
+        isSubmitting: false
       });
     }
 
@@ -763,6 +825,82 @@ class WorkspaceService {
     }
 
     state.userInputs.push(request);
+  }
+
+  private mapCommandApprovalDecisions(value: unknown): ApprovalDecision[] {
+    const supported: ApprovalDecision[] = [];
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (
+          entry === "accept" ||
+          entry === "acceptForSession" ||
+          entry === "decline" ||
+          entry === "cancel"
+        ) {
+          supported.push(entry);
+        }
+      }
+    }
+
+    return supported.length > 0 ? supported : ["accept", "decline", "cancel"];
+  }
+
+  private mapUserInputQuestions(value: unknown): TimelineUserInputQuestion[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((entry) => {
+        if (!isRecord(entry) || typeof entry.id !== "string") {
+          return null;
+        }
+
+        return {
+          id: entry.id,
+          header: typeof entry.header === "string" ? entry.header : "Question",
+          question: typeof entry.question === "string" ? entry.question : "Provide input",
+          isSecret: entry.isSecret === true,
+          options: this.mapUserInputOptions(entry.options)
+        } satisfies TimelineUserInputQuestion;
+      })
+      .filter((entry): entry is TimelineUserInputQuestion => entry !== null);
+  }
+
+  private mapUserInputOptions(value: unknown): TimelineUserInputOption[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((entry) => {
+        if (!isRecord(entry) || typeof entry.label !== "string") {
+          return null;
+        }
+
+        return {
+          label: entry.label,
+          description: typeof entry.description === "string" ? entry.description : ""
+        } satisfies TimelineUserInputOption;
+      })
+      .filter((entry): entry is TimelineUserInputOption => entry !== null);
+  }
+
+  private markApprovalSubmitting(requestId: string, isSubmitting: boolean) {
+    const nextState = cloneTimelineState(this.liveTimelineState);
+    nextState.approvals = nextState.approvals.map((approval) =>
+      approval.id === requestId ? { ...approval, isSubmitting } : approval
+    );
+    return nextState;
+  }
+
+  private markUserInputSubmitting(requestId: string, isSubmitting: boolean) {
+    const nextState = cloneTimelineState(this.liveTimelineState);
+    nextState.userInputs = nextState.userInputs.map((request) =>
+      request.id === requestId ? { ...request, isSubmitting } : request
+    );
+    return nextState;
   }
 }
 

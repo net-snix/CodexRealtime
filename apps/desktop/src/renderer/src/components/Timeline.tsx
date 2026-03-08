@@ -1,17 +1,11 @@
 import { useState, type KeyboardEventHandler } from "react";
 import type { TimelineState, WorkspaceState } from "@shared";
 
-type LiveTimelineState = TimelineState & {
-  planSteps?: Array<{ step: string; status: string }>;
-  diff?: string;
-  approvals?: Array<{ id: string; kind: "command" | "fileChange"; title: string; detail: string }>;
-  userInputs?: Array<{ id: string; title: string; questions: string[] }>;
-};
-
 interface TimelineProps {
-  timelineState: LiveTimelineState;
+  timelineState: TimelineState;
   workspaceState: WorkspaceState;
   isStartingTurn: boolean;
+  isResolvingRequests: boolean;
   onStartTurn: (prompt: string) => void | Promise<void>;
 }
 
@@ -19,17 +13,21 @@ export function Timeline({
   timelineState,
   workspaceState,
   isStartingTurn,
+  isResolvingRequests,
   onStartTurn
 }: TimelineProps) {
   const [draft, setDraft] = useState("");
   const hasWorkspace = Boolean(workspaceState.currentWorkspace);
-  const statusLabel = timelineState.isRunning
-    ? timelineState.statusLabel ?? "turn running"
-    : timelineState.statusLabel ?? (hasWorkspace ? "idle" : "repo required");
+  const statusLabel = isResolvingRequests
+    ? "Waiting on your decision"
+    : timelineState.isRunning
+      ? timelineState.statusLabel ?? "turn running"
+      : timelineState.statusLabel ?? (hasWorkspace ? "idle" : "repo required");
   const planCount = timelineState.planSteps?.length ?? 0;
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
   const hasDiff = Boolean(timelineState.diff?.trim());
+  const hasPendingHumanGate = approvalCount > 0 || userInputCount > 0;
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -56,7 +54,11 @@ export function Timeline({
           <span className="panel-eyebrow">Conversation</span>
           <h2>{hasWorkspace ? "One assistant. One live thread." : "Thread waits on a repo."}</h2>
         </div>
-        <div className={`status-pill ${timelineState.isRunning ? "status-pill-live" : ""}`}>
+        <div
+          className={`status-pill ${
+            timelineState.isRunning || isResolvingRequests ? "status-pill-live" : ""
+          }`}
+        >
           {statusLabel}
         </div>
       </header>
@@ -124,6 +126,25 @@ export function Timeline({
               </div>
             ) : null}
           </div>
+          {hasPendingHumanGate ? (
+            <p className="timeline-briefing-note">
+              Human gate open. Use the right rail to approve, deny, or answer clarification prompts.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hasWorkspace && hasPendingHumanGate ? (
+        <div className="timeline-attention-callout">
+          <span className="panel-eyebrow">Needs you</span>
+          <h3>
+            {approvalCount > 0 ? `${approvalCount} approval ${approvalCount === 1 ? "request" : "requests"}` : null}
+            {approvalCount > 0 && userInputCount > 0 ? " and " : null}
+            {userInputCount > 0
+              ? `${userInputCount} clarification ${userInputCount === 1 ? "prompt" : "prompts"}`
+              : null}
+          </h3>
+          <p>The thread is waiting on human input before it can keep moving.</p>
         </div>
       ) : null}
 

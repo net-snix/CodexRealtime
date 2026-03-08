@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type {
+  ApprovalDecision,
   AppInfo,
   SessionState,
   TimelineState,
@@ -15,32 +16,7 @@ const initialVoiceState: VoiceState = "idle";
 
 type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
 
-type LivePlanStep = {
-  step: string;
-  status: string;
-};
-
-type LiveApproval = {
-  id: string;
-  kind: "command" | "fileChange";
-  title: string;
-  detail: string;
-};
-
-type LiveUserInput = {
-  id: string;
-  title: string;
-  questions: string[];
-};
-
-type LiveTimelineState = TimelineState & {
-  planSteps?: LivePlanStep[];
-  diff?: string;
-  approvals?: LiveApproval[];
-  userInputs?: LiveUserInput[];
-};
-
-const emptyTimelineState: LiveTimelineState = {
+const emptyTimelineState: TimelineState = {
   threadId: null,
   events: [],
   isRunning: false,
@@ -51,19 +27,21 @@ const emptyTimelineState: LiveTimelineState = {
   userInputs: []
 };
 
-const normalizeTimelineState = (timelineState: TimelineState): LiveTimelineState => ({
-  ...timelineState,
-  planSteps: "planSteps" in timelineState && Array.isArray(timelineState.planSteps)
-    ? timelineState.planSteps
-    : [],
-  diff: "diff" in timelineState && typeof timelineState.diff === "string" ? timelineState.diff : "",
-  approvals: "approvals" in timelineState && Array.isArray(timelineState.approvals)
-    ? timelineState.approvals
-    : [],
-  userInputs: "userInputs" in timelineState && Array.isArray(timelineState.userInputs)
-    ? timelineState.userInputs
-    : []
-});
+const filterStateMap = <T,>(stateMap: Record<string, T>, activeIds: Set<string>) =>
+  Object.fromEntries(Object.entries(stateMap).filter(([id]) => activeIds.has(id))) as Record<string, T>;
+
+const omitStateKey = <T,>(stateMap: Record<string, T>, key: string) => {
+  if (!(key in stateMap)) {
+    return stateMap;
+  }
+
+  const nextState = { ...stateMap };
+  delete nextState[key];
+  return nextState;
+};
+
+const toErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message.trim() ? error.message : fallback;
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -73,13 +51,29 @@ export default function App() {
     recentWorkspaces: [],
     threads: []
   });
-  const [timelineState, setTimelineState] = useState<LiveTimelineState>(emptyTimelineState);
+  const [timelineState, setTimelineState] = useState<TimelineState>(emptyTimelineState);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);
   const [activePane, setActivePane] = useState<PaneKey>("plan");
+  const [submittingApprovals, setSubmittingApprovals] = useState<Record<string, ApprovalDecision>>({});
+  const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
+  const [submittingUserInputs, setSubmittingUserInputs] = useState<Record<string, boolean>>({});
+  const [userInputErrors, setUserInputErrors] = useState<Record<string, string>>({});
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
-  const isTimelinePolling = timelineState.isRunning || approvalCount > 0 || userInputCount > 0;
+  const submittingApprovalCount = Object.keys(submittingApprovals).length;
+  const submittingUserInputCount = Object.keys(submittingUserInputs).length;
+  const isTimelinePolling =
+    timelineState.isRunning ||
+    approvalCount > 0 ||
+    userInputCount > 0 ||
+    submittingApprovalCount > 0 ||
+    submittingUserInputCount > 0;
+
+  const refreshTimelineState = async () => {
+    const nextTimeline = await window.appBridge.getTimelineState();
+    setTimelineState(nextTimeline);
+  };
 
   useEffect(() => {
     void Promise.allSettled([
@@ -120,7 +114,7 @@ export default function App() {
       }
 
       if (timelineResult.status === "fulfilled") {
-        setTimelineState(normalizeTimelineState(timelineResult.value));
+        setTimelineState(timelineResult.value);
       } else {
         setTimelineState({
           ...emptyTimelineState,
@@ -137,7 +131,7 @@ export default function App() {
 
     const intervalId = window.setInterval(() => {
       void window.appBridge.getTimelineState().then((nextTimeline) => {
-        setTimelineState(normalizeTimelineState(nextTimeline));
+        setTimelineState(nextTimeline);
       });
     }, 900);
 
@@ -152,8 +146,7 @@ export default function App() {
     try {
       const nextState = await window.appBridge.openWorkspace();
       setWorkspaceState(nextState);
-      const nextTimeline = await window.appBridge.getTimelineState();
-      setTimelineState(normalizeTimelineState(nextTimeline));
+      await refreshTimelineState();
     } finally {
       setIsOpeningWorkspace(false);
     }
@@ -164,11 +157,75 @@ export default function App() {
 
     try {
       const nextTimeline = await window.appBridge.startTurn(prompt);
-      setTimelineState(normalizeTimelineState(nextTimeline));
+      setTimelineState(nextTimeline);
       const nextWorkspaceState = await window.appBridge.getWorkspaceState();
       setWorkspaceState(nextWorkspaceState);
     } finally {
       setIsStartingTurn(false);
+    }
+  };
+
+  useEffect(() => {
+    const activeApprovalIds = new Set((timelineState.approvals ?? []).map((approval) => approval.id));
+    const activeUserInputIds = new Set((timelineState.userInputs ?? []).map((prompt) => prompt.id));
+
+    setSubmittingApprovals((current) => filterStateMap(current, activeApprovalIds));
+    setApprovalErrors((current) => filterStateMap(current, activeApprovalIds));
+    setSubmittingUserInputs((current) => filterStateMap(current, activeUserInputIds));
+    setUserInputErrors((current) => filterStateMap(current, activeUserInputIds));
+  }, [timelineState.approvals, timelineState.userInputs]);
+
+  const handleApproveRequest = async (id: string, decision: ApprovalDecision = "accept") => {
+    setApprovalErrors((current) => omitStateKey(current, id));
+    setSubmittingApprovals((current) => ({ ...current, [id]: decision }));
+
+    try {
+      await window.appBridge.respondToApproval(id, decision);
+      await refreshTimelineState();
+    } catch (error) {
+      setApprovalErrors((current) => ({
+        ...current,
+        [id]: toErrorMessage(error, "Approve request failed.")
+      }));
+    } finally {
+      setSubmittingApprovals((current) => omitStateKey(current, id));
+    }
+  };
+
+  const handleDenyRequest = async (id: string) => {
+    setApprovalErrors((current) => omitStateKey(current, id));
+    setSubmittingApprovals((current) => ({ ...current, [id]: "decline" }));
+
+    try {
+      await window.appBridge.respondToApproval(id, "decline");
+      await refreshTimelineState();
+    } catch (error) {
+      setApprovalErrors((current) => ({
+        ...current,
+        [id]: toErrorMessage(error, "Deny request failed.")
+      }));
+    } finally {
+      setSubmittingApprovals((current) => omitStateKey(current, id));
+    }
+  };
+
+  const handleSubmitUserInput = async (
+    id: string,
+    answers: Record<string, string | string[]>
+  ) => {
+    setUserInputErrors((current) => omitStateKey(current, id));
+    setSubmittingUserInputs((current) => ({ ...current, [id]: true }));
+
+    try {
+      await window.appBridge.submitUserInput(id, answers);
+      await refreshTimelineState();
+    } catch (error) {
+      setUserInputErrors((current) => ({
+        ...current,
+        [id]: toErrorMessage(error, "Submitting answers failed.")
+      }));
+    } finally {
+      setSubmittingUserInputs((current) => omitStateKey(current, id));
     }
   };
 
@@ -188,11 +245,19 @@ export default function App() {
           workspaceState={workspaceState}
           isStartingTurn={isStartingTurn}
           onStartTurn={handleStartTurn}
+          isResolvingRequests={submittingApprovalCount + submittingUserInputCount > 0}
         />
         <RightPane
           activePane={activePane}
           onSelect={setActivePane}
           timelineState={timelineState}
+          submittingApprovals={submittingApprovals}
+          approvalErrors={approvalErrors}
+          submittingUserInputs={submittingUserInputs}
+          userInputErrors={userInputErrors}
+          onApproveRequest={handleApproveRequest}
+          onDenyRequest={handleDenyRequest}
+          onSubmitUserInput={handleSubmitUserInput}
         />
       </main>
       <VoiceBar sessionState={sessionState} state={initialVoiceState} />
