@@ -1,0 +1,23 @@
+{
+  "name": "codex-realtime",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.23.0",
+  "scripts": {
+    "dev": "pnpm --filter @codex-realtime/desktop dev",
+    "build": "pnpm --filter @codex-realtime/shared build && pnpm --filter @codex-realtime/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "eslint": "^9.34.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "typescript-eslint": "^8.56.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron"]
+  }
+}
