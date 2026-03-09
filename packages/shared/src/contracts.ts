@@ -4,6 +4,11 @@ export interface AppInfo {
   platform: string;
 }
 
+export interface AudioDeviceOption {
+  id: string;
+  label: string;
+}
+
 export interface CodexAccountSummary {
   type: "chatgpt" | "apiKey" | "unknown";
   email?: string;

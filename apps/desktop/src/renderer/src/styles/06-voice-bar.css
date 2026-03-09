@@ -145,3 +145,50 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+
+.voice-device-panel {
+  position: absolute;
+  right: 22px;
+  bottom: calc(100% + 12px);
+  min-width: 280px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(239, 229, 206, 0.1);
+  background:
+    radial-gradient(circle at top right, rgba(211, 110, 58, 0.14), transparent 32%),
+    rgba(18, 14, 11, 0.96);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26);
+}
+
+.voice-device-field {
+  display: grid;
+  gap: 6px;
+}
+
+.voice-device-field span {
+  color: rgba(239, 229, 206, 0.58);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.voice-device-field select {
+  border: 1px solid rgba(239, 229, 206, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 248, 234, 0.06);
+  color: var(--paper);
+}
+
+.voice-device-field select:disabled {
+  opacity: 0.6;
+}
+
+.voice-device-note {
+  margin: 0;
+  color: rgba(239, 229, 206, 0.62);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}

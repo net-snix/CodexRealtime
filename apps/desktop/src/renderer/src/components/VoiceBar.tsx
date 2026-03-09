@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type {
+  AudioDeviceOption,
   RealtimeState,
   RealtimeTranscriptEntry,
   SessionState,
@@ -18,6 +20,13 @@ interface VoiceBarProps {
   } | null;
   canStop: boolean;
   liveTranscript: RealtimeTranscriptEntry[];
+  inputDevices: AudioDeviceOption[];
+  outputDevices: AudioDeviceOption[];
+  selectedInputDeviceId: string;
+  selectedOutputDeviceId: string;
+  supportsOutputSelection: boolean;
+  onInputDeviceChange: (deviceId: string) => void;
+  onOutputDeviceChange: (deviceId: string) => void;
   onToggle: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
 }
@@ -72,9 +81,17 @@ export function VoiceBar({
   feedback,
   canStop,
   liveTranscript,
+  inputDevices,
+  outputDevices,
+  selectedInputDeviceId,
+  selectedOutputDeviceId,
+  supportsOutputSelection,
+  onInputDeviceChange,
+  onOutputDeviceChange,
   onToggle,
   onStop
   }: VoiceBarProps) {
+  const [isDevicePickerOpen, setIsDevicePickerOpen] = useState(false);
   const latestTranscript = liveTranscript.at(-1) ?? null;
   const transcriptLabel =
     latestTranscript?.speaker === "user"
@@ -119,7 +136,11 @@ export function VoiceBar({
       </div>
 
       <div className="voice-actions">
-        <button type="button" className="voice-button ghost" disabled>
+        <button
+          type="button"
+          className="voice-button ghost"
+          onClick={() => setIsDevicePickerOpen((current) => !current)}
+        >
           Devices
         </button>
         <button
@@ -131,6 +152,45 @@ export function VoiceBar({
           {isStopping ? "Stopping…" : "Stop"}
         </button>
       </div>
+
+      {isDevicePickerOpen ? (
+        <div className="voice-device-panel">
+          <label className="voice-device-field">
+            <span>Input</span>
+            <select
+              value={selectedInputDeviceId}
+              onChange={(event) => onInputDeviceChange(event.target.value)}
+            >
+              {inputDevices.map((device) => (
+                <option key={`input-${device.id || "default"}`} value={device.id}>
+                  {device.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="voice-device-field">
+            <span>Output</span>
+            <select
+              value={selectedOutputDeviceId}
+              onChange={(event) => onOutputDeviceChange(event.target.value)}
+              disabled={!supportsOutputSelection}
+            >
+              {outputDevices.map((device) => (
+                <option key={`output-${device.id || "default"}`} value={device.id}>
+                  {device.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p className="voice-device-note">
+            {supportsOutputSelection
+              ? "Output changes apply right away. Input changes apply next mic start."
+              : "Output routing uses the system default on this browser runtime."}
+          </p>
+        </div>
+      ) : null}
     </footer>
   );
 }

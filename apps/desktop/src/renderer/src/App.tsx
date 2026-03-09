@@ -73,6 +73,13 @@ export default function App() {
     voiceState,
     realtimeState,
     liveTranscript,
+    inputDevices,
+    outputDevices,
+    selectedInputDeviceId,
+    selectedOutputDeviceId,
+    supportsOutputSelection,
+    setSelectedInputDeviceId,
+    setSelectedOutputDeviceId,
     isActive: isVoiceActive,
     start: startVoice,
     stop: stopVoice
@@ -361,6 +368,13 @@ export default function App() {
         feedback={voiceFeedback}
         canStop={isVoiceActive || timelineState.isRunning}
         liveTranscript={liveTranscript}
+        inputDevices={inputDevices}
+        outputDevices={outputDevices}
+        selectedInputDeviceId={selectedInputDeviceId}
+        selectedOutputDeviceId={selectedOutputDeviceId}
+        supportsOutputSelection={supportsOutputSelection}
+        onInputDeviceChange={setSelectedInputDeviceId}
+        onOutputDeviceChange={setSelectedOutputDeviceId}
         onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}
         onStop={handleStopVoice}
       />
