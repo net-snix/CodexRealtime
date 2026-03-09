@@ -47,9 +47,13 @@ button {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   padding: 28px 28px 20px;
   position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 18px;
+  overflow: hidden;
 }
 
 .backdrop {
@@ -74,7 +78,7 @@ button {
   display: grid;
   grid-template-columns: 320px minmax(520px, 1fr) 340px;
   gap: 18px;
-  min-height: calc(100vh - 136px);
+  min-height: 0;
 }
 
 .panel {

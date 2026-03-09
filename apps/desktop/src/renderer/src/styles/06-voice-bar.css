@@ -1,6 +1,5 @@
 .voice-bar {
   position: relative;
-  margin-top: 18px;
   min-height: 72px;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
