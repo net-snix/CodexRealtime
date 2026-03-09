@@ -11,6 +11,7 @@ interface VoiceBarProps {
   realtimeState: RealtimeState;
   disabled: boolean;
   isActive: boolean;
+  canStop: boolean;
   liveTranscript: RealtimeTranscriptEntry[];
   onToggle: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
@@ -54,6 +55,7 @@ export function VoiceBar({
   realtimeState,
   disabled,
   isActive,
+  canStop,
   liveTranscript,
   onToggle,
   onStop
@@ -105,7 +107,7 @@ export function VoiceBar({
         <button
           type="button"
           className="voice-button danger"
-          disabled={!isActive}
+          disabled={!canStop}
           onClick={() => void onStop()}
         >
           Stop

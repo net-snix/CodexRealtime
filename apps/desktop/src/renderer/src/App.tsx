@@ -187,6 +187,19 @@ export default function App() {
     }
   };
 
+  const handleStopVoice = async () => {
+    try {
+      if (timelineState.isRunning) {
+        const nextTimeline = await window.appBridge.interruptActiveTurn();
+        setTimelineState(nextTimeline);
+      }
+    } finally {
+      if (isVoiceActive) {
+        await stopVoice();
+      }
+    }
+  };
+
   useEffect(() => {
     const activeApprovalIds = new Set((timelineState.approvals ?? []).map((approval) => approval.id));
     const activeUserInputIds = new Set((timelineState.userInputs ?? []).map((prompt) => prompt.id));
@@ -292,9 +305,10 @@ export default function App() {
         realtimeState={realtimeState}
         disabled={!realtimeEnabled}
         isActive={isVoiceActive}
+        canStop={isVoiceActive || timelineState.isRunning}
         liveTranscript={liveTranscript}
         onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}
-        onStop={stopVoice}
+        onStop={handleStopVoice}
       />
     </div>
   );
