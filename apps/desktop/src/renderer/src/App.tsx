@@ -62,7 +62,14 @@ export default function App() {
       sessionState.features.realtimeConversation &&
       workspaceState.currentWorkspace
   );
-  const { voiceState, isActive: isVoiceActive, start: startVoice, stop: stopVoice } =
+  const {
+    voiceState,
+    realtimeState,
+    liveTranscript,
+    isActive: isVoiceActive,
+    start: startVoice,
+    stop: stopVoice
+  } =
     useRealtimeVoice({
       enabled: realtimeEnabled
     });
@@ -253,6 +260,10 @@ export default function App() {
           isStartingTurn={isStartingTurn}
           onStartTurn={handleStartTurn}
           isResolvingRequests={submittingApprovalCount + submittingUserInputCount > 0}
+          realtimeState={realtimeState}
+          voiceState={voiceState}
+          isVoiceActive={isVoiceActive}
+          liveTranscript={liveTranscript}
         />
         <RightPane
           activePane={activePane}
@@ -270,8 +281,10 @@ export default function App() {
       <VoiceBar
         sessionState={sessionState}
         state={voiceState}
+        realtimeState={realtimeState}
         disabled={!realtimeEnabled}
         isActive={isVoiceActive}
+        liveTranscript={liveTranscript}
         onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}
         onStop={stopVoice}
       />

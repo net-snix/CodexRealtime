@@ -1,21 +1,40 @@
-import type { SessionState, VoiceState } from "@shared";
+import type {
+  RealtimeState,
+  RealtimeTranscriptEntry,
+  SessionState,
+  VoiceState
+} from "@shared";
 
 interface VoiceBarProps {
   sessionState: SessionState | null;
   state: VoiceState;
+  realtimeState: RealtimeState;
   disabled: boolean;
   isActive: boolean;
+  liveTranscript: RealtimeTranscriptEntry[];
   onToggle: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
 }
 
-const helperCopy = (sessionState: SessionState | null) => {
+const helperCopy = (sessionState: SessionState | null, realtimeState: RealtimeState) => {
+  if (realtimeState.error) {
+    return realtimeState.error;
+  }
+
+  if (realtimeState.status === "live") {
+    return "Realtime thread connected. Transcript rolls in live.";
+  }
+
+  if (realtimeState.status === "connecting") {
+    return "Opening realtime voice transport...";
+  }
+
   if (!sessionState) {
     return "Loading Codex session...";
   }
 
   if (sessionState.status === "connected" && sessionState.features.realtimeConversation) {
-    return "Codex realtime available. Voice transport lands next.";
+    return "Codex realtime ready when you open the mic.";
   }
 
   if (sessionState.status === "connected") {
@@ -32,11 +51,21 @@ const helperCopy = (sessionState: SessionState | null) => {
 export function VoiceBar({
   sessionState,
   state,
+  realtimeState,
   disabled,
   isActive,
+  liveTranscript,
   onToggle,
   onStop
-}: VoiceBarProps) {
+  }: VoiceBarProps) {
+  const latestTranscript = liveTranscript.at(-1) ?? null;
+  const transcriptLabel =
+    latestTranscript?.speaker === "user"
+      ? "You"
+      : latestTranscript?.speaker === "assistant"
+        ? "Codex"
+        : "Thread";
+
   return (
     <footer className="voice-bar stagger-4">
       <div className="voice-cluster">
@@ -60,7 +89,13 @@ export function VoiceBar({
       <div className="voice-status">
         <span className="panel-eyebrow">State</span>
         <strong>{state}</strong>
-        <small>{helperCopy(sessionState)}</small>
+        <small>{helperCopy(sessionState, realtimeState)}</small>
+        {latestTranscript ? (
+          <p className="voice-caption">
+            <span>{transcriptLabel}</span>
+            {latestTranscript.text}
+          </p>
+        ) : null}
       </div>
 
       <div className="voice-actions">

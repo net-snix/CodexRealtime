@@ -1,11 +1,142 @@
 import { useEffect, useRef, useState } from "react";
-import type { RealtimeAudioChunk, RealtimeState, VoiceState } from "@shared";
+import type {
+  RealtimeAudioChunk,
+  RealtimeState,
+  RealtimeTranscriptEntry,
+  VoiceState
+} from "@shared";
 
 const initialRealtimeState: RealtimeState = {
   status: "idle",
   threadId: null,
   sessionId: null,
   error: null
+};
+
+const TRANSCRIPT_LIMIT = 6;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object";
+
+const normalizeText = (value: unknown): string[] => {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text ? [text] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeText(entry));
+  }
+
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  return [
+    ...normalizeText(value.text),
+    ...normalizeText(value.transcript),
+    ...normalizeText(value.delta),
+    ...normalizeText(value.summary),
+    ...normalizeText(value.content)
+  ];
+};
+
+const joinText = (...values: unknown[]) =>
+  values
+    .flatMap((value) => normalizeText(value))
+    .filter((text, index, all) => all.indexOf(text) === index)
+    .join("\n")
+    .trim();
+
+const parseRealtimeItem = (
+  item: unknown,
+  fallbackIndex: number
+): RealtimeTranscriptEntry | null => {
+  if (!isRecord(item)) {
+    return null;
+  }
+
+  const type = typeof item.type === "string" ? item.type : "unknown";
+  const id =
+    typeof item.id === "string"
+      ? item.id
+      : typeof item.item_id === "string"
+        ? item.item_id
+        : typeof item.handoff_id === "string"
+          ? item.handoff_id
+          : `${type}-${fallbackIndex}`;
+  const createdAt = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+  if (type === "message") {
+    const role = typeof item.role === "string" ? item.role : "system";
+    const speaker: RealtimeTranscriptEntry["speaker"] =
+      role === "assistant" ? "assistant" : role === "user" ? "user" : "system";
+    const acceptedContentTypes =
+      speaker === "assistant" ? ["output_text"] : speaker === "user" ? ["input_text"] : [];
+    const text = acceptedContentTypes.length
+      ? joinText(
+          Array.isArray(item.content)
+            ? item.content.filter(
+                (entry) =>
+                  isRecord(entry) &&
+                  typeof entry.type === "string" &&
+                  acceptedContentTypes.includes(entry.type)
+              )
+            : [],
+          item.text,
+          item.transcript
+        )
+      : joinText(item.text, item.transcript, item.content);
+
+    return text
+      ? {
+          id,
+          speaker,
+          text,
+          status: item.status === "in_progress" ? "partial" : "final",
+          createdAt
+        }
+      : null;
+  }
+
+  if (type === "handoff_request") {
+    const text = joinText(
+      item.input_transcript,
+      Array.isArray(item.messages)
+        ? item.messages.map((message) => (isRecord(message) ? message.text : null))
+        : []
+    );
+
+    return text
+      ? {
+          id,
+          speaker: "user",
+          text,
+          status: "final",
+          createdAt
+        }
+      : null;
+  }
+
+  return null;
+};
+
+const upsertTranscriptEntry = (
+  entries: RealtimeTranscriptEntry[],
+  nextEntry: RealtimeTranscriptEntry
+) => {
+  const existingIndex = entries.findIndex((entry) => entry.id === nextEntry.id);
+
+  if (existingIndex >= 0) {
+    const nextEntries = [...entries];
+    nextEntries[existingIndex] = nextEntry;
+    return nextEntries.slice(-TRANSCRIPT_LIMIT);
+  }
+
+  return [...entries, nextEntry].slice(-TRANSCRIPT_LIMIT);
 };
 
 const encodePcm16 = (samples: Float32Array) => {
@@ -71,6 +202,7 @@ export const useRealtimeVoice = ({
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [realtimeState, setRealtimeState] = useState<RealtimeState>(initialRealtimeState);
   const [isActive, setIsActive] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState<RealtimeTranscriptEntry[]>([]);
   const captureContextRef = useRef<AudioContext | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -98,6 +230,32 @@ export const useRealtimeVoice = ({
 
       if (event.type === "audio") {
         void scheduleAudioPlayback(event.audio);
+        setVoiceState("working");
+        return;
+      }
+
+      if (event.type === "item") {
+        let nextEntrySpeaker: RealtimeTranscriptEntry["speaker"] | null = null;
+
+        setLiveTranscript((current) => {
+          const nextEntry = parseRealtimeItem(event.item, current.length + 1);
+
+          if (!nextEntry) {
+            return current;
+          }
+
+          nextEntrySpeaker = nextEntry.speaker;
+          return upsertTranscriptEntry(current, nextEntry);
+        });
+
+        if (nextEntrySpeaker) {
+          setVoiceState(nextEntrySpeaker === "assistant" ? "working" : "thinking");
+        }
+        return;
+      }
+
+      if (event.type === "error") {
+        setVoiceState("error");
       }
     });
 
@@ -192,6 +350,7 @@ export const useRealtimeVoice = ({
     captureContextRef.current = null;
     nextPlaybackTimeRef.current = 0;
     setIsActive(false);
+    setLiveTranscript([]);
     setVoiceState("idle");
 
     try {
@@ -204,6 +363,7 @@ export const useRealtimeVoice = ({
   return {
     voiceState,
     realtimeState,
+    liveTranscript,
     isActive,
     start,
     stop

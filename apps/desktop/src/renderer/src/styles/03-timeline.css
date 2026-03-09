@@ -221,6 +221,89 @@
   line-height: 1.55;
 }
 
+.voice-transcript-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(239, 229, 206, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(106, 108, 59, 0.16), transparent 32%),
+    rgba(255, 248, 234, 0.03);
+}
+
+.voice-transcript-panel-error {
+  border-color: rgba(211, 84, 58, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(211, 84, 58, 0.14), transparent 34%),
+    rgba(114, 46, 39, 0.14);
+}
+
+.voice-transcript-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.voice-transcript-header h3 {
+  margin: 10px 0 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.voice-transcript-copy {
+  margin: 0;
+  color: rgba(239, 229, 206, 0.68);
+  line-height: 1.55;
+}
+
+.voice-transcript-stream {
+  display: grid;
+  gap: 10px;
+}
+
+.voice-transcript-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(239, 229, 206, 0.08);
+  background: rgba(10, 8, 6, 0.28);
+}
+
+.voice-transcript-item span {
+  display: block;
+  color: rgba(239, 229, 206, 0.5);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.voice-transcript-item p {
+  margin: 10px 0 0;
+  line-height: 1.55;
+}
+
+.voice-transcript-item-user {
+  border-color: rgba(211, 110, 58, 0.22);
+}
+
+.voice-transcript-item-assistant {
+  border-color: rgba(106, 108, 59, 0.24);
+}
+
+.voice-transcript-empty {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px dashed rgba(239, 229, 206, 0.12);
+  background: rgba(255, 248, 234, 0.02);
+}
+
+.voice-transcript-empty p {
+  margin: 10px 0 0;
+  color: rgba(239, 229, 206, 0.62);
+}
+
 .timeline-item {
   padding: 16px 18px;
 }

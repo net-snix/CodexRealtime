@@ -104,3 +104,18 @@
   margin-top: 6px;
   color: rgba(239, 229, 206, 0.6);
 }
+
+.voice-caption {
+  margin: 10px auto 0;
+  max-width: 44ch;
+  color: rgba(239, 229, 206, 0.78);
+  line-height: 1.45;
+}
+
+.voice-caption span {
+  margin-right: 8px;
+  color: rgba(239, 229, 206, 0.48);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}

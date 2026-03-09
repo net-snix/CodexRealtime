@@ -1,19 +1,81 @@
 import { useState, type KeyboardEventHandler } from "react";
-import type { TimelineState, WorkspaceState } from "@shared";
+import type {
+  RealtimeState,
+  RealtimeTranscriptEntry,
+  TimelineState,
+  VoiceState,
+  WorkspaceState
+} from "@shared";
 
 interface TimelineProps {
   timelineState: TimelineState;
   workspaceState: WorkspaceState;
   isStartingTurn: boolean;
   isResolvingRequests: boolean;
+  realtimeState: RealtimeState;
+  voiceState: VoiceState;
+  isVoiceActive: boolean;
+  liveTranscript: RealtimeTranscriptEntry[];
   onStartTurn: (prompt: string) => void | Promise<void>;
 }
+
+const voiceHeadline = (realtimeState: RealtimeState, isVoiceActive: boolean) => {
+  if (realtimeState.status === "error") {
+    return "Voice session hit an error.";
+  }
+
+  if (realtimeState.status === "connecting") {
+    return "Voice session spinning up.";
+  }
+
+  if (realtimeState.status === "live" && isVoiceActive) {
+    return "Voice thread is live.";
+  }
+
+  if (realtimeState.status === "live") {
+    return "Realtime thread is live.";
+  }
+
+  return "Voice stays on standby.";
+};
+
+const voiceSupportCopy = (
+  realtimeState: RealtimeState,
+  voiceState: VoiceState,
+  isVoiceActive: boolean
+) => {
+  if (realtimeState.error) {
+    return realtimeState.error;
+  }
+
+  if (realtimeState.status === "connecting") {
+    return "Starting the realtime thread and waiting for the transport handshake.";
+  }
+
+  if (realtimeState.status === "live" && voiceState === "working") {
+    return "Codex is talking back now. New transcript lines land below.";
+  }
+
+  if (realtimeState.status === "live" && isVoiceActive) {
+    return "Mic is open. Speak naturally; renderer will surface transcript lines as items arrive.";
+  }
+
+  if (realtimeState.status === "live") {
+    return "Thread is up. Start the mic when you want voice turns instead of typed turns.";
+  }
+
+  return "Typed turns stay primary until you start the mic.";
+};
 
 export function Timeline({
   timelineState,
   workspaceState,
   isStartingTurn,
   isResolvingRequests,
+  realtimeState,
+  voiceState,
+  isVoiceActive,
+  liveTranscript,
   onStartTurn
 }: TimelineProps) {
   const [draft, setDraft] = useState("");
@@ -28,6 +90,10 @@ export function Timeline({
   const userInputCount = timelineState.userInputs?.length ?? 0;
   const hasDiff = Boolean(timelineState.diff?.trim());
   const hasPendingHumanGate = approvalCount > 0 || userInputCount > 0;
+  const hasLiveVoice = isVoiceActive || realtimeState.status !== "idle" || liveTranscript.length > 0;
+  const voiceBadgeLabel =
+    realtimeState.status === "live" && isVoiceActive ? "mic live" : realtimeState.status;
+  const visibleTranscript = liveTranscript.slice(-4).reverse();
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -146,6 +212,54 @@ export function Timeline({
           </h3>
           <p>The thread is waiting on human input before it can keep moving.</p>
         </div>
+      ) : null}
+
+      {hasWorkspace && hasLiveVoice ? (
+        <section
+          className={`voice-transcript-panel ${
+            realtimeState.status === "error" ? "voice-transcript-panel-error" : ""
+          }`}
+        >
+          <header className="voice-transcript-header">
+            <div>
+              <span className="panel-eyebrow">Live voice</span>
+              <h3>{voiceHeadline(realtimeState, isVoiceActive)}</h3>
+            </div>
+            <div
+              className={`status-pill ${
+                realtimeState.status === "live" || realtimeState.status === "connecting"
+                  ? "status-pill-live"
+                  : ""
+              }`}
+            >
+              {voiceBadgeLabel}
+            </div>
+          </header>
+          <p className="voice-transcript-copy">
+            {voiceSupportCopy(realtimeState, voiceState, isVoiceActive)}
+          </p>
+          {visibleTranscript.length > 0 ? (
+            <div className="voice-transcript-stream">
+              {visibleTranscript.map((entry) => (
+                <article
+                  key={entry.id}
+                  className={`voice-transcript-item voice-transcript-item-${entry.speaker}`}
+                >
+                  <span>
+                    {entry.speaker}
+                    {entry.status === "partial" ? " · partial" : ""}
+                  </span>
+                  <p>{entry.text}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="voice-transcript-empty">
+              <span className="panel-eyebrow">Transcript</span>
+              <p>Waiting for the first live voice item.</p>
+            </div>
+          )}
+        </section>
       ) : null}
 
       {hasWorkspace ? (

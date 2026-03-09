@@ -142,6 +142,14 @@ export interface RealtimeState {
   error: string | null;
 }
 
+export interface RealtimeTranscriptEntry {
+  id: string;
+  speaker: "user" | "assistant" | "system";
+  text: string;
+  status: "partial" | "final";
+  createdAt: string;
+}
+
 export type RealtimeEvent =
   | { type: "state"; state: RealtimeState }
   | { type: "audio"; audio: RealtimeAudioChunk }
