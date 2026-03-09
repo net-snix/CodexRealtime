@@ -9,6 +9,13 @@ export interface AudioDeviceOption {
   label: string;
 }
 
+export interface VoicePreferences {
+  selectedInputDeviceId: string;
+  selectedOutputDeviceId: string;
+  deviceHintDismissed: boolean;
+  deviceSetupComplete: boolean;
+}
+
 export interface CodexAccountSummary {
   type: "chatgpt" | "apiKey" | "unknown";
   email?: string;
@@ -52,6 +59,10 @@ export interface AppBridge {
   stopRealtime: () => Promise<RealtimeState>;
   appendRealtimeAudio: (audio: RealtimeAudioChunk) => Promise<void>;
   appendRealtimeText: (text: string) => Promise<void>;
+  getVoicePreferences: () => Promise<VoicePreferences>;
+  updateVoicePreferences: (
+    preferences: Partial<VoicePreferences>
+  ) => Promise<VoicePreferences>;
   subscribeRealtimeEvents: (listener: RealtimeEventListener) => () => void;
 }
 

@@ -25,6 +25,8 @@ interface VoiceBarProps {
   selectedInputDeviceId: string;
   selectedOutputDeviceId: string;
   supportsOutputSelection: boolean;
+  shouldShowDeviceHint: boolean;
+  onDismissDeviceHint: () => void;
   onInputDeviceChange: (deviceId: string) => void;
   onOutputDeviceChange: (deviceId: string) => void;
   onToggle: () => void | Promise<void>;
@@ -86,6 +88,8 @@ export function VoiceBar({
   selectedInputDeviceId,
   selectedOutputDeviceId,
   supportsOutputSelection,
+  shouldShowDeviceHint,
+  onDismissDeviceHint,
   onInputDeviceChange,
   onOutputDeviceChange,
   onToggle,
@@ -155,6 +159,27 @@ export function VoiceBar({
 
       {isDevicePickerOpen ? (
         <div className="voice-device-panel">
+          {shouldShowDeviceHint ? (
+            <div className="voice-device-hint" role="note">
+              <p>
+                Start the mic once to unlock full device names. Until then, this panel may show
+                generic labels.
+              </p>
+              <p>
+                {supportsOutputSelection
+                  ? "Output changes apply right away after labels appear."
+                  : "Output stays on the system default in this runtime."}
+              </p>
+              <button
+                type="button"
+                className="voice-device-hint-dismiss"
+                onClick={onDismissDeviceHint}
+              >
+                Hide tip
+              </button>
+            </div>
+          ) : null}
+
           <label className="voice-device-field">
             <span>Input</span>
             <select

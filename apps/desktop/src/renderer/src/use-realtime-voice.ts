@@ -15,8 +15,6 @@ const initialRealtimeState: RealtimeState = {
 };
 
 const TRANSCRIPT_LIMIT = 6;
-const INPUT_DEVICE_STORAGE_KEY = "codex-realtime:input-device-id";
-const OUTPUT_DEVICE_STORAGE_KEY = "codex-realtime:output-device-id";
 
 type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
   shouldDispatchPrompt: boolean;
@@ -207,27 +205,6 @@ const closeAudioContext = async (context: AudioContext | null) => {
   }
 };
 
-const readStoredDeviceId = (key: string) => {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return window.localStorage.getItem(key) ?? "";
-};
-
-const writeStoredDeviceId = (key: string, value: string) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  if (value) {
-    window.localStorage.setItem(key, value);
-    return;
-  }
-
-  window.localStorage.removeItem(key);
-};
-
 const toDeviceOptions = (
   devices: MediaDeviceInfo[],
   kind: MediaDeviceKind
@@ -265,13 +242,12 @@ export const useRealtimeVoice = ({
   const [outputDevices, setOutputDevices] = useState<AudioDeviceOption[]>([
     { id: "", label: "System default output" }
   ]);
-  const [selectedInputDeviceId, setSelectedInputDeviceId] = useState(() =>
-    readStoredDeviceId(INPUT_DEVICE_STORAGE_KEY)
-  );
-  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState(() =>
-    readStoredDeviceId(OUTPUT_DEVICE_STORAGE_KEY)
-  );
+  const [selectedInputDeviceId, setSelectedInputDeviceId] = useState("");
+  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState("");
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
+  const [isDeviceHintDismissed, setIsDeviceHintDismissed] = useState(false);
+  const [hasCompletedDeviceSetup, setHasCompletedDeviceSetup] = useState(false);
+  const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false);
   const captureContextRef = useRef<AudioContext | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const playbackDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -322,12 +298,56 @@ export const useRealtimeVoice = ({
   }, []);
 
   useEffect(() => {
-    writeStoredDeviceId(INPUT_DEVICE_STORAGE_KEY, selectedInputDeviceId);
-  }, [selectedInputDeviceId]);
+    let isCancelled = false;
+
+    void window.appBridge
+      .getVoicePreferences()
+      .then((preferences) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setSelectedInputDeviceId(preferences.selectedInputDeviceId);
+        setSelectedOutputDeviceId(preferences.selectedOutputDeviceId);
+        setIsDeviceHintDismissed(preferences.deviceHintDismissed);
+        setHasCompletedDeviceSetup(preferences.deviceSetupComplete);
+      })
+      .catch(() => {
+        // Default state is fine for prototype mode if persisted prefs are unavailable.
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setHasLoadedPreferences(true);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    writeStoredDeviceId(OUTPUT_DEVICE_STORAGE_KEY, selectedOutputDeviceId);
-  }, [selectedOutputDeviceId]);
+    if (!hasLoadedPreferences) {
+      return;
+    }
+
+    void window.appBridge
+      .updateVoicePreferences({
+        selectedInputDeviceId,
+        selectedOutputDeviceId,
+        deviceHintDismissed: isDeviceHintDismissed,
+        deviceSetupComplete: hasCompletedDeviceSetup
+      })
+      .catch(() => {
+        // Keep the live session responsive even if preference persistence fails.
+      });
+  }, [
+    hasCompletedDeviceSetup,
+    hasLoadedPreferences,
+    isDeviceHintDismissed,
+    selectedInputDeviceId,
+    selectedOutputDeviceId
+  ]);
 
   useEffect(() => {
     const playbackElement = playbackElementRef.current;
@@ -499,6 +519,7 @@ export const useRealtimeVoice = ({
     captureContextRef.current = context;
     sourceRef.current = source;
     processorRef.current = processor;
+    setHasCompletedDeviceSetup(true);
     setIsActive(true);
   };
 
@@ -534,6 +555,8 @@ export const useRealtimeVoice = ({
     }
   };
 
+  const shouldShowDeviceHint = !isDeviceHintDismissed && !hasCompletedDeviceSetup;
+
   return {
     voiceState,
     realtimeState,
@@ -543,6 +566,8 @@ export const useRealtimeVoice = ({
     selectedInputDeviceId,
     selectedOutputDeviceId,
     supportsOutputSelection,
+    shouldShowDeviceHint,
+    dismissDeviceHint: () => setIsDeviceHintDismissed(true),
     setSelectedInputDeviceId,
     setSelectedOutputDeviceId,
     isActive,

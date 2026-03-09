@@ -17,6 +17,8 @@ const REALTIME_APPEND_AUDIO = "realtime:append-audio";
 const REALTIME_APPEND_TEXT = "realtime:append-text";
 const REALTIME_DISPATCH_PROMPT = "realtime:dispatch-prompt";
 const REALTIME_EVENT = "realtime:event";
+const VOICE_PREFERENCES_GET = "voice-preferences:get";
+const VOICE_PREFERENCES_UPDATE = "voice-preferences:update";
 
 const appBridge: AppBridge = {
   getAppInfo: () => ipcRenderer.invoke(APP_GET_INFO),
@@ -36,6 +38,9 @@ const appBridge: AppBridge = {
   appendRealtimeAudio: (audio) => ipcRenderer.invoke(REALTIME_APPEND_AUDIO, audio),
   appendRealtimeText: (text) => ipcRenderer.invoke(REALTIME_APPEND_TEXT, text),
   dispatchVoicePrompt: (prompt) => ipcRenderer.invoke(REALTIME_DISPATCH_PROMPT, prompt),
+  getVoicePreferences: () => ipcRenderer.invoke(VOICE_PREFERENCES_GET),
+  updateVoicePreferences: (preferences) =>
+    ipcRenderer.invoke(VOICE_PREFERENCES_UPDATE, preferences),
   subscribeRealtimeEvents: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]) =>
       listener(payload);

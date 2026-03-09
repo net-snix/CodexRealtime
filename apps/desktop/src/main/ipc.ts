@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import type { AppInfo } from "@shared";
 import { codexBridge } from "./codex-bridge";
 import { realtimeService } from "./realtime-service";
+import { voicePreferencesService } from "./voice-preferences-service";
 import { workspaceService } from "./workspace-service";
 
 const APP_GET_INFO = "app:get-info";
@@ -20,6 +21,8 @@ const REALTIME_APPEND_AUDIO = "realtime:append-audio";
 const REALTIME_APPEND_TEXT = "realtime:append-text";
 const REALTIME_DISPATCH_PROMPT = "realtime:dispatch-prompt";
 const REALTIME_EVENT = "realtime:event";
+const VOICE_PREFERENCES_GET = "voice-preferences:get";
+const VOICE_PREFERENCES_UPDATE = "voice-preferences:update";
 
 const readAppInfo = (): AppInfo => ({
   name: app.getName(),
@@ -70,5 +73,11 @@ export const registerIpcHandlers = () => {
   ipcMain.removeHandler(REALTIME_DISPATCH_PROMPT);
   ipcMain.handle(REALTIME_DISPATCH_PROMPT, (_event, prompt: string) =>
     realtimeService.dispatchVoicePrompt(prompt)
+  );
+  ipcMain.removeHandler(VOICE_PREFERENCES_GET);
+  ipcMain.handle(VOICE_PREFERENCES_GET, () => voicePreferencesService.getPreferences());
+  ipcMain.removeHandler(VOICE_PREFERENCES_UPDATE);
+  ipcMain.handle(VOICE_PREFERENCES_UPDATE, (_event, preferences) =>
+    voicePreferencesService.updatePreferences(preferences)
   );
 };

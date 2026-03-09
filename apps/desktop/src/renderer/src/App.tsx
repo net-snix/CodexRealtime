@@ -78,6 +78,8 @@ export default function App() {
     selectedInputDeviceId,
     selectedOutputDeviceId,
     supportsOutputSelection,
+    shouldShowDeviceHint,
+    dismissDeviceHint,
     setSelectedInputDeviceId,
     setSelectedOutputDeviceId,
     isActive: isVoiceActive,
@@ -373,6 +375,8 @@ export default function App() {
         selectedInputDeviceId={selectedInputDeviceId}
         selectedOutputDeviceId={selectedOutputDeviceId}
         supportsOutputSelection={supportsOutputSelection}
+        shouldShowDeviceHint={shouldShowDeviceHint}
+        onDismissDeviceHint={dismissDeviceHint}
         onInputDeviceChange={setSelectedInputDeviceId}
         onOutputDeviceChange={setSelectedOutputDeviceId}
         onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}
