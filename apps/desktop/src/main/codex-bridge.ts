@@ -126,6 +126,22 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async steerTurn(threadId: string, expectedTurnId: string, prompt: string) {
+    await this.start();
+
+    return this.request("turn/steer", {
+      threadId,
+      expectedTurnId,
+      input: [
+        {
+          type: "text",
+          text: prompt,
+          text_elements: []
+        }
+      ]
+    });
+  }
+
   async startRealtime(threadId: string, prompt: string, sessionId?: string | null) {
     await this.start();
 

@@ -32,6 +32,7 @@ export interface AppBridge {
   openWorkspace: () => Promise<WorkspaceState>;
   getTimelineState: () => Promise<TimelineState>;
   startTurn: (prompt: string) => Promise<TimelineState>;
+  dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;
   respondToApproval: (
     requestId: string,
     decision: ApprovalDecision

@@ -1,11 +1,51 @@
 import { EventEmitter } from "node:events";
-import type { RealtimeAudioChunk, RealtimeEvent, RealtimeState } from "@shared";
+import type { RealtimeAudioChunk, RealtimeEvent, RealtimeState, TimelineState } from "@shared";
 import { codexBridge } from "./codex-bridge";
 import { workspaceService } from "./workspace-service";
 import { isRecord, type NotificationPayload } from "./workspace-timeline";
 
 const DEFAULT_REALTIME_PROMPT =
   "You are a voice-native software engineering assistant. Keep replies concise, useful, and grounded in the current repo thread.";
+const ACTION_VERBS = [
+  "inspect",
+  "check",
+  "open",
+  "look at",
+  "search",
+  "find",
+  "fix",
+  "change",
+  "edit",
+  "update",
+  "refactor",
+  "add",
+  "remove",
+  "rename",
+  "run",
+  "test",
+  "build",
+  "lint",
+  "debug",
+  "commit",
+  "push"
+];
+const REPO_TARGETS = [
+  "repo",
+  "repository",
+  "code",
+  "file",
+  "folder",
+  "path",
+  "module",
+  "function",
+  "component",
+  "test",
+  "diff",
+  "command",
+  "branch",
+  "package",
+  "workspace"
+];
 
 const cloneRealtimeState = (state: RealtimeState): RealtimeState => ({ ...state });
 const isRealtimeAudioChunk = (value: unknown): value is RealtimeAudioChunk =>
@@ -14,6 +54,22 @@ const isRealtimeAudioChunk = (value: unknown): value is RealtimeAudioChunk =>
   typeof value.sampleRate === "number" &&
   typeof value.numChannels === "number" &&
   (typeof value.samplesPerChannel === "number" || value.samplesPerChannel === null);
+const looksLikePathOrCommand = (value: string) =>
+  /(?:\b[\w.-]+\.(?:ts|tsx|js|jsx|json|md|css|html|swift|py|sh)\b|\/[\w./-]+|\b(?:pnpm|npm|git|node|cargo|swift)\b)/i.test(
+    value
+  );
+const shouldDelegatePrompt = (prompt: string) => {
+  const normalizedPrompt = prompt.trim().toLowerCase();
+
+  if (!normalizedPrompt) {
+    return false;
+  }
+
+  const hasActionVerb = ACTION_VERBS.some((verb) => normalizedPrompt.includes(verb));
+  const hasRepoTarget = REPO_TARGETS.some((target) => normalizedPrompt.includes(target));
+
+  return (hasActionVerb && hasRepoTarget) || looksLikePathOrCommand(prompt);
+};
 
 class RealtimeService extends EventEmitter {
   private state: RealtimeState = {
@@ -95,6 +151,14 @@ class RealtimeService extends EventEmitter {
     }
 
     await codexBridge.appendRealtimeText(this.state.threadId, text);
+  }
+
+  async dispatchVoicePrompt(prompt: string): Promise<TimelineState> {
+    if (!shouldDelegatePrompt(prompt)) {
+      return workspaceService.getTimelineState();
+    }
+
+    return workspaceService.dispatchVoicePrompt(prompt);
   }
 
   private handleNotification(payload: NotificationPayload) {

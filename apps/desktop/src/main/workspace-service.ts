@@ -68,6 +68,7 @@ const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => 
 
 class WorkspaceService {
   private liveTimelineState = emptyTimelineState();
+  private activeTurnId: string | null = null;
 
   constructor() {
     codexBridge.on("notification", (payload: NotificationPayload) => {
@@ -209,10 +210,56 @@ class WorkspaceService {
     const started = (await codexBridge.startTurn(threadId, trimmedPrompt)) as {
       turn?: { id?: string };
     };
+    this.activeTurnId = started.turn?.id ?? this.activeTurnId;
     this.liveTimelineState = {
       ...this.ensureLiveTimeline(threadId),
       isRunning: true,
       statusLabel: started.turn?.id ? "Working" : "Starting"
+    };
+
+    return cloneTimelineState(this.liveTimelineState);
+  }
+
+  async dispatchVoicePrompt(prompt: string): Promise<TimelineState> {
+    const trimmedPrompt = prompt.trim();
+
+    if (!trimmedPrompt) {
+      return this.getTimelineState();
+    }
+
+    const persisted = this.readState();
+
+    if (!persisted.currentWorkspaceId) {
+      throw new Error("Open a workspace first.");
+    }
+
+    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
+
+    if (!workspace) {
+      throw new Error("Current workspace is missing.");
+    }
+
+    const threadId = await this.ensureThread(workspace);
+    workspace.threadId = threadId;
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    if (!this.activeTurnId) {
+      return this.startTurn(trimmedPrompt);
+    }
+
+    try {
+      await codexBridge.steerTurn(threadId, this.activeTurnId, trimmedPrompt);
+    } catch {
+      this.activeTurnId = null;
+      return this.startTurn(trimmedPrompt);
+    }
+
+    this.liveTimelineState = {
+      ...this.ensureLiveTimeline(threadId),
+      isRunning: true,
+      statusLabel: "Steering"
     };
 
     return cloneTimelineState(this.liveTimelineState);
@@ -332,7 +379,9 @@ class WorkspaceService {
   private async readThreadTimeline(threadId: string): Promise<TimelineState> {
     await codexBridge.start();
     const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
-    return buildTimelineState(threadId, result.thread?.turns ?? []);
+    const turns = result.thread?.turns ?? [];
+    this.activeTurnId = turns.find((turn) => turn.status === "inProgress")?.id ?? null;
+    return buildTimelineState(threadId, turns);
   }
 
   private async listThreads(workspacePath: string): Promise<ThreadSummary[]> {
@@ -393,6 +442,7 @@ class WorkspaceService {
   }
 
   private async handleBridgeNotification(payload: NotificationPayload) {
+    this.syncActiveTurnFromNotification(payload);
     this.liveTimelineState = await applyBridgeNotification(
       this.liveTimelineState,
       payload,
@@ -443,6 +493,25 @@ class WorkspaceService {
     }
 
     return state.workspaces[state.currentWorkspaceId]?.threadId === threadId;
+  }
+
+  private syncActiveTurnFromNotification(payload: NotificationPayload) {
+    const params = payload.params as { threadId?: unknown; turn?: { id?: unknown } } | undefined;
+    const threadId = typeof params?.threadId === "string" ? params.threadId : null;
+
+    if (!threadId || !this.isCurrentThread(threadId)) {
+      return;
+    }
+
+    if (payload.method === "turn/started") {
+      this.activeTurnId =
+        params?.turn && typeof params.turn.id === "string" ? params.turn.id : this.activeTurnId;
+      return;
+    }
+
+    if (payload.method === "turn/completed") {
+      this.activeTurnId = null;
+    }
   }
 }
 

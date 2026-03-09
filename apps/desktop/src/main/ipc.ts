@@ -17,6 +17,7 @@ const REALTIME_START = "realtime:start";
 const REALTIME_STOP = "realtime:stop";
 const REALTIME_APPEND_AUDIO = "realtime:append-audio";
 const REALTIME_APPEND_TEXT = "realtime:append-text";
+const REALTIME_DISPATCH_PROMPT = "realtime:dispatch-prompt";
 const REALTIME_EVENT = "realtime:event";
 
 const readAppInfo = (): AppInfo => ({
@@ -63,4 +64,8 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(REALTIME_APPEND_AUDIO, (_event, audio) => realtimeService.appendAudio(audio));
   ipcMain.removeHandler(REALTIME_APPEND_TEXT);
   ipcMain.handle(REALTIME_APPEND_TEXT, (_event, text: string) => realtimeService.appendText(text));
+  ipcMain.removeHandler(REALTIME_DISPATCH_PROMPT);
+  ipcMain.handle(REALTIME_DISPATCH_PROMPT, (_event, prompt: string) =>
+    realtimeService.dispatchVoicePrompt(prompt)
+  );
 };

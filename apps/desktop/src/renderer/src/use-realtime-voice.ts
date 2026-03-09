@@ -15,6 +15,10 @@ const initialRealtimeState: RealtimeState = {
 
 const TRANSCRIPT_LIMIT = 6;
 
+type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
+  shouldDispatchPrompt: boolean;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
 
@@ -51,7 +55,7 @@ const joinText = (...values: unknown[]) =>
 const parseRealtimeItem = (
   item: unknown,
   fallbackIndex: number
-): RealtimeTranscriptEntry | null => {
+): ParsedRealtimeTranscriptEntry | null => {
   if (!isRecord(item)) {
     return null;
   }
@@ -97,7 +101,8 @@ const parseRealtimeItem = (
           speaker,
           text,
           status: item.status === "in_progress" ? "partial" : "final",
-          createdAt
+          createdAt,
+          shouldDispatchPrompt: speaker === "user"
         }
       : null;
   }
@@ -116,7 +121,8 @@ const parseRealtimeItem = (
           speaker: "user",
           text,
           status: "final",
-          createdAt
+          createdAt,
+          shouldDispatchPrompt: false
         }
       : null;
   }
@@ -195,9 +201,11 @@ const closeAudioContext = async (context: AudioContext | null) => {
 };
 
 export const useRealtimeVoice = ({
-  enabled
+  enabled,
+  onVoicePrompt
 }: {
   enabled: boolean;
+  onVoicePrompt?: (prompt: string) => void | Promise<void>;
 }) => {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [realtimeState, setRealtimeState] = useState<RealtimeState>(initialRealtimeState);
@@ -209,6 +217,12 @@ export const useRealtimeVoice = ({
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextPlaybackTimeRef = useRef(0);
+  const dispatchedTranscriptIdsRef = useRef(new Set<string>());
+  const onVoicePromptRef = useRef(onVoicePrompt);
+
+  useEffect(() => {
+    onVoicePromptRef.current = onVoicePrompt;
+  }, [onVoicePrompt]);
 
   useEffect(() => {
     void window.appBridge.getRealtimeState().then(setRealtimeState);
@@ -236,6 +250,7 @@ export const useRealtimeVoice = ({
 
       if (event.type === "item") {
         let nextEntrySpeaker: RealtimeTranscriptEntry["speaker"] | null = null;
+        let dispatchPrompt: string | null = null;
 
         setLiveTranscript((current) => {
           const nextEntry = parseRealtimeItem(event.item, current.length + 1);
@@ -245,11 +260,24 @@ export const useRealtimeVoice = ({
           }
 
           nextEntrySpeaker = nextEntry.speaker;
+          if (
+            nextEntry.shouldDispatchPrompt &&
+            nextEntry.status === "final" &&
+            !dispatchedTranscriptIdsRef.current.has(nextEntry.id)
+          ) {
+            dispatchedTranscriptIdsRef.current.add(nextEntry.id);
+            dispatchPrompt = nextEntry.text;
+          }
+
           return upsertTranscriptEntry(current, nextEntry);
         });
 
         if (nextEntrySpeaker) {
           setVoiceState(nextEntrySpeaker === "assistant" ? "working" : "thinking");
+        }
+
+        if (dispatchPrompt) {
+          void onVoicePromptRef.current?.(dispatchPrompt);
         }
         return;
       }
@@ -301,6 +329,7 @@ export const useRealtimeVoice = ({
     }
 
     setVoiceState("thinking");
+    dispatchedTranscriptIdsRef.current.clear();
     await window.appBridge.startRealtime();
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -351,6 +380,7 @@ export const useRealtimeVoice = ({
     nextPlaybackTimeRef.current = 0;
     setIsActive(false);
     setLiveTranscript([]);
+    dispatchedTranscriptIdsRef.current.clear();
     setVoiceState("idle");
 
     try {

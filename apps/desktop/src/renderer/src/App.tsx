@@ -71,7 +71,15 @@ export default function App() {
     stop: stopVoice
   } =
     useRealtimeVoice({
-      enabled: realtimeEnabled
+      enabled: realtimeEnabled,
+      onVoicePrompt: async (prompt) => {
+        try {
+          const nextTimeline = await window.appBridge.dispatchVoicePrompt(prompt);
+          setTimelineState(nextTimeline);
+        } catch (error) {
+          console.error("Voice prompt dispatch failed", error);
+        }
+      }
     });
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
