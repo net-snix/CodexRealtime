@@ -52,6 +52,7 @@ export default function App() {
   const [timelineState, setTimelineState] = useState<TimelineState>(emptyTimelineState);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);
+  const [isStoppingVoice, setIsStoppingVoice] = useState(false);
   const [activePane, setActivePane] = useState<PaneKey>("plan");
   const [submittingApprovals, setSubmittingApprovals] = useState<Record<string, ApprovalDecision>>({});
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
@@ -188,6 +189,8 @@ export default function App() {
   };
 
   const handleStopVoice = async () => {
+    setIsStoppingVoice(true);
+
     try {
       if (timelineState.isRunning) {
         const nextTimeline = await window.appBridge.interruptActiveTurn();
@@ -199,6 +202,12 @@ export default function App() {
       }
     }
   };
+
+  useEffect(() => {
+    if (isStoppingVoice && !timelineState.isRunning && !isVoiceActive) {
+      setIsStoppingVoice(false);
+    }
+  }, [isStoppingVoice, isVoiceActive, timelineState.isRunning]);
 
   useEffect(() => {
     const activeApprovalIds = new Set((timelineState.approvals ?? []).map((approval) => approval.id));
@@ -305,6 +314,7 @@ export default function App() {
         realtimeState={realtimeState}
         disabled={!realtimeEnabled}
         isActive={isVoiceActive}
+        isStopping={isStoppingVoice}
         canStop={isVoiceActive || timelineState.isRunning}
         liveTranscript={liveTranscript}
         onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}

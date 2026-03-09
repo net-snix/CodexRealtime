@@ -11,13 +11,22 @@ interface VoiceBarProps {
   realtimeState: RealtimeState;
   disabled: boolean;
   isActive: boolean;
+  isStopping: boolean;
   canStop: boolean;
   liveTranscript: RealtimeTranscriptEntry[];
   onToggle: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
 }
 
-const helperCopy = (sessionState: SessionState | null, realtimeState: RealtimeState) => {
+const helperCopy = (
+  sessionState: SessionState | null,
+  realtimeState: RealtimeState,
+  isStopping: boolean
+) => {
+  if (isStopping) {
+    return "Stopping mic and interrupting active work...";
+  }
+
   if (realtimeState.error) {
     return realtimeState.error;
   }
@@ -55,6 +64,7 @@ export function VoiceBar({
   realtimeState,
   disabled,
   isActive,
+  isStopping,
   canStop,
   liveTranscript,
   onToggle,
@@ -74,7 +84,7 @@ export function VoiceBar({
         <button
           type="button"
           className="voice-button primary"
-          disabled={disabled}
+          disabled={disabled || isStopping}
           onClick={() => void onToggle()}
         >
           {isActive ? "Mic live" : "Start mic"}
@@ -90,8 +100,8 @@ export function VoiceBar({
 
       <div className="voice-status">
         <span className="panel-eyebrow">State</span>
-        <strong>{state}</strong>
-        <small>{helperCopy(sessionState, realtimeState)}</small>
+        <strong>{isStopping ? "stopping" : state}</strong>
+        <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
         {latestTranscript ? (
           <p className="voice-caption">
             <span>{transcriptLabel}</span>
@@ -107,10 +117,10 @@ export function VoiceBar({
         <button
           type="button"
           className="voice-button danger"
-          disabled={!canStop}
+          disabled={!canStop || isStopping}
           onClick={() => void onStop()}
         >
-          Stop
+          {isStopping ? "Stopping…" : "Stop"}
         </button>
       </div>
     </footer>
