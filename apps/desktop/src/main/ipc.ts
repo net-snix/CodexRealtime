@@ -10,6 +10,7 @@ const WORKSPACE_GET_STATE = "workspace:get-state";
 const WORKSPACE_OPEN = "workspace:open";
 const TIMELINE_GET_STATE = "timeline:get-state";
 const TURN_START = "turn:start";
+const TURN_INTERRUPT = "turn:interrupt";
 const APPROVAL_RESPOND = "approval:respond";
 const USER_INPUT_SUBMIT = "user-input:submit";
 const REALTIME_GET_STATE = "realtime:get-state";
@@ -46,6 +47,8 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(TIMELINE_GET_STATE, () => workspaceService.getTimelineState());
   ipcMain.removeHandler(TURN_START);
   ipcMain.handle(TURN_START, (_event, prompt: string) => workspaceService.startTurn(prompt));
+  ipcMain.removeHandler(TURN_INTERRUPT);
+  ipcMain.handle(TURN_INTERRUPT, () => workspaceService.interruptActiveTurn());
   ipcMain.removeHandler(APPROVAL_RESPOND);
   ipcMain.handle(APPROVAL_RESPOND, (_event, requestId: string, decision) =>
     workspaceService.respondToApproval(requestId, decision)

@@ -265,6 +265,29 @@ class WorkspaceService {
     return cloneTimelineState(this.liveTimelineState);
   }
 
+  hasActiveTurn() {
+    return Boolean(this.activeTurnId);
+  }
+
+  async interruptActiveTurn(): Promise<TimelineState> {
+    if (!this.activeTurnId) {
+      return this.getTimelineState();
+    }
+
+    const threadId = await this.getCurrentThreadId();
+    const turnId = this.activeTurnId;
+
+    await codexBridge.interruptTurn(threadId, turnId);
+    this.activeTurnId = null;
+    this.liveTimelineState = await this.hydrateLiveTimeline(threadId, {
+      ...this.ensureLiveTimeline(threadId),
+      isRunning: false,
+      statusLabel: "Interrupted"
+    });
+
+    return cloneTimelineState(this.liveTimelineState);
+  }
+
   async getCurrentThreadId(): Promise<string> {
     const persisted = this.readState();
 

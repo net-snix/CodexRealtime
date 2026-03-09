@@ -33,6 +33,7 @@ export interface AppBridge {
   getTimelineState: () => Promise<TimelineState>;
   startTurn: (prompt: string) => Promise<TimelineState>;
   dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;
+  interruptActiveTurn: () => Promise<TimelineState>;
   respondToApproval: (
     requestId: string,
     decision: ApprovalDecision

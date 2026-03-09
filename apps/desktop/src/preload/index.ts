@@ -7,6 +7,7 @@ const WORKSPACE_GET_STATE = "workspace:get-state";
 const WORKSPACE_OPEN = "workspace:open";
 const TIMELINE_GET_STATE = "timeline:get-state";
 const TURN_START = "turn:start";
+const TURN_INTERRUPT = "turn:interrupt";
 const APPROVAL_RESPOND = "approval:respond";
 const USER_INPUT_SUBMIT = "user-input:submit";
 const REALTIME_GET_STATE = "realtime:get-state";
@@ -24,6 +25,7 @@ const appBridge: AppBridge = {
   openWorkspace: () => ipcRenderer.invoke(WORKSPACE_OPEN),
   getTimelineState: () => ipcRenderer.invoke(TIMELINE_GET_STATE),
   startTurn: (prompt) => ipcRenderer.invoke(TURN_START, prompt),
+  interruptActiveTurn: () => ipcRenderer.invoke(TURN_INTERRUPT),
   respondToApproval: (requestId, decision) =>
     ipcRenderer.invoke(APPROVAL_RESPOND, requestId, decision),
   submitUserInput: (requestId, answers) =>

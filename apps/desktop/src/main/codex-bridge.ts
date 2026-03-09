@@ -142,6 +142,15 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async interruptTurn(threadId: string, turnId: string) {
+    await this.start();
+
+    return this.request("turn/interrupt", {
+      threadId,
+      turnId
+    });
+  }
+
   async startRealtime(threadId: string, prompt: string, sessionId?: string | null) {
     await this.start();
 

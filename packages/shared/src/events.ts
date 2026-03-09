@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
   workspaceOpen: "workspace:open",
   timelineGetState: "timeline:get-state",
   turnStart: "turn:start",
+  turnInterrupt: "turn:interrupt",
   approvalRespond: "approval:respond",
   userInputSubmit: "user-input:submit",
   realtimeGetState: "realtime:get-state",

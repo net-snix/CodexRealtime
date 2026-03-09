@@ -18,6 +18,7 @@ const TRANSCRIPT_LIMIT = 6;
 type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
   shouldDispatchPrompt: boolean;
 };
+const normalizePromptKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
@@ -122,7 +123,7 @@ const parseRealtimeItem = (
           text,
           status: "final",
           createdAt,
-          shouldDispatchPrompt: false
+          shouldDispatchPrompt: true
         }
       : null;
   }
@@ -218,6 +219,7 @@ export const useRealtimeVoice = ({
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextPlaybackTimeRef = useRef(0);
   const dispatchedTranscriptIdsRef = useRef(new Set<string>());
+  const lastDispatchedPromptRef = useRef("");
   const onVoicePromptRef = useRef(onVoicePrompt);
 
   useEffect(() => {
@@ -263,9 +265,11 @@ export const useRealtimeVoice = ({
           if (
             nextEntry.shouldDispatchPrompt &&
             nextEntry.status === "final" &&
-            !dispatchedTranscriptIdsRef.current.has(nextEntry.id)
+            !dispatchedTranscriptIdsRef.current.has(nextEntry.id) &&
+            normalizePromptKey(nextEntry.text) !== lastDispatchedPromptRef.current
           ) {
             dispatchedTranscriptIdsRef.current.add(nextEntry.id);
+            lastDispatchedPromptRef.current = normalizePromptKey(nextEntry.text);
             dispatchPrompt = nextEntry.text;
           }
 
@@ -330,6 +334,7 @@ export const useRealtimeVoice = ({
 
     setVoiceState("thinking");
     dispatchedTranscriptIdsRef.current.clear();
+    lastDispatchedPromptRef.current = "";
     await window.appBridge.startRealtime();
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -381,6 +386,7 @@ export const useRealtimeVoice = ({
     setIsActive(false);
     setLiveTranscript([]);
     dispatchedTranscriptIdsRef.current.clear();
+    lastDispatchedPromptRef.current = "";
     setVoiceState("idle");
 
     try {

@@ -46,6 +46,18 @@ const REPO_TARGETS = [
   "package",
   "workspace"
 ];
+const INTERRUPT_PHRASES = [
+  "stop",
+  "stop that",
+  "stop now",
+  "cancel",
+  "cancel that",
+  "abort",
+  "hold on",
+  "pause",
+  "never mind"
+];
+const STEER_PREFIXES = ["actually", "instead", "change that", "make that", "correction"];
 
 const cloneRealtimeState = (state: RealtimeState): RealtimeState => ({ ...state });
 const isRealtimeAudioChunk = (value: unknown): value is RealtimeAudioChunk =>
@@ -69,6 +81,19 @@ const shouldDelegatePrompt = (prompt: string) => {
   const hasRepoTarget = REPO_TARGETS.some((target) => normalizedPrompt.includes(target));
 
   return (hasActionVerb && hasRepoTarget) || looksLikePathOrCommand(prompt);
+};
+const shouldInterruptPrompt = (prompt: string) => {
+  const normalizedPrompt = prompt.trim().toLowerCase().replace(/[.!?]+$/g, "");
+
+  if (!normalizedPrompt) {
+    return false;
+  }
+
+  return INTERRUPT_PHRASES.includes(normalizedPrompt);
+};
+const shouldSteerPrompt = (prompt: string) => {
+  const normalizedPrompt = prompt.trim().toLowerCase();
+  return STEER_PREFIXES.some((prefix) => normalizedPrompt.startsWith(prefix));
 };
 
 class RealtimeService extends EventEmitter {
@@ -154,6 +179,14 @@ class RealtimeService extends EventEmitter {
   }
 
   async dispatchVoicePrompt(prompt: string): Promise<TimelineState> {
+    if (shouldInterruptPrompt(prompt)) {
+      return workspaceService.interruptActiveTurn();
+    }
+
+    if (workspaceService.hasActiveTurn() && shouldSteerPrompt(prompt)) {
+      return workspaceService.dispatchVoicePrompt(prompt);
+    }
+
     if (!shouldDelegatePrompt(prompt)) {
       return workspaceService.getTimelineState();
     }
