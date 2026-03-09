@@ -1,4 +1,4 @@
-import { app, dialog } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -66,6 +66,23 @@ const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => 
   path: workspace.path
 });
 
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 class WorkspaceService {
   private liveTimelineState = emptyTimelineState();
   private activeTurnId: string | null = null;
@@ -93,15 +110,21 @@ class WorkspaceService {
     return {
       currentWorkspace: currentWorkspace ? toWorkspaceSummary(currentWorkspace) : null,
       recentWorkspaces: this.listRecentWorkspaces(persisted),
-      threads: currentWorkspace ? await this.listThreads(currentWorkspace.path) : []
+      threads: currentWorkspace ? await this.listThreadsSnapshot(currentWorkspace.path) : []
     };
   }
 
   async openWorkspace(): Promise<WorkspaceState> {
-    const picked = await dialog.showOpenDialog({
-      title: "Open repository",
-      properties: ["openDirectory", "createDirectory"]
-    });
+    const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const picked = parentWindow
+      ? await dialog.showOpenDialog(parentWindow, {
+          title: "Open repository",
+          properties: ["openDirectory", "createDirectory"]
+        })
+      : await dialog.showOpenDialog({
+          title: "Open repository",
+          properties: ["openDirectory", "createDirectory"]
+        });
 
     if (picked.canceled || picked.filePaths.length === 0) {
       return this.getWorkspaceState();
@@ -118,10 +141,6 @@ class WorkspaceService {
       lastOpenedAt: now(),
       threadId: existing?.threadId ?? null
     };
-
-    const threadId = await this.ensureThread(workspace);
-    workspace.threadId = threadId;
-    workspace.lastOpenedAt = now();
 
     persisted.workspaces[workspaceId] = workspace;
     persisted.currentWorkspaceId = workspaceId;
@@ -141,12 +160,6 @@ class WorkspaceService {
 
     if (!workspace) {
       return this.getWorkspaceState();
-    }
-
-    try {
-      await this.ensureThread(workspace);
-    } catch {
-      // Keep the persisted workspace visible even if thread resume fails on boot.
     }
 
     return this.getWorkspaceState();
@@ -169,16 +182,21 @@ class WorkspaceService {
       return cloneTimelineState(this.liveTimelineState);
     }
 
-    try {
-      const timeline = await this.readThreadTimeline(workspace.threadId);
-      this.liveTimelineState = cloneTimelineState(timeline);
-      return timeline;
-    } catch {
+    const timeline = await withTimeout(
+      this.readThreadTimeline(workspace.threadId),
+      1500,
+      null
+    ).catch(() => null);
+
+    if (!timeline) {
       return {
         ...emptyTimelineState(workspace.threadId),
         statusLabel: "History unavailable"
       };
     }
+
+    this.liveTimelineState = cloneTimelineState(timeline);
+    return timeline;
   }
 
   async startTurn(prompt: string): Promise<TimelineState> {
@@ -420,6 +438,10 @@ class WorkspaceService {
     } catch {
       return [];
     }
+  }
+
+  private async listThreadsSnapshot(workspacePath: string): Promise<ThreadSummary[]> {
+    return withTimeout(this.listThreads(workspacePath), 1500, []);
   }
 
   private listRecentWorkspaces(state: PersistedState): WorkspaceSummary[] {
