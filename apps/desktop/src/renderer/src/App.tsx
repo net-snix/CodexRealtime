@@ -13,6 +13,11 @@ import { useRealtimeVoice } from "./use-realtime-voice";
 import { VoiceBar } from "./components/VoiceBar";
 
 type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
+type VoiceFeedbackTone = "neutral" | "success" | "error";
+type VoiceFeedback = {
+  tone: VoiceFeedbackTone;
+  text: string;
+} | null;
 
 const emptyTimelineState: TimelineState = {
   threadId: null,
@@ -53,6 +58,7 @@ export default function App() {
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);
   const [isStoppingVoice, setIsStoppingVoice] = useState(false);
+  const [voiceFeedback, setVoiceFeedback] = useState<VoiceFeedback>(null);
   const [activePane, setActivePane] = useState<PaneKey>("plan");
   const [submittingApprovals, setSubmittingApprovals] = useState<Record<string, ApprovalDecision>>({});
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
@@ -77,8 +83,27 @@ export default function App() {
         try {
           const nextTimeline = await window.appBridge.dispatchVoicePrompt(prompt);
           setTimelineState(nextTimeline);
+
+          if (nextTimeline.statusLabel === "Steering") {
+            setVoiceFeedback({
+              tone: "success",
+              text: "Steered active turn from voice"
+            });
+            return;
+          }
+
+          if (nextTimeline.isRunning) {
+            setVoiceFeedback({
+              tone: "success",
+              text: "Started turn from voice"
+            });
+          }
         } catch (error) {
           console.error("Voice prompt dispatch failed", error);
+          setVoiceFeedback({
+            tone: "error",
+            text: toErrorMessage(error, "Voice handoff failed")
+          });
         }
       }
     });
@@ -195,6 +220,10 @@ export default function App() {
       if (timelineState.isRunning) {
         const nextTimeline = await window.appBridge.interruptActiveTurn();
         setTimelineState(nextTimeline);
+        setVoiceFeedback({
+          tone: "success",
+          text: "Interrupted active turn"
+        });
       }
     } finally {
       if (isVoiceActive) {
@@ -208,6 +237,20 @@ export default function App() {
       setIsStoppingVoice(false);
     }
   }, [isStoppingVoice, isVoiceActive, timelineState.isRunning]);
+
+  useEffect(() => {
+    if (!voiceFeedback || isStoppingVoice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setVoiceFeedback(null);
+    }, 2600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isStoppingVoice, voiceFeedback]);
 
   useEffect(() => {
     const activeApprovalIds = new Set((timelineState.approvals ?? []).map((approval) => approval.id));
@@ -315,6 +358,7 @@ export default function App() {
         disabled={!realtimeEnabled}
         isActive={isVoiceActive}
         isStopping={isStoppingVoice}
+        feedback={voiceFeedback}
         canStop={isVoiceActive || timelineState.isRunning}
         liveTranscript={liveTranscript}
         onToggle={() => (isVoiceActive ? stopVoice() : startVoice())}

@@ -105,6 +105,32 @@
   color: rgba(239, 229, 206, 0.6);
 }
 
+.voice-feedback {
+  display: inline-flex;
+  align-items: center;
+  margin: 10px auto 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(239, 229, 206, 0.12);
+  background: rgba(255, 248, 234, 0.06);
+  color: rgba(239, 229, 206, 0.86);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.voice-feedback-success {
+  border-color: rgba(106, 108, 59, 0.34);
+  background: rgba(106, 108, 59, 0.16);
+  color: #d5d69d;
+}
+
+.voice-feedback-error {
+  border-color: rgba(211, 84, 58, 0.32);
+  background: rgba(114, 46, 39, 0.22);
+  color: #ffd3b6;
+}
+
 .voice-caption {
   margin: 10px auto 0;
   max-width: 44ch;

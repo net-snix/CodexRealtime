@@ -12,6 +12,10 @@ interface VoiceBarProps {
   disabled: boolean;
   isActive: boolean;
   isStopping: boolean;
+  feedback: {
+    tone: "neutral" | "success" | "error";
+    text: string;
+  } | null;
   canStop: boolean;
   liveTranscript: RealtimeTranscriptEntry[];
   onToggle: () => void | Promise<void>;
@@ -65,6 +69,7 @@ export function VoiceBar({
   disabled,
   isActive,
   isStopping,
+  feedback,
   canStop,
   liveTranscript,
   onToggle,
@@ -102,6 +107,9 @@ export function VoiceBar({
         <span className="panel-eyebrow">State</span>
         <strong>{isStopping ? "stopping" : state}</strong>
         <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
+        {feedback ? (
+          <p className={`voice-feedback voice-feedback-${feedback.tone}`}>{feedback.text}</p>
+        ) : null}
         {latestTranscript ? (
           <p className="voice-caption">
             <span>{transcriptLabel}</span>
