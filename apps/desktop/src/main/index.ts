@@ -11,7 +11,7 @@ const createMainWindow = () => {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: "#12100c",
-    titleBarStyle: "hiddenInset",
+    acceptFirstMouse: true,
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
@@ -24,7 +24,6 @@ const createMainWindow = () => {
 
   if (rendererUrl) {
     void window.loadURL(rendererUrl);
-    window.webContents.openDevTools({ mode: "detach" });
     return window;
   }
 
