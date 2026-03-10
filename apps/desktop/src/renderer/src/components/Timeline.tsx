@@ -2,6 +2,7 @@ import { useState, type KeyboardEventHandler } from "react";
 import type {
   RealtimeState,
   RealtimeTranscriptEntry,
+  TimelineEvent,
   TimelineState,
   VoiceState,
   WorkspaceState
@@ -19,27 +20,7 @@ interface TimelineProps {
   onStartTurn: (prompt: string) => void | Promise<void>;
 }
 
-const voiceHeadline = (realtimeState: RealtimeState, isVoiceActive: boolean) => {
-  if (realtimeState.status === "error") {
-    return "Voice error.";
-  }
-
-  if (realtimeState.status === "connecting") {
-    return "Voice connecting.";
-  }
-
-  if (realtimeState.status === "live" && isVoiceActive) {
-    return "Mic live.";
-  }
-
-  if (realtimeState.status === "live") {
-    return "Voice ready.";
-  }
-
-  return "Voice idle.";
-};
-
-const voiceSupportCopy = (
+const voiceStripLabel = (
   realtimeState: RealtimeState,
   voiceState: VoiceState,
   isVoiceActive: boolean
@@ -49,23 +30,106 @@ const voiceSupportCopy = (
   }
 
   if (realtimeState.status === "connecting") {
-    return "Connecting voice transport.";
+    return "Voice connecting";
   }
 
   if (realtimeState.status === "live" && voiceState === "working") {
-    return "Assistant speaking.";
+    return "Assistant speaking";
   }
 
   if (realtimeState.status === "live" && isVoiceActive) {
-    return "Listening.";
+    return "Listening";
   }
 
   if (realtimeState.status === "live") {
-    return "Voice available.";
+    return "Voice ready";
   }
 
-  return "Text turns ready.";
+  return "Voice idle";
 };
+
+type EventPresentation = {
+  badge: string;
+  tone: "user" | "assistant" | "commentary" | "tool" | "system" | "plan" | "patch";
+  title: string;
+  body: string | null;
+  monospace?: boolean;
+  lowOpacity?: boolean;
+};
+
+const getEventPresentation = (event: TimelineEvent): EventPresentation => {
+  if (event.kind === "user") {
+    return {
+      badge: "You",
+      tone: "user",
+      title: event.text,
+      body: null
+    };
+  }
+
+  if (event.kind === "assistant") {
+    return {
+      badge: "Codex",
+      tone: "assistant",
+      title: event.text,
+      body: null
+    };
+  }
+
+  if (event.kind === "commentary") {
+    if (event.text.startsWith("Plan update:")) {
+      return {
+        badge: "Plan",
+        tone: "plan",
+        title: event.text.replace("Plan update:", "").trim(),
+        body: null,
+        lowOpacity: true
+      };
+    }
+
+    return {
+      badge: "Note",
+      tone: "commentary",
+      title: event.text,
+      body: null,
+      lowOpacity: true
+    };
+  }
+
+  if (event.text.startsWith("Command:")) {
+    const [commandLine, ...outputLines] = event.text.split("\n");
+
+    return {
+      badge: "Tool",
+      tone: "tool",
+      title: commandLine.replace("Command:", "").trim(),
+      body: outputLines.join("\n").trim() || null,
+      monospace: true,
+      lowOpacity: true
+    };
+  }
+
+  if (event.text.startsWith("File changes proposed:")) {
+    return {
+      badge: "Patch",
+      tone: "patch",
+      title: event.text.replace("File changes proposed:", "").trim() + " files changed",
+      body: null,
+      lowOpacity: true
+    };
+  }
+
+  return {
+    badge: "System",
+    tone: "system",
+    title: event.text,
+    body: null,
+    lowOpacity: true
+  };
+};
+
+const getEventMetaLabel = (createdAt: string) =>
+  createdAt === "Thread history" ? null : createdAt;
 
 export function Timeline({
   timelineState,
@@ -92,9 +156,8 @@ export function Timeline({
   const hasDiff = Boolean(timelineState.diff?.trim());
   const hasPendingHumanGate = approvalCount > 0 || userInputCount > 0;
   const hasLiveVoice = isVoiceActive || realtimeState.status !== "idle" || liveTranscript.length > 0;
-  const voiceBadgeLabel =
-    realtimeState.status === "live" && isVoiceActive ? "mic live" : realtimeState.status;
   const visibleTranscript = liveTranscript.slice(-4).reverse();
+  const latestTranscript = visibleTranscript[0] ?? null;
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -131,22 +194,10 @@ export function Timeline({
       </header>
 
       <div className={`timeline-composer ${!hasWorkspace ? "timeline-composer-disabled" : ""}`}>
-        <div className="composer-copy">
-          <span className="panel-eyebrow">Compose</span>
-          <p>
-            {hasWorkspace
-              ? "Ask, steer, or assign the next step."
-              : "Open a repo to enable the thread."}
-          </p>
-        </div>
         <div className="composer-row">
           <textarea
             className="timeline-input"
-            placeholder={
-              hasWorkspace
-                ? "What should Codex do next?"
-                : "Open a repo first"
-            }
+            placeholder={hasWorkspace ? "Ask Codex" : "Open a repo first"}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
@@ -159,135 +210,89 @@ export function Timeline({
             onClick={() => void handleSubmit()}
             disabled={!hasWorkspace || isStartingTurn || draft.trim().length === 0}
           >
-            {isStartingTurn ? "Starting…" : "Run"}
+            {isStartingTurn ? "Starting…" : "Send"}
           </button>
         </div>
       </div>
 
-      {hasWorkspace && (planCount > 0 || hasDiff || approvalCount > 0 || userInputCount > 0) ? (
-        <div className="timeline-briefing">
-          <span className="panel-eyebrow">Live briefing</span>
-          <div className="timeline-briefing-grid">
-            {planCount > 0 ? (
-              <div className="briefing-card">
-                <strong>{planCount}</strong>
-                <span>plan steps tracked</span>
-              </div>
-            ) : null}
-            {hasDiff ? (
-              <div className="briefing-card briefing-card-warm">
-                <strong>Diff ready</strong>
-                <span>Preview waiting in the side rail</span>
-              </div>
-            ) : null}
-            {approvalCount > 0 ? (
-              <div className="briefing-card briefing-card-alert">
-                <strong>{approvalCount}</strong>
-                <span>approval {approvalCount === 1 ? "request" : "requests"} pending</span>
-              </div>
-            ) : null}
-            {userInputCount > 0 ? (
-              <div className="briefing-card briefing-card-olive">
-                <strong>{userInputCount}</strong>
-                <span>clarification {userInputCount === 1 ? "prompt" : "prompts"} queued</span>
-              </div>
-            ) : null}
-          </div>
-          {hasPendingHumanGate ? (
-            <p className="timeline-briefing-note">
-              Waiting on approval or clarification.
-            </p>
+      {hasWorkspace && (planCount > 0 || hasDiff || hasPendingHumanGate || hasLiveVoice) ? (
+        <div className="timeline-utility-strip">
+          {planCount > 0 ? <span className="timeline-utility-pill">plan {planCount}</span> : null}
+          {hasDiff ? <span className="timeline-utility-pill timeline-utility-pill-warm">diff ready</span> : null}
+          {approvalCount > 0 ? (
+            <span className="timeline-utility-pill timeline-utility-pill-alert">
+              approvals {approvalCount}
+            </span>
+          ) : null}
+          {userInputCount > 0 ? (
+            <span className="timeline-utility-pill timeline-utility-pill-olive">
+              clarify {userInputCount}
+            </span>
+          ) : null}
+          {hasLiveVoice ? (
+            <span className="timeline-utility-pill timeline-utility-pill-voice">
+              {voiceStripLabel(realtimeState, voiceState, isVoiceActive)}
+            </span>
           ) : null}
         </div>
       ) : null}
 
-      {hasWorkspace && hasPendingHumanGate ? (
-        <div className="timeline-attention-callout">
-          <span className="panel-eyebrow">Needs you</span>
-          <h3>
-            {approvalCount > 0 ? `${approvalCount} approval ${approvalCount === 1 ? "request" : "requests"}` : null}
-            {approvalCount > 0 && userInputCount > 0 ? " and " : null}
-            {userInputCount > 0
-              ? `${userInputCount} clarification ${userInputCount === 1 ? "prompt" : "prompts"}`
-              : null}
-          </h3>
-          <p>Answer in the right rail.</p>
+      {hasWorkspace && latestTranscript ? (
+        <div className="timeline-voice-ribbon">
+          <span className="timeline-voice-ribbon-badge">
+            {latestTranscript.speaker}
+            {latestTranscript.status === "partial" ? " · live" : ""}
+          </span>
+          <p>{latestTranscript.text}</p>
         </div>
-      ) : null}
-
-      {hasWorkspace && hasLiveVoice ? (
-        <section
-          className={`voice-transcript-panel ${
-            realtimeState.status === "error" ? "voice-transcript-panel-error" : ""
-          }`}
-        >
-          <header className="voice-transcript-header">
-            <div>
-              <span className="panel-eyebrow">Live voice</span>
-              <h3>{voiceHeadline(realtimeState, isVoiceActive)}</h3>
-            </div>
-            <div
-              className={`status-pill ${
-                realtimeState.status === "live" || realtimeState.status === "connecting"
-                  ? "status-pill-live"
-                  : ""
-              }`}
-            >
-              {voiceBadgeLabel}
-            </div>
-          </header>
-          <p className="voice-transcript-copy">
-            {voiceSupportCopy(realtimeState, voiceState, isVoiceActive)}
-          </p>
-          {visibleTranscript.length > 0 ? (
-            <div className="voice-transcript-stream">
-              {visibleTranscript.map((entry) => (
-                <article
-                  key={entry.id}
-                  className={`voice-transcript-item voice-transcript-item-${entry.speaker}`}
-                >
-                  <span>
-                    {entry.speaker}
-                    {entry.status === "partial" ? " · partial" : ""}
-                  </span>
-                  <p>{entry.text}</p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="voice-transcript-empty">
-              <span className="panel-eyebrow">Transcript</span>
-              <p>No live voice yet.</p>
-            </div>
-          )}
-        </section>
       ) : null}
 
       {hasWorkspace ? (
         timelineState.events.length > 0 ? (
-          <div className="timeline-stream">
-            {timelineState.events.map((event) => (
-              <article key={event.id} className={`timeline-item timeline-item-${event.kind}`}>
-                <div className="timeline-meta">
-                  <span>{event.kind}</span>
-                  <span>{event.createdAt}</span>
-                </div>
-                <p>{event.text}</p>
-              </article>
-            ))}
+          <div className="timeline-stream timeline-stream-log">
+            {timelineState.events.map((event) => {
+              const presentation = getEventPresentation(event);
+              const metaLabel = getEventMetaLabel(event.createdAt);
+
+              return (
+                <article
+                  key={event.id}
+                  className={`timeline-log-item timeline-log-item-${presentation.tone} ${
+                    presentation.lowOpacity ? "timeline-log-item-muted" : ""
+                  }`}
+                >
+                  <div className="timeline-log-body">
+                    <div className="timeline-log-head">
+                      <span className="timeline-log-badge">{presentation.badge}</span>
+                      {metaLabel ? <span className="timeline-log-time">{metaLabel}</span> : null}
+                    </div>
+                    <p
+                      className={
+                        presentation.monospace
+                          ? "timeline-log-title timeline-log-title-code"
+                          : "timeline-log-title"
+                      }
+                    >
+                      {presentation.title}
+                    </p>
+                    {presentation.body ? (
+                      <pre className="timeline-log-output">{presentation.body}</pre>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="timeline-empty-state">
-            <span className="panel-eyebrow">Primary thread</span>
-            <h3>No turns yet.</h3>
-            <p>Start with a short instruction.</p>
+            <span className="panel-eyebrow">Thread</span>
+            <p>No turns yet.</p>
           </div>
         )
       ) : (
         <div className="timeline-empty-state timeline-empty-state-muted">
-          <span className="panel-eyebrow">Workspace needed</span>
-          <h3>Open a repo.</h3>
-          <p>The thread will bind here.</p>
+          <span className="panel-eyebrow">Workspace</span>
+          <p>Open a repo.</p>
         </div>
       )}
     </section>
