@@ -1,17 +1,17 @@
 .right-pane {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 16px;
-  padding: 18px;
+  gap: 10px;
+  padding: 12px 10px;
 }
 
 .pane-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 10px;
   background: var(--surface-soft);
 }
 
@@ -19,9 +19,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 8px;
   color: var(--muted-strong);
   font-size: 0.84rem;
   font-weight: 600;
@@ -46,7 +46,7 @@
 .pane-tab-badge {
   min-width: 22px;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--surface-soft);
   color: var(--muted-strong);
   font-size: 0.68rem;
@@ -56,19 +56,19 @@
 .pane-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   padding: 4px 0 0;
 }
 
 .pane-empty-state,
 .dossier-card {
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: 10px;
   background: var(--surface-strong);
 }
 
 .pane-empty-state {
-  padding: 18px;
+  padding: 12px;
 }
 
 .pane-empty-state h3,
@@ -81,11 +81,11 @@
 
 .dossier-stack {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .dossier-card {
-  padding: 16px;
+  padding: 12px;
 }
 
 .dossier-card-alert {
@@ -148,9 +148,9 @@
 
 .diff-preview {
   margin: 0;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 8px;
   background: #f4f0e8;
   color: #2a2824;
   font-family: "SF Mono", "Menlo", monospace;
@@ -189,7 +189,7 @@
 .option-pill {
   padding: 7px 11px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.58);
   color: var(--muted-strong);
   font-size: 0.82rem;
@@ -208,7 +208,7 @@
 .request-action-button {
   padding: 10px 13px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--surface-strong);
   color: var(--text);
   font-weight: 600;
@@ -257,7 +257,7 @@
   width: 100%;
   padding: 11px 13px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.74);
   color: var(--text);
   outline: none;

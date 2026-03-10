@@ -4,11 +4,11 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  min-height: 84px;
-  padding: 16px 18px;
+  gap: 10px;
+  min-height: 72px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 12px;
   background: rgba(252, 249, 244, 0.94);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
@@ -18,7 +18,7 @@
 .voice-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .voice-actions {
@@ -27,9 +27,9 @@
 
 .voice-button {
   min-height: 42px;
-  padding: 10px 14px;
+  padding: 9px 12px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--surface-strong);
   color: var(--text);
   font-weight: 600;
@@ -131,7 +131,7 @@
   justify-self: start;
   padding: 5px 9px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--surface-soft);
   color: var(--muted-strong);
   font-size: 0.72rem;
@@ -178,7 +178,7 @@
   max-width: min(360px, calc(100vw - 36px));
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 253, 250, 0.98);
   box-shadow: 0 18px 40px rgba(24, 23, 20, 0.08);
 }
@@ -188,7 +188,7 @@
   gap: 8px;
   padding: 12px;
   border: 1px solid rgba(33, 53, 61, 0.12);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--accent-soft);
 }
 
@@ -205,7 +205,7 @@
   min-height: 34px;
   padding: 7px 11px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
   color: var(--text);
 }
@@ -226,7 +226,7 @@
 .voice-device-field select {
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--surface-soft);
 }
 
