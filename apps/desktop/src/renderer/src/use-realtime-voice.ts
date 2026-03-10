@@ -403,10 +403,14 @@ export const useRealtimeVoice = ({
     source.start(startAt);
     nextPlaybackTimeRef.current = startAt + audioBuffer.duration;
   });
+  const scheduleAudioPlaybackRef = useRef(scheduleAudioPlayback);
+
+  useEffect(() => {
+    scheduleAudioPlaybackRef.current = scheduleAudioPlayback;
+  }, [scheduleAudioPlayback]);
 
   useEffect(() => {
     void window.appBridge.getRealtimeState().then(setRealtimeState);
-
     const unsubscribe = window.appBridge.subscribeRealtimeEvents((event) => {
       if (event.type === "state") {
         setRealtimeState(event.state);
@@ -423,7 +427,7 @@ export const useRealtimeVoice = ({
       }
 
       if (event.type === "audio") {
-        void scheduleAudioPlayback(event.audio);
+        void scheduleAudioPlaybackRef.current(event.audio);
         setVoiceState("working");
         return;
       }
@@ -471,9 +475,8 @@ export const useRealtimeVoice = ({
 
     return () => {
       unsubscribe();
-      void stop();
     };
-  }, [scheduleAudioPlayback]);
+  }, []);
 
   const start = async () => {
     if (!enabled || isActive) {
