@@ -130,15 +130,14 @@
 }
 
 .timeline-submit {
-  min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
   border: 1px solid var(--accent);
   border-radius: 8px;
   background: var(--accent);
   color: #fffdfa;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   transition:
     transform 140ms ease,
     background 140ms ease,
@@ -154,6 +153,11 @@
 .timeline-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.timeline-submit-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .timeline-worker-controls {

@@ -97,6 +97,21 @@ const buildReasoningOptions = (
   return REASONING_ORDER.filter((value) => allowed.has(value));
 };
 
+function SendArrowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="timeline-submit-icon">
+      <path
+        d="M8 12V4.25M4.75 7.5 8 4.25 11.25 7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
 export function Timeline({
   timelineState,
   workspaceState,
@@ -336,8 +351,10 @@ export function Timeline({
             className="timeline-submit"
             onClick={() => void handleSubmit()}
             disabled={!hasWorkspace || isStartingTurn || draft.trim().length === 0}
+            aria-label={isStartingTurn ? "Starting" : "Send"}
+            title={isStartingTurn ? "Starting" : "Send"}
           >
-            {isStartingTurn ? "Starting…" : "Send"}
+            <SendArrowIcon />
           </button>
         </div>
 
