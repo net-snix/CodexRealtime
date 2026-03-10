@@ -87,15 +87,15 @@ select {
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   height: 100vh;
-  padding: 8px;
+  padding: 6px;
   overflow: hidden;
 }
 
 .backdrop {
   position: absolute;
-  inset: 2px;
+  inset: 1px;
   border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
@@ -107,7 +107,7 @@ select {
   z-index: 1;
   display: grid;
   grid-template-columns: 246px minmax(0, 1fr) 292px;
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
 }
 

@@ -1,8 +1,8 @@
 .left-rail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 10px 12px;
+  gap: 8px;
+  padding: 10px 8px 10px;
   background: linear-gradient(180deg, rgba(247, 243, 236, 0.96), rgba(243, 238, 229, 0.98));
 }
 
@@ -10,7 +10,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .rail-header h1 {
@@ -63,7 +63,7 @@
 
 .project-tree {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-height: 0;
 }
 
@@ -159,7 +159,7 @@
   gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 7px 8px;
+  padding: 6px 7px;
   color: var(--text);
   text-align: left;
 }
@@ -223,7 +223,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 6px;
   color: var(--muted);
   font-size: 0.76rem;
 }

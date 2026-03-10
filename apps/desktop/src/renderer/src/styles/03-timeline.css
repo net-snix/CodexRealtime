@@ -1,8 +1,8 @@
 .timeline {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  gap: 6px;
-  padding: 10px;
+  gap: 5px;
+  padding: 8px;
   overflow: hidden;
 }
 
@@ -34,8 +34,8 @@
 .timeline-composer {
   grid-row: 5;
   display: grid;
-  gap: 6px;
-  padding: 6px;
+  gap: 5px;
+  padding: 5px;
   background: rgba(255, 253, 250, 0.84);
 }
 
@@ -46,7 +46,7 @@
 .composer-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 92px;
-  gap: 6px;
+  gap: 5px;
   align-items: stretch;
 }
 
@@ -159,7 +159,7 @@
 .timeline-worker-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
 }
 
@@ -346,7 +346,7 @@
 .timeline-log-item {
   position: relative;
   display: block;
-  padding: 6px 10px;
+  padding: 5px 8px;
   border-bottom: 1px solid rgba(24, 23, 20, 0.05);
 }
 
@@ -525,7 +525,7 @@
   grid-row: 4;
   display: grid;
   gap: 5px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: rgba(255, 253, 250, 0.74);
 }
 
