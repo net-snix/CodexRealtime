@@ -83,6 +83,29 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: 
   }
 };
 
+const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+
+  app.focus({ steal: true });
+  window.show();
+  window.focus();
+  window.webContents.focus();
+
+  for (const delay of [60, 240]) {
+    setTimeout(() => {
+      if (window.isDestroyed()) {
+        return;
+      }
+
+      app.focus({ steal: true });
+      window.focus();
+      window.webContents.focus();
+    }, delay);
+  }
+};
+
 class WorkspaceService {
   private liveTimelineState = emptyTimelineState();
   private activeTurnId: string | null = null;
@@ -116,26 +139,25 @@ class WorkspaceService {
 
   async openWorkspace(): Promise<WorkspaceState> {
     const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-    const picked = parentWindow
-      ? await dialog.showOpenDialog(parentWindow, {
-          title: "Open repository",
-          properties: ["openDirectory", "createDirectory"]
-        })
-      : await dialog.showOpenDialog({
-          title: "Open repository",
-          properties: ["openDirectory", "createDirectory"]
-        });
-
-    if (parentWindow && !parentWindow.isDestroyed()) {
-      parentWindow.focus();
-      parentWindow.webContents.focus();
-    }
+    const picked = await dialog.showOpenDialog({
+      title: "Open repository",
+      properties: ["openDirectory", "createDirectory"]
+    });
+    restoreWindowFocus(parentWindow);
 
     if (picked.canceled || picked.filePaths.length === 0) {
       return this.getWorkspaceState();
     }
 
-    const workspacePath = this.resolveWorkspaceRoot(picked.filePaths[0]);
+    return this.openWorkspacePath(picked.filePaths[0]);
+  }
+
+  async openCurrentWorkspace(): Promise<WorkspaceState> {
+    return this.openWorkspacePath(process.cwd());
+  }
+
+  private async openWorkspacePath(inputPath: string): Promise<WorkspaceState> {
+    const workspacePath = this.resolveWorkspaceRoot(inputPath);
     const persisted = this.readState();
     const workspaceId = workspacePath;
     const existing = persisted.workspaces[workspaceId];

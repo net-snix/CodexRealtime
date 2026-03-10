@@ -6,6 +6,7 @@ interface LeftRailProps {
   workspaceState: WorkspaceState;
   isOpeningWorkspace: boolean;
   onOpenWorkspace: () => void | Promise<void>;
+  onOpenCurrentWorkspace: () => void | Promise<void>;
 }
 
 const sessionLabel = (sessionState: SessionState | null) => {
@@ -29,7 +30,8 @@ export function LeftRail({
   sessionState,
   workspaceState,
   isOpeningWorkspace,
-  onOpenWorkspace
+  onOpenWorkspace,
+  onOpenCurrentWorkspace
 }: LeftRailProps) {
   const featureBadges = [
     sessionState?.features.realtimeConversation ? "realtime" : null,
@@ -48,9 +50,22 @@ export function LeftRail({
         <div className="brand-chip">Phase 4</div>
       </div>
 
-      <button type="button" className="open-workspace-button" onClick={() => void onOpenWorkspace()}>
-        {isOpeningWorkspace ? "Opening..." : "Open repo"}
-      </button>
+      <div className="workspace-action-row">
+        <button
+          type="button"
+          className="open-workspace-button"
+          onClick={() => void onOpenWorkspace()}
+        >
+          {isOpeningWorkspace ? "Opening..." : "Open repo"}
+        </button>
+        <button
+          type="button"
+          className="open-workspace-button open-workspace-button-secondary"
+          onClick={() => void onOpenCurrentWorkspace()}
+        >
+          Use current repo
+        </button>
+      </div>
 
       <section className="rail-section">
         <header>

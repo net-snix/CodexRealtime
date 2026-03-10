@@ -42,6 +42,7 @@ export interface AppBridge {
   getSessionState: () => Promise<SessionState>;
   getWorkspaceState: () => Promise<WorkspaceState>;
   openWorkspace: () => Promise<WorkspaceState>;
+  openCurrentWorkspace: () => Promise<WorkspaceState>;
   getTimelineState: () => Promise<TimelineState>;
   startTurn: (prompt: string) => Promise<TimelineState>;
   dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;

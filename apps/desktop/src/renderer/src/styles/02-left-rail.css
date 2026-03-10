@@ -52,6 +52,22 @@
   background: linear-gradient(180deg, rgba(211, 110, 58, 0.28), rgba(211, 110, 58, 0.16));
 }
 
+.workspace-action-row {
+  display: grid;
+  gap: 10px;
+}
+
+.open-workspace-button-secondary {
+  border-color: rgba(239, 229, 206, 0.12);
+  background: rgba(255, 248, 234, 0.05);
+  color: rgba(239, 229, 206, 0.86);
+}
+
+.open-workspace-button-secondary:hover {
+  border-color: rgba(239, 229, 206, 0.22);
+  background: rgba(255, 248, 234, 0.08);
+}
+
 .workspace-focus {
   border-radius: 18px;
   border: 1px solid rgba(239, 229, 206, 0.08);

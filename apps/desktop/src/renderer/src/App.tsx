@@ -210,6 +210,19 @@ export default function App() {
     }
   };
 
+  const handleOpenCurrentWorkspace = async () => {
+    setIsOpeningWorkspace(true);
+
+    try {
+      const nextState = await window.appBridge.openCurrentWorkspace();
+      setWorkspaceState(nextState);
+      await refreshTimelineState();
+      window.focus();
+    } finally {
+      setIsOpeningWorkspace(false);
+    }
+  };
+
   const handleStartTurn = async (prompt: string) => {
     setIsStartingTurn(true);
 
@@ -336,6 +349,7 @@ export default function App() {
           workspaceState={workspaceState}
           isOpeningWorkspace={isOpeningWorkspace}
           onOpenWorkspace={handleOpenWorkspace}
+          onOpenCurrentWorkspace={handleOpenCurrentWorkspace}
         />
         <Timeline
           timelineState={timelineState}
