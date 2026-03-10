@@ -438,7 +438,10 @@ export function Timeline({
 
           <button
             type="button"
-            className={`timeline-worker-toggle ${
+            role="switch"
+            aria-checked={workerSettingsState.settings.fastMode}
+            aria-label="Fast mode"
+            className={`timeline-worker-toggle timeline-worker-toggle-switch ${
               workerSettingsState.settings.fastMode ? "timeline-worker-toggle-active" : ""
             }`}
             onClick={() =>
@@ -448,7 +451,10 @@ export function Timeline({
             }
             disabled={!hasWorkspace || isUpdatingWorkerSettings || isStartingTurn}
           >
-            Fast
+            <span className="timeline-worker-toggle-label">Fast</span>
+            <span className="timeline-worker-switch" aria-hidden="true">
+              <span className="timeline-worker-switch-thumb" />
+            </span>
           </button>
 
           <label className="timeline-worker-select-wrap timeline-worker-select-wrap-approval">
