@@ -56,7 +56,9 @@ export const registerIpcHandlers = () => {
     workspaceService.selectWorkspace(workspaceId)
   );
   ipcMain.removeHandler(THREAD_SELECT);
-  ipcMain.handle(THREAD_SELECT, (_event, threadId: string) => workspaceService.selectThread(threadId));
+  ipcMain.handle(THREAD_SELECT, (_event, workspaceId: string, threadId: string) =>
+    workspaceService.selectThread(workspaceId, threadId)
+  );
   ipcMain.removeHandler(TIMELINE_GET_STATE);
   ipcMain.handle(TIMELINE_GET_STATE, () => workspaceService.getTimelineState());
   ipcMain.removeHandler(TURN_START);

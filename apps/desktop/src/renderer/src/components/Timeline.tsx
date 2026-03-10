@@ -79,7 +79,8 @@ export function Timeline({
   onStartTurn
 }: TimelineProps) {
   const [draft, setDraft] = useState("");
-  const hasWorkspace = Boolean(workspaceState.currentWorkspace);
+  const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
+  const hasWorkspace = Boolean(currentProject);
   const statusLabel = isResolvingRequests
     ? "Waiting on your decision"
     : timelineState.isRunning
@@ -118,7 +119,7 @@ export function Timeline({
       <header className="pane-header">
         <div>
           <span className="panel-eyebrow">Thread</span>
-          <h2>{hasWorkspace ? workspaceState.currentWorkspace?.name : "Open a workspace"}</h2>
+          <h2>{hasWorkspace ? currentProject?.name : "Open a workspace"}</h2>
         </div>
         <div
           className={`status-pill ${

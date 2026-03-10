@@ -50,11 +50,11 @@ export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
-    currentWorkspace: null,
-    currentThreadId: null,
-    recentWorkspaces: [],
-    threads: []
+    projects: []
   });
+  const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
+  const currentWorkspaceId = currentProject?.id ?? null;
+  const currentThreadId = currentProject?.currentThreadId ?? null;
   const [timelineState, setTimelineState] = useState<TimelineState>(emptyTimelineState);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);
@@ -68,7 +68,7 @@ export default function App() {
   const realtimeEnabled = Boolean(
     sessionState?.status === "connected" &&
       sessionState.features.realtimeConversation &&
-      workspaceState.currentWorkspace
+      currentProject
   );
   const {
     voiceState,
@@ -200,9 +200,9 @@ export default function App() {
 
   useEffect(() => {
     if (
-      !workspaceState.currentWorkspace ||
-      workspaceState.currentThreadId ||
-      workspaceState.threads.length === 0
+      !currentProject ||
+      currentThreadId ||
+      currentProject.threads.length === 0
     ) {
       return;
     }
@@ -210,7 +210,7 @@ export default function App() {
     let cancelled = false;
 
     void window.appBridge
-      .selectThread(workspaceState.threads[0].id)
+      .selectThread(currentProject.id, currentProject.threads[0].id)
       .then(async (nextTimeline) => {
         if (cancelled) {
           return;
@@ -230,11 +230,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [
-    workspaceState.currentThreadId,
-    workspaceState.currentWorkspace,
-    workspaceState.threads
-  ]);
+  }, [currentProject, currentThreadId]);
 
   const handleOpenWorkspace = async () => {
     setIsOpeningWorkspace(true);
@@ -272,8 +268,8 @@ export default function App() {
     await refreshTimelineState();
   };
 
-  const handleSelectThread = async (threadId: string) => {
-    if (!threadId || threadId === workspaceState.currentThreadId) {
+  const handleSelectThread = async (workspaceId: string, threadId: string) => {
+    if (!threadId || (workspaceId === currentWorkspaceId && threadId === currentThreadId)) {
       return;
     }
 
@@ -281,7 +277,7 @@ export default function App() {
       await stopVoice();
     }
 
-    const nextTimeline = await window.appBridge.selectThread(threadId);
+    const nextTimeline = await window.appBridge.selectThread(workspaceId, threadId);
     setTimelineState(nextTimeline);
     const nextWorkspaceState = await window.appBridge.getWorkspaceState();
     setWorkspaceState(nextWorkspaceState);
@@ -411,7 +407,6 @@ export default function App() {
           appInfo={appInfo}
           sessionState={sessionState}
           workspaceState={workspaceState}
-          currentThreadId={workspaceState.currentThreadId}
           isOpeningWorkspace={isOpeningWorkspace}
           onOpenWorkspace={handleOpenWorkspace}
           onOpenCurrentWorkspace={handleOpenCurrentWorkspace}

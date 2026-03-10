@@ -4,7 +4,14 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { realpathSync } from "node:fs";
-import type { ApprovalDecision, ThreadSummary, TimelineState, WorkspaceState, WorkspaceSummary } from "@shared";
+import type {
+  ApprovalDecision,
+  ThreadSummary,
+  TimelineState,
+  WorkspaceProject,
+  WorkspaceState,
+  WorkspaceSummary
+} from "@shared";
 import { codexBridge } from "./codex-bridge";
 import {
   applyBridgeNotification,
@@ -57,7 +64,31 @@ const formatUpdatedAt = (updatedAt?: number) => {
     return "Unknown";
   }
 
-  return new Date(updatedAt * 1000).toLocaleString();
+  const seconds = Math.max(0, Math.floor(Date.now() / 1000) - updatedAt);
+
+  if (seconds < 60) {
+    return "now";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 7) {
+    return `${days}d`;
+  }
+
+  return `${Math.floor(days / 7)}w`;
 };
 
 const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => ({
@@ -125,16 +156,22 @@ class WorkspaceService {
 
   async getWorkspaceState(): Promise<WorkspaceState> {
     const persisted = this.readState();
-    const currentWorkspace =
-      persisted.currentWorkspaceId && persisted.workspaces[persisted.currentWorkspaceId]
-        ? persisted.workspaces[persisted.currentWorkspaceId]
-        : null;
+    const recentWorkspaces = this.listRecentWorkspaces(persisted);
+    const projects = await this.listWorkspaceProjects(recentWorkspaces, persisted);
+    const currentProject = projects.find((project) => project.isCurrent) ?? null;
 
     return {
-      currentWorkspace: currentWorkspace ? toWorkspaceSummary(currentWorkspace) : null,
-      currentThreadId: currentWorkspace?.threadId ?? null,
-      recentWorkspaces: this.listRecentWorkspaces(persisted),
-      threads: currentWorkspace ? await this.listThreadsSnapshot(currentWorkspace.path) : []
+      currentWorkspace: currentProject
+        ? {
+            id: currentProject.id,
+            name: currentProject.name,
+            path: currentProject.path
+          }
+        : null,
+      currentThreadId: currentProject?.currentThreadId ?? null,
+      recentWorkspaces: recentWorkspaces.map(toWorkspaceSummary),
+      threads: currentProject?.threads ?? [],
+      projects
     };
   }
 
@@ -173,19 +210,15 @@ class WorkspaceService {
     return this.getWorkspaceState();
   }
 
-  async selectThread(threadId: string): Promise<TimelineState> {
+  async selectThread(workspaceId: string, threadId: string): Promise<TimelineState> {
     const persisted = this.readState();
-
-    if (!persisted.currentWorkspaceId) {
-      throw new Error("Open a workspace first.");
-    }
-
-    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
+    const workspace = persisted.workspaces[workspaceId];
 
     if (!workspace) {
-      throw new Error("Current workspace is missing.");
+      throw new Error("Workspace not found.");
     }
 
+    persisted.currentWorkspaceId = workspaceId;
     workspace.threadId = threadId;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
@@ -510,11 +543,24 @@ class WorkspaceService {
     return withTimeout(this.listThreads(workspacePath), 1500, []);
   }
 
-  private listRecentWorkspaces(state: PersistedState): WorkspaceSummary[] {
+  private async listWorkspaceProjects(
+    workspaces: PersistedWorkspace[],
+    state: PersistedState
+  ): Promise<WorkspaceProject[]> {
+    return Promise.all(
+      workspaces.map(async (workspace) => ({
+        ...toWorkspaceSummary(workspace),
+        isCurrent: workspace.id === state.currentWorkspaceId,
+        currentThreadId: workspace.threadId,
+        threads: await this.listThreadsSnapshot(workspace.path)
+      }))
+    );
+  }
+
+  private listRecentWorkspaces(state: PersistedState): PersistedWorkspace[] {
     return Object.values(state.workspaces)
       .sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt))
-      .slice(0, 8)
-      .map(toWorkspaceSummary);
+      .slice(0, 8);
   }
 
   private readState(): PersistedState {

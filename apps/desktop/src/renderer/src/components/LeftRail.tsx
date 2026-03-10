@@ -1,15 +1,15 @@
+import { useEffect, useState } from "react";
 import type { AppInfo, SessionState, WorkspaceState } from "@shared";
 
 interface LeftRailProps {
   appInfo: AppInfo | null;
   sessionState: SessionState | null;
   workspaceState: WorkspaceState;
-  currentThreadId: string | null;
   isOpeningWorkspace: boolean;
   onOpenWorkspace: () => void | Promise<void>;
   onOpenCurrentWorkspace: () => void | Promise<void>;
   onSelectWorkspace: (workspaceId: string) => void | Promise<void>;
-  onSelectThread: (threadId: string) => void | Promise<void>;
+  onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
 }
 
 const sessionLabel = (sessionState: SessionState | null) => {
@@ -28,122 +28,205 @@ const sessionLabel = (sessionState: SessionState | null) => {
   return "Error";
 };
 
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={expanded ? "project-chevron project-chevron-expanded" : "project-chevron"}
+      viewBox="0 0 12 12"
+    >
+      <path
+        d="M3.25 4.5 6 7.25 8.75 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg aria-hidden="true" className="project-folder" viewBox="0 0 16 16">
+      <path
+        d="M2.25 4.75A1.75 1.75 0 0 1 4 3h2.1c.37 0 .72.15.97.41l.92.94H12A1.75 1.75 0 0 1 13.75 6.1v5.15A1.75 1.75 0 0 1 12 13H4a1.75 1.75 0 0 1-1.75-1.75Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function OpenIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
+        d="M8 3.25v9.5M3.25 8h9.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
+function CurrentIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
+        d="M8 2.75v2.1M8 11.15v2.1M2.75 8h2.1M11.15 8h2.1M5.45 5.45l1.1 1.1M9.45 9.45l1.1 1.1M10.55 5.45l-1.1 1.1M6.55 9.45l-1.1 1.1"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.2"
+      />
+      <circle cx="8" cy="8" r="2.15" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
 export function LeftRail({
   appInfo,
   sessionState,
   workspaceState,
-  currentThreadId,
   isOpeningWorkspace,
   onOpenWorkspace,
   onOpenCurrentWorkspace,
   onSelectWorkspace,
   onSelectThread
 }: LeftRailProps) {
-  const currentWorkspace = workspaceState.currentWorkspace;
-  const recentWorkspaces = workspaceState.recentWorkspaces
-    .filter((workspace) => workspace.id !== currentWorkspace?.id)
-    .slice(0, 4);
-  const sessionNote = sessionState?.error
-    ? sessionState.error
-    : sessionState?.features.realtimeConversation
-      ? "Voice ready"
-      : "Voice off";
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
+  const sessionText = sessionState?.account?.planType
+    ? `${sessionLabel(sessionState)} ${sessionState.account.planType}`
+    : sessionLabel(sessionState);
+
+  useEffect(() => {
+    if (!currentProject) {
+      return;
+    }
+
+    setExpandedProjects((current) => ({
+      ...current,
+      [currentProject.id]: true
+    }));
+  }, [currentProject]);
+
+  const toggleProject = (workspaceId: string) => {
+    setExpandedProjects((current) => ({
+      ...current,
+      [workspaceId]: !current[workspaceId]
+    }));
+  };
 
   return (
     <aside
       className="left-rail panel stagger-1"
       title={appInfo ? `${appInfo.name} ${appInfo.version}` : undefined}
     >
-      <div className="panel-eyebrow">Workspace</div>
-      <div className="workspace-summary">
-        <div className="workspace-summary-main">
-          <h1>{currentWorkspace?.name ?? "Choose repo"}</h1>
-          <p>{currentWorkspace?.path ?? "Open a repo to show threads."}</p>
+      <div className="rail-header">
+        <div>
+          <div className="panel-eyebrow">Workspace</div>
+          <h1>Threads</h1>
         </div>
-        <div className="workspace-summary-meta">
-          <div className="brand-chip">{workspaceState.threads.length}</div>
-          <span className={`session-inline-dot state-${sessionState?.status ?? "loading"}`} />
+        <div className="rail-header-actions">
+          <button
+            type="button"
+            className="rail-icon-button"
+            onClick={() => void onOpenWorkspace()}
+            title="Open repo"
+            aria-label="Open repo"
+          >
+            <OpenIcon />
+          </button>
+          <button
+            type="button"
+            className="rail-icon-button"
+            onClick={() => void onOpenCurrentWorkspace()}
+            title="Use current repo"
+            aria-label="Use current repo"
+          >
+            <CurrentIcon />
+          </button>
         </div>
       </div>
 
-      <div className="workspace-toolbar">
-        <button
-          type="button"
-          className="workspace-tool"
-          onClick={() => void onOpenWorkspace()}
-        >
-          {isOpeningWorkspace ? "Opening" : "Open"}
-        </button>
-        <button
-          type="button"
-          className="workspace-tool workspace-tool-secondary"
-          onClick={() => void onOpenCurrentWorkspace()}
-        >
-          Current
-        </button>
-      </div>
+      <div className="project-tree">
+        {workspaceState.projects.map((project) => {
+          const expanded = expandedProjects[project.id] ?? false;
+          const hasThreads = project.threads.length > 0;
 
-      {recentWorkspaces.length > 0 ? (
-        <section className="rail-section">
-          <header>
-            <span>Repos</span>
-            <span>{recentWorkspaces.length}</span>
-          </header>
-          <ul className="rail-list rail-list-repos">
-            {recentWorkspaces.map((workspace) => (
-              <li key={workspace.id}>
+          return (
+            <section
+              key={project.id}
+              className={
+                project.isCurrent ? "project-group project-group-current" : "project-group"
+              }
+            >
+              <div className="project-row">
                 <button
                   type="button"
-                  className="rail-list-button rail-list-button-repo"
-                  onClick={() => void onSelectWorkspace(workspace.id)}
-                  title={workspace.path}
+                  className="project-toggle-button"
+                  onClick={() => toggleProject(project.id)}
+                  aria-label={expanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
                 >
-                  <span className="list-title">{workspace.name}</span>
+                  <ChevronIcon expanded={expanded} />
                 </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+                <button
+                  type="button"
+                  className="project-select-button"
+                  onClick={() => {
+                    setExpandedProjects((current) => ({ ...current, [project.id]: true }));
+                    void onSelectWorkspace(project.id);
+                  }}
+                  title={project.path}
+                >
+                  <FolderIcon />
+                  <span className="project-name">{project.name}</span>
+                </button>
+              </div>
 
-      <section className="rail-section rail-section-primary">
-        <header>
-          <span>Threads</span>
-          <span>{workspaceState.threads.length}</span>
-        </header>
-        <ul className="rail-list rail-list-threads">
-          {workspaceState.threads.map((thread) => (
-            <li key={thread.id}>
-              <button
-                type="button"
-                className={
-                  thread.id === currentThreadId
-                    ? "rail-list-button rail-list-button-thread rail-list-button-active"
-                    : "rail-list-button rail-list-button-thread"
-                }
-                onClick={() => void onSelectThread(thread.id)}
-                title={thread.title}
-              >
-                <span className="list-title">{thread.title}</span>
-                <span className="list-meta">{thread.updatedAt}</span>
-              </button>
-            </li>
-          ))}
-          {workspaceState.threads.length === 0 ? (
-            <li>
-              <div className="rail-empty">No threads yet</div>
-            </li>
-          ) : null}
-        </ul>
-      </section>
+              {expanded ? (
+                hasThreads ? (
+                  <ul className="project-thread-list">
+                    {project.threads.map((thread) => (
+                      <li key={thread.id}>
+                        <button
+                          type="button"
+                          className={
+                            project.currentThreadId === thread.id
+                              ? "project-thread-button project-thread-button-active"
+                              : "project-thread-button"
+                          }
+                          onClick={() => void onSelectThread(project.id, thread.id)}
+                          title={thread.title}
+                        >
+                          <span className="project-thread-title">{thread.title}</span>
+                          <span className="project-thread-time">{thread.updatedAt}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="project-empty">No threads</div>
+                )
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
 
       <div className="session-inline">
         <div className="session-inline-main">
           <span className={`session-inline-dot state-${sessionState?.status ?? "loading"}`} />
-          <span>{sessionLabel(sessionState)}</span>
-          {sessionState?.account?.planType ? <span>{sessionState.account.planType}</span> : null}
+          <span>{sessionText}</span>
         </div>
-        <div className="session-inline-note">{sessionNote}</div>
+        <div className="session-inline-note">{isOpeningWorkspace ? "Opening" : "Voice ready"}</div>
       </div>
     </aside>
   );
