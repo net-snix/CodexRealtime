@@ -112,6 +112,21 @@ function SendArrowIcon() {
   );
 }
 
+function AttachPlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="timeline-worker-icon">
+      <path
+        d="M8 3.5v9M3.5 8h9"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
 export function Timeline({
   timelineState,
   workspaceState,
@@ -361,15 +376,25 @@ export function Timeline({
         <div className="timeline-worker-controls">
           <button
             type="button"
-            className="timeline-worker-button"
+            className="timeline-worker-button timeline-worker-icon-button"
             onClick={() => void onPickAttachments()}
             disabled={!hasWorkspace || isStartingTurn || isPickingAttachments}
+            aria-label={
+              isPickingAttachments
+                ? "Adding files"
+                : workerAttachments.length > 0
+                  ? `Attach files (${workerAttachments.length} selected)`
+                  : "Attach files"
+            }
+            title={
+              isPickingAttachments
+                ? "Adding files"
+                : workerAttachments.length > 0
+                  ? `Attach files (${workerAttachments.length})`
+                  : "Attach files"
+            }
           >
-            {isPickingAttachments
-              ? "Adding…"
-              : workerAttachments.length > 0
-                ? `Attach ${workerAttachments.length}`
-                : "Attach"}
+            <AttachPlusIcon />
           </button>
 
           <label className="timeline-worker-select-wrap">

@@ -190,6 +190,13 @@
     opacity 140ms ease;
 }
 
+.timeline-worker-icon-button {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
 .timeline-worker-button:hover:not(:disabled),
 .timeline-worker-toggle:hover:not(:disabled) {
   border-color: rgba(24, 23, 20, 0.14);
@@ -202,6 +209,11 @@
 .timeline-worker-select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.timeline-worker-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .timeline-worker-toggle-active {
