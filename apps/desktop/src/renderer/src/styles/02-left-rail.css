@@ -55,6 +55,12 @@
   background: rgba(255, 255, 255, 0.84);
 }
 
+.rail-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .project-tree {
   display: grid;
   gap: 6px;

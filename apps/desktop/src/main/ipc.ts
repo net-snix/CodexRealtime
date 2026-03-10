@@ -11,6 +11,7 @@ const WORKSPACE_GET_STATE = "workspace:get-state";
 const WORKSPACE_OPEN = "workspace:open";
 const WORKSPACE_OPEN_CURRENT = "workspace:open-current";
 const WORKSPACE_SELECT = "workspace:select";
+const THREAD_CREATE = "thread:create";
 const THREAD_SELECT = "thread:select";
 const TIMELINE_GET_STATE = "timeline:get-state";
 const WORKER_SETTINGS_GET = "worker-settings:get";
@@ -57,6 +58,10 @@ export const registerIpcHandlers = () => {
   ipcMain.removeHandler(WORKSPACE_SELECT);
   ipcMain.handle(WORKSPACE_SELECT, (_event, workspaceId: string) =>
     workspaceService.selectWorkspace(workspaceId)
+  );
+  ipcMain.removeHandler(THREAD_CREATE);
+  ipcMain.handle(THREAD_CREATE, (_event, workspaceId: string) =>
+    workspaceService.createThread(workspaceId)
   );
   ipcMain.removeHandler(THREAD_SELECT);
   ipcMain.handle(THREAD_SELECT, (_event, workspaceId: string, threadId: string) =>

@@ -44,6 +44,7 @@ export interface AppBridge {
   openWorkspace: () => Promise<WorkspaceState>;
   openCurrentWorkspace: () => Promise<WorkspaceState>;
   selectWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
+  createThread: (workspaceId: string) => Promise<TimelineState>;
   selectThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
   getTimelineState: () => Promise<TimelineState>;
   getWorkerSettingsState: () => Promise<WorkerSettingsState>;

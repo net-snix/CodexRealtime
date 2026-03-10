@@ -6,8 +6,10 @@ interface LeftRailProps {
   sessionState: SessionState | null;
   workspaceState: WorkspaceState;
   isOpeningWorkspace: boolean;
+  isCreatingThread: boolean;
   onOpenWorkspace: () => void | Promise<void>;
   onOpenCurrentWorkspace: () => void | Promise<void>;
+  onCreateThread: () => void | Promise<void>;
   onSelectWorkspace: (workspaceId: string) => void | Promise<void>;
   onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
 }
@@ -65,6 +67,20 @@ function OpenIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16">
       <path
+        d="M2.5 5.2A1.7 1.7 0 0 1 4.2 3.5h2.15c.34 0 .67.13.91.37l.88.83h3.66a1.7 1.7 0 0 1 1.7 1.7v4.9a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
         d="M8 3.25v9.5M3.25 8h9.5"
         fill="none"
         stroke="currentColor"
@@ -95,8 +111,10 @@ export function LeftRail({
   sessionState,
   workspaceState,
   isOpeningWorkspace,
+  isCreatingThread,
   onOpenWorkspace,
   onOpenCurrentWorkspace,
+  onCreateThread,
   onSelectWorkspace,
   onSelectThread
 }: LeftRailProps) {
@@ -135,6 +153,16 @@ export function LeftRail({
           <h1>Threads</h1>
         </div>
         <div className="rail-header-actions">
+          <button
+            type="button"
+            className="rail-icon-button"
+            onClick={() => void onCreateThread()}
+            title="New thread"
+            aria-label="New thread"
+            disabled={!currentProject || isCreatingThread}
+          >
+            <PlusIcon />
+          </button>
           <button
             type="button"
             className="rail-icon-button"

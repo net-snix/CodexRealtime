@@ -76,6 +76,7 @@ export default function App() {
   } = useWorkerSettings(workerSettingsKey);
   const [timelineState, setTimelineState] = useState<TimelineState>(emptyTimelineState);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);
   const [isStoppingVoice, setIsStoppingVoice] = useState(false);
   const [voiceFeedback, setVoiceFeedback] = useState<VoiceFeedback>(null);
@@ -302,6 +303,27 @@ export default function App() {
     setWorkspaceState(nextWorkspaceState);
   };
 
+  const handleCreateThread = async () => {
+    if (!currentWorkspaceId) {
+      return;
+    }
+
+    setIsCreatingThread(true);
+
+    try {
+      if (isVoiceActive) {
+        await stopVoice();
+      }
+
+      const nextTimeline = await window.appBridge.createThread(currentWorkspaceId);
+      setTimelineState(nextTimeline);
+      const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+      setWorkspaceState(nextWorkspaceState);
+    } finally {
+      setIsCreatingThread(false);
+    }
+  };
+
   const handleStartTurn = async (request: TurnStartRequest) => {
     setIsStartingTurn(true);
 
@@ -428,8 +450,10 @@ export default function App() {
           sessionState={sessionState}
           workspaceState={workspaceState}
           isOpeningWorkspace={isOpeningWorkspace}
+          isCreatingThread={isCreatingThread}
           onOpenWorkspace={handleOpenWorkspace}
           onOpenCurrentWorkspace={handleOpenCurrentWorkspace}
+          onCreateThread={handleCreateThread}
           onSelectWorkspace={handleSelectWorkspace}
           onSelectThread={handleSelectThread}
         />

@@ -382,6 +382,38 @@ class WorkspaceService {
     return this.getWorkspaceState();
   }
 
+  async createThread(workspaceId: string): Promise<TimelineState> {
+    const persisted = this.readState();
+    const workspace = persisted.workspaces[workspaceId];
+
+    if (!workspace) {
+      throw new Error("Workspace not found.");
+    }
+
+    const started = (await codexBridge.startThread(workspace.path)) as {
+      thread?: { id?: string };
+    };
+
+    if (!started.thread?.id) {
+      throw new Error("Codex did not return a thread id");
+    }
+
+    persisted.currentWorkspaceId = workspace.id;
+    workspace.threadId = started.thread.id;
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    this.activeTurnId = null;
+    this.workerDraftSettingsByWorkspace.delete(workspace.id);
+    this.liveTimelineState = {
+      ...emptyTimelineState(started.thread.id),
+      statusLabel: "Idle"
+    };
+
+    return cloneTimelineState(this.liveTimelineState);
+  }
+
   async selectThread(workspaceId: string, threadId: string): Promise<TimelineState> {
     const persisted = this.readState();
     const workspace = persisted.workspaces[workspaceId];
@@ -741,12 +773,28 @@ class WorkspaceService {
     state: PersistedState
   ): Promise<WorkspaceProject[]> {
     return Promise.all(
-      workspaces.map(async (workspace) => ({
-        ...toWorkspaceSummary(workspace),
-        isCurrent: workspace.id === state.currentWorkspaceId,
-        currentThreadId: workspace.threadId,
-        threads: await this.listThreadsSnapshot(workspace.path)
-      }))
+      workspaces.map(async (workspace) => {
+        const threads = await this.listThreadsSnapshot(workspace.path);
+
+        if (
+          workspace.threadId &&
+          !threads.some((thread) => thread.id === workspace.threadId)
+        ) {
+          threads.unshift({
+            id: workspace.threadId,
+            title: "New thread",
+            updatedAt: "now",
+            changeSummary: null
+          });
+        }
+
+        return {
+          ...toWorkspaceSummary(workspace),
+          isCurrent: workspace.id === state.currentWorkspaceId,
+          currentThreadId: workspace.threadId,
+          threads
+        };
+      })
     );
   }
 
