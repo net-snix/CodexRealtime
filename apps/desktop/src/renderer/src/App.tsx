@@ -50,6 +50,10 @@ export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
+    currentWorkspace: null,
+    currentThreadId: null,
+    recentWorkspaces: [],
+    threads: [],
     projects: []
   });
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
