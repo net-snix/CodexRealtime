@@ -9,6 +9,11 @@ import type {
   TimelineUserInputQuestion,
   TimelineUserInputRequest
 } from "@shared";
+import {
+  buildFileChangeEvents,
+  summarizeActivityText,
+  summarizeCommand
+} from "./timeline-event-summary";
 
 export type ThreadItem =
   | {
@@ -111,7 +116,7 @@ export const emptyTimelineState = (threadId: string | null = null): TimelineStat
 
 export const cloneTimelineState = (state: TimelineState): TimelineState => ({
   ...state,
-  events: [...state.events],
+  events: state.events.map((event) => ({ ...event })),
   planSteps: [...state.planSteps],
   approvals: state.approvals.map((approval) => ({
     ...approval,
@@ -157,8 +162,7 @@ export const buildTimelineState = (threadId: string, turns: TurnRecord[]): Timel
   const relevantTurns = turns.slice(-MAX_HISTORY_TURNS);
   const events = relevantTurns.flatMap((turn) =>
     (turn.items ?? [])
-      .map((item) => toTimelineEvent(item, turn.id ?? "turn"))
-      .filter((event): event is TimelineEvent => event !== null)
+      .flatMap((item) => toTimelineEvents(item, turn.id ?? "turn"))
   );
   const activeTurn = [...relevantTurns].reverse().find((turn) => turn.status === "inProgress") ?? null;
 
@@ -242,17 +246,19 @@ export const applyBridgeNotification = async (
         return currentState;
       }
 
-      const event = toTimelineEvent(item, turnId);
+      const events = toTimelineEvents(item, turnId);
 
-      if (!event) {
+      if (events.length === 0) {
         return currentState;
       }
 
       const nextState = ensureLiveTimeline(currentState, threadId);
-      upsertTimelineEvent(nextState, {
-        ...event,
-        createdAt: payload.method === "item/started" ? "Live start" : "Live update"
-      });
+      for (const event of events) {
+        upsertTimelineEvent(nextState, {
+          ...event,
+          createdAt: payload.method === "item/started" ? "Live start" : "Live update"
+        });
+      }
       return nextState;
     }
 
@@ -272,6 +278,7 @@ export const applyBridgeNotification = async (
         nextState.events[existingIndex] = {
           ...existing,
           text: `${existing.text}${delta}`,
+          summary: summarizeActivityText(`${existing.summary ?? existing.text}${delta}`),
           createdAt: "Streaming"
         };
       } else {
@@ -279,6 +286,7 @@ export const applyBridgeNotification = async (
           id: itemId,
           kind: "assistant",
           text: delta,
+          summary: summarizeActivityText(delta),
           createdAt: "Streaming"
         });
       }
@@ -373,7 +381,7 @@ export const applyBridgeRequest = (
   return nextState;
 };
 
-const toTimelineEvent = (item: ThreadItem, turnId: string): TimelineEvent | null => {
+const toTimelineEvents = (item: ThreadItem, turnId: string): TimelineEvent[] => {
   const base = {
     id: item.id ?? `${turnId}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: "Thread history"
@@ -388,47 +396,79 @@ const toTimelineEvent = (item: ThreadItem, turnId: string): TimelineEvent | null
       .filter(Boolean)
       .join("\n");
 
-    return text ? { ...base, kind: "user", text } : null;
+    return text
+      ? [
+          {
+            ...base,
+            kind: "user",
+            text,
+            summary: summarizeActivityText(text)
+          }
+        ]
+      : [];
   }
 
   if (isAgentMessage(item) && item.text) {
-    return {
-      ...base,
-      kind: "assistant",
-      text: item.text
-    };
+    return [
+      {
+        ...base,
+        kind: "assistant",
+        text: item.text,
+        summary: summarizeActivityText(item.text)
+      }
+    ];
   }
 
   if (isPlanItem(item) && item.text) {
-    return {
-      ...base,
-      kind: "commentary",
-      text: `Plan update: ${item.text}`
-    };
+    const text = `Plan update: ${item.text}`;
+    return [
+      {
+        ...base,
+        kind: "commentary",
+        text,
+        summary: summarizeActivityText(item.text),
+        detail: item.text
+      }
+    ];
   }
 
   if (isReasoningItem(item)) {
     const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n");
-    return text ? { ...base, kind: "commentary", text } : null;
+    return text
+      ? [
+          {
+            ...base,
+            kind: "commentary",
+            text,
+            summary: summarizeActivityText(text)
+          }
+        ]
+      : [];
   }
 
   if (isCommandExecutionItem(item) && item.command) {
-    return {
-      ...base,
-      kind: "system",
-      text: `Command: ${item.command}${item.aggregatedOutput ? `\n${item.aggregatedOutput}` : ""}`
-    };
+    return [
+      {
+        ...base,
+        kind: "system",
+        text: item.command,
+        summary: summarizeCommand(item.command),
+        detail: item.aggregatedOutput?.trim() || null
+      }
+    ];
   }
 
   if (isFileChangeItem(item)) {
-    return {
-      ...base,
-      kind: "system",
-      text: `File changes proposed: ${item.changes?.length ?? 0}`
-    };
+    return buildFileChangeEvents(
+      {
+        ...base,
+        kind: "system"
+      },
+      item.changes
+    );
   }
 
-  return null;
+  return [];
 };
 
 const mapCommandApprovalDecisions = (value: unknown): ApprovalDecision[] => {

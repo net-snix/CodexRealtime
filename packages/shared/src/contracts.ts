@@ -179,6 +179,11 @@ export interface TimelineEvent {
   kind: "user" | "assistant" | "commentary" | "system";
   text: string;
   createdAt: string;
+  summary?: string | null;
+  detail?: string | null;
+  path?: string | null;
+  additions?: number | null;
+  deletions?: number | null;
 }
 
 export interface TimelinePlanStep {

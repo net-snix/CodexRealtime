@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type KeyboardEventHandler } from "react";
 import type {
   RealtimeState,
   RealtimeTranscriptEntry,
-  TimelineEvent,
   TimelineState,
   TurnStartRequest,
   VoiceState,
@@ -13,6 +12,7 @@ import type {
   WorkspaceState
 } from "@shared";
 import { shouldSubmitComposerKey } from "../composer-shortcuts";
+import { presentTimelineEvent } from "../timeline-presenter";
 
 interface TimelineProps {
   timelineState: TimelineState;
@@ -88,89 +88,6 @@ const voiceStripLabel = (
   return "Voice idle";
 };
 
-type EventPresentation = {
-  badge: string;
-  tone: "user" | "assistant" | "commentary" | "tool" | "system" | "plan" | "patch";
-  title: string;
-  body: string | null;
-  monospace?: boolean;
-  lowOpacity?: boolean;
-};
-
-const getEventPresentation = (event: TimelineEvent): EventPresentation => {
-  if (event.kind === "user") {
-    return {
-      badge: "You",
-      tone: "user",
-      title: event.text,
-      body: null
-    };
-  }
-
-  if (event.kind === "assistant") {
-    return {
-      badge: "Codex",
-      tone: "assistant",
-      title: event.text,
-      body: null
-    };
-  }
-
-  if (event.kind === "commentary") {
-    if (event.text.startsWith("Plan update:")) {
-      return {
-        badge: "Plan",
-        tone: "plan",
-        title: event.text.replace("Plan update:", "").trim(),
-        body: null,
-        lowOpacity: true
-      };
-    }
-
-    return {
-      badge: "Note",
-      tone: "commentary",
-      title: event.text,
-      body: null,
-      lowOpacity: true
-    };
-  }
-
-  if (event.text.startsWith("Command:")) {
-    const [commandLine, ...outputLines] = event.text.split("\n");
-
-    return {
-      badge: "Tool",
-      tone: "tool",
-      title: commandLine.replace("Command:", "").trim(),
-      body: outputLines.join("\n").trim() || null,
-      monospace: true,
-      lowOpacity: true
-    };
-  }
-
-  if (event.text.startsWith("File changes proposed:")) {
-    return {
-      badge: "Patch",
-      tone: "patch",
-      title: event.text.replace("File changes proposed:", "").trim() + " files changed",
-      body: null,
-      lowOpacity: true
-    };
-  }
-
-  return {
-    badge: "System",
-    tone: "system",
-    title: event.text,
-    body: null,
-    lowOpacity: true
-  };
-};
-
-const getEventMetaLabel = (createdAt: string) =>
-  createdAt === "Thread history" ? null : createdAt;
-
 const buildReasoningOptions = (
   selectedEffort: WorkerReasoningEffort,
   supportedEfforts: WorkerReasoningEffort[]
@@ -215,6 +132,7 @@ export function Timeline({
   const visibleTranscript = liveTranscript.slice(-4).reverse();
   const latestTranscript = visibleTranscript[0] ?? null;
   const orderedEvents = timelineState.events;
+  const isWorkingLogMode = timelineState.isRunning || isResolvingRequests;
   const streamRef = useRef<HTMLDivElement | null>(null);
   const defaultModel =
     workerSettingsState.models.find((model) => model.isDefault) ??
@@ -317,36 +235,52 @@ export function Timeline({
 
       {hasWorkspace ? (
         orderedEvents.length > 0 ? (
-          <div ref={streamRef} className="timeline-stream timeline-stream-log">
+          <div
+            ref={streamRef}
+            className={`timeline-stream timeline-stream-log ${
+              isWorkingLogMode ? "timeline-stream-log-active" : ""
+            }`}
+          >
             {orderedEvents.map((event) => {
-              const presentation = getEventPresentation(event);
-              const metaLabel = getEventMetaLabel(event.createdAt);
+              const presentation = presentTimelineEvent(event, isWorkingLogMode);
 
-              return (
-                <article
-                  key={event.id}
-                  className={`timeline-log-item timeline-log-item-${presentation.tone} ${
-                    presentation.lowOpacity ? "timeline-log-item-muted" : ""
-                  }`}
-                >
-                  <div className="timeline-log-body">
-                    <div className="timeline-log-head">
-                      <span className="timeline-log-badge">{presentation.badge}</span>
-                      {metaLabel ? <span className="timeline-log-time">{metaLabel}</span> : null}
-                    </div>
+              if (presentation.variant === "activity") {
+                return (
+                  <div
+                    key={event.id}
+                    className={`timeline-activity-item timeline-activity-item-${presentation.tone}`}
+                  >
+                    {presentation.badge ? (
+                      <span className="timeline-activity-badge">{presentation.badge}</span>
+                    ) : null}
                     <p
                       className={
                         presentation.monospace
-                          ? "timeline-log-title timeline-log-title-code"
-                          : "timeline-log-title"
+                          ? "timeline-activity-copy timeline-activity-copy-code"
+                          : "timeline-activity-copy"
                       }
                     >
                       {presentation.title}
                     </p>
-                    {presentation.body ? (
-                      <pre className="timeline-log-output">{presentation.body}</pre>
+                    {presentation.metaLabel ? (
+                      <span className="timeline-activity-meta">{presentation.metaLabel}</span>
                     ) : null}
                   </div>
+                );
+              }
+
+              return (
+                <article key={event.id} className={`timeline-message timeline-message-${presentation.tone}`}>
+                  <div className="timeline-message-head">
+                    {presentation.badge ? (
+                      <span className="timeline-message-badge">{presentation.badge}</span>
+                    ) : null}
+                    {presentation.metaLabel ? (
+                      <span className="timeline-message-meta">{presentation.metaLabel}</span>
+                    ) : null}
+                  </div>
+                  <p className="timeline-message-copy">{presentation.title}</p>
+                  {presentation.body ? <pre className="timeline-message-output">{presentation.body}</pre> : null}
                 </article>
               );
             })}
