@@ -158,6 +158,7 @@ export function Timeline({
   const hasLiveVoice = isVoiceActive || realtimeState.status !== "idle" || liveTranscript.length > 0;
   const visibleTranscript = liveTranscript.slice(-4).reverse();
   const latestTranscript = visibleTranscript[0] ?? null;
+  const orderedEvents = [...timelineState.events].reverse();
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -226,9 +227,9 @@ export function Timeline({
       ) : null}
 
       {hasWorkspace ? (
-        timelineState.events.length > 0 ? (
+        orderedEvents.length > 0 ? (
           <div className="timeline-stream timeline-stream-log">
-            {timelineState.events.map((event) => {
+            {orderedEvents.map((event) => {
               const presentation = getEventPresentation(event);
               const metaLabel = getEventMetaLabel(event.createdAt);
 
