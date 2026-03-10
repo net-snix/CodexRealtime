@@ -61,6 +61,9 @@ export default function App() {
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
   const currentWorkspaceId = currentProject?.id ?? null;
   const currentThreadId = currentProject?.currentThreadId ?? null;
+  const workerSettingsKey = currentWorkspaceId
+    ? `${currentWorkspaceId}:${currentThreadId ?? "draft"}`
+    : "global";
   const {
     settingsState: workerSettingsState,
     attachments: workerAttachments,
@@ -70,7 +73,7 @@ export default function App() {
     pickAttachments: pickWorkerAttachments,
     removeAttachment: removeWorkerAttachment,
     clearAttachments: clearWorkerAttachments
-  } = useWorkerSettings(currentWorkspaceId);
+  } = useWorkerSettings(workerSettingsKey);
   const [timelineState, setTimelineState] = useState<TimelineState>(emptyTimelineState);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);

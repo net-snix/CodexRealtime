@@ -20,13 +20,13 @@ import type {
 } from "@shared";
 import { codexBridge } from "./codex-bridge";
 import {
-  DEFAULT_WORKER_SETTINGS,
   buildWorkerInputs,
+  getSelectedWorkerModel,
   mapWorkerModel,
-  normalizeWorkerSettings,
   resolveWorkerSettings,
   supportsImageAttachments,
-  toWorkerAttachment
+  toWorkerAttachment,
+  workerSettingsFromConfig
 } from "./worker-settings";
 import {
   applyBridgeNotification,
@@ -48,8 +48,16 @@ type PersistedWorkspace = WorkspaceSummary & {
 
 type PersistedState = {
   currentWorkspaceId: string | null;
-  workerSettings: WorkerExecutionSettings;
   workspaces: Record<string, PersistedWorkspace>;
+};
+
+type ConfigReadResult = {
+  config?: {
+    model?: string | null;
+    model_reasoning_effort?: WorkerExecutionSettings["reasoningEffort"] | null;
+    approval_policy?: WorkerExecutionSettings["approvalPolicy"] | null;
+    service_tier?: "fast" | "flex" | null;
+  };
 };
 
 type ThreadListResult = {
@@ -75,7 +83,6 @@ type ModelListResult = {
 
 const EMPTY_STATE: PersistedState = {
   currentWorkspaceId: null,
-  workerSettings: DEFAULT_WORKER_SETTINGS,
   workspaces: {}
 };
 
@@ -244,6 +251,8 @@ class WorkspaceService {
   private activeTurnId: string | null = null;
   private readonly threadChangeCache = new Map<string, ThreadChangeSummary | null>();
   private workerModelsCache: WorkerModelOption[] | null = null;
+  private readonly workerSettingsByThread = new Map<string, WorkerExecutionSettings>();
+  private readonly workerDraftSettingsByWorkspace = new Map<string, WorkerExecutionSettings>();
 
   constructor() {
     codexBridge.on("notification", (payload: NotificationPayload) => {
@@ -280,11 +289,11 @@ class WorkspaceService {
   }
 
   async getWorkerSettingsState(): Promise<WorkerSettingsState> {
-    const persisted = this.readState();
     const models = await this.loadWorkerModels().catch(() => []);
+    const settings = await this.resolveActiveWorkerSettings(models);
 
     return {
-      settings: resolveWorkerSettings(persisted.workerSettings, models),
+      settings,
       models
     };
   }
@@ -292,14 +301,30 @@ class WorkspaceService {
   async updateWorkerSettings(
     patch: Partial<WorkerExecutionSettings>
   ): Promise<WorkerSettingsState> {
+    const models = await this.loadWorkerModels().catch(() => []);
+    const currentSettings = await this.resolveActiveWorkerSettings(models);
+    const nextSettings = resolveWorkerSettings(
+      {
+        ...currentSettings,
+        ...patch
+      },
+      models
+    );
     const persisted = this.readState();
-    persisted.workerSettings = normalizeWorkerSettings({
-      ...persisted.workerSettings,
-      ...patch
-    });
-    this.writeState(persisted);
+    const workspace = persisted.currentWorkspaceId
+      ? persisted.workspaces[persisted.currentWorkspaceId]
+      : null;
 
-    return this.getWorkerSettingsState();
+    if (workspace?.threadId) {
+      this.workerSettingsByThread.set(workspace.threadId, nextSettings);
+    } else if (workspace) {
+      this.workerDraftSettingsByWorkspace.set(workspace.id, nextSettings);
+    }
+
+    return {
+      settings: nextSettings,
+      models
+    };
   }
 
   async pickWorkerAttachments(): Promise<WorkerAttachment[]> {
@@ -464,24 +489,28 @@ class WorkspaceService {
       throw new Error("Current workspace is missing.");
     }
 
+    const hadThread = Boolean(workspace.threadId);
+    const models = await this.loadWorkerModels().catch(() => []);
+    const settings = await this.resolveWorkerSettingsForWorkspace(workspace, models);
+    const selectedModel = getSelectedWorkerModel(settings, models);
+    const input = buildWorkerInputs(
+      trimmedPrompt,
+      request.attachments,
+      supportsImageAttachments(selectedModel?.model ?? null, models)
+    );
     const threadId = await this.ensureThread(workspace);
     workspace.threadId = threadId;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
     this.liveTimelineState = await this.hydrateLiveTimeline(threadId);
-
-    const models = await this.loadWorkerModels().catch(() => []);
-    const settings = resolveWorkerSettings(persisted.workerSettings, models);
-    const input = buildWorkerInputs(
-      trimmedPrompt,
-      request.attachments,
-      supportsImageAttachments(settings.model, models)
-    );
-
     const started = (await codexBridge.startTurn(threadId, input, settings)) as {
       turn?: { id?: string };
     };
+    if (!hadThread) {
+      this.workerSettingsByThread.set(threadId, settings);
+      this.workerDraftSettingsByWorkspace.delete(workspace.id);
+    }
     this.activeTurnId = started.turn?.id ?? this.activeTurnId;
     this.liveTimelineState = {
       ...this.ensureLiveTimeline(threadId),
@@ -771,6 +800,41 @@ class WorkspaceService {
     return models;
   }
 
+  private async readConfigWorkerSettings(cwd?: string | null): Promise<WorkerExecutionSettings> {
+    try {
+      await codexBridge.start();
+      const result = (await codexBridge.readConfig(cwd ?? null)) as ConfigReadResult;
+      return workerSettingsFromConfig(result.config);
+    } catch {
+      return workerSettingsFromConfig(null);
+    }
+  }
+
+  private async resolveWorkerSettingsForWorkspace(
+    workspace: PersistedWorkspace | null,
+    models: WorkerModelOption[]
+  ): Promise<WorkerExecutionSettings> {
+    const configSettings = await this.readConfigWorkerSettings(workspace?.path ?? process.cwd());
+    const threadSettings = workspace?.threadId
+      ? this.workerSettingsByThread.get(workspace.threadId) ?? null
+      : workspace
+        ? this.workerDraftSettingsByWorkspace.get(workspace.id) ?? null
+        : null;
+
+    return resolveWorkerSettings(threadSettings ?? configSettings, models);
+  }
+
+  private async resolveActiveWorkerSettings(
+    models: WorkerModelOption[]
+  ): Promise<WorkerExecutionSettings> {
+    const persisted = this.readState();
+    const workspace = persisted.currentWorkspaceId
+      ? persisted.workspaces[persisted.currentWorkspaceId] ?? null
+      : null;
+
+    return this.resolveWorkerSettingsForWorkspace(workspace, models);
+  }
+
   private listRecentWorkspaces(state: PersistedState): PersistedWorkspace[] {
     return Object.values(state.workspaces)
       .sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt))
@@ -784,13 +848,11 @@ class WorkspaceService {
 
       return {
         currentWorkspaceId: parsed.currentWorkspaceId ?? null,
-        workerSettings: normalizeWorkerSettings(parsed.workerSettings),
         workspaces: parsed.workspaces ?? {}
       };
     } catch {
       return {
         currentWorkspaceId: EMPTY_STATE.currentWorkspaceId,
-        workerSettings: { ...EMPTY_STATE.workerSettings },
         workspaces: {}
       };
     }

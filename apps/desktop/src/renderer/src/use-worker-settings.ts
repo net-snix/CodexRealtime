@@ -30,7 +30,7 @@ const mergeAttachments = (
   return [...merged.values()];
 };
 
-export function useWorkerSettings(workspaceKey: string | null) {
+export function useWorkerSettings(contextKey: string | null) {
   const [settingsState, setSettingsState] = useState<WorkerSettingsState>(emptyState);
   const [attachments, setAttachments] = useState<WorkerAttachment[]>([]);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -53,11 +53,11 @@ export function useWorkerSettings(workspaceKey: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [workspaceKey]);
+  }, [contextKey]);
 
   useEffect(() => {
     setAttachments([]);
-  }, [workspaceKey]);
+  }, [contextKey]);
 
   const updateSettings = async (patch: Partial<WorkerExecutionSettings>) => {
     setIsUpdating(true);

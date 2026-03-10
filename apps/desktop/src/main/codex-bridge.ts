@@ -122,6 +122,15 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async readConfig(cwd?: string | null) {
+    await this.start();
+
+    return this.request("config/read", {
+      includeLayers: false,
+      cwd: cwd ?? null
+    });
+  }
+
   async startTurn(
     threadId: string,
     input: unknown[],

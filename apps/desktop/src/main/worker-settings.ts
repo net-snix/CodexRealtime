@@ -1,6 +1,7 @@
 import { basename, extname } from "node:path";
 import type {
   WorkerAttachment,
+  WorkerApprovalPolicy,
   WorkerExecutionSettings,
   WorkerModelOption,
   WorkerReasoningEffort
@@ -17,6 +18,13 @@ type RawModel = {
     reasoningEffort?: WorkerReasoningEffort;
   }>;
   defaultReasoningEffort?: WorkerReasoningEffort;
+};
+
+type RawConfig = {
+  model?: string | null;
+  model_reasoning_effort?: WorkerReasoningEffort | null;
+  approval_policy?: WorkerApprovalPolicy | null;
+  service_tier?: "fast" | "flex" | null;
 };
 
 type WorkerInputItem =
@@ -67,6 +75,16 @@ export const normalizeWorkerSettings = (
   approvalPolicy: value?.approvalPolicy ?? "untrusted"
 });
 
+export const workerSettingsFromConfig = (
+  value: RawConfig | null | undefined
+): WorkerExecutionSettings =>
+  normalizeWorkerSettings({
+    model: value?.model ?? null,
+    reasoningEffort: value?.model_reasoning_effort ?? FALLBACK_REASONING_EFFORT,
+    approvalPolicy: value?.approval_policy ?? "untrusted",
+    fastMode: value?.service_tier === "fast"
+  });
+
 export const mapWorkerModel = (model: RawModel): WorkerModelOption | null => {
   if (!model.id || !model.model || !model.displayName) {
     return null;
@@ -95,10 +113,7 @@ export const resolveWorkerSettings = (
   settings: WorkerExecutionSettings,
   models: WorkerModelOption[]
 ): WorkerExecutionSettings => {
-  const defaultModel = models.find((entry) => entry.isDefault) ?? models[0] ?? null;
-  const selectedModel =
-    models.find((entry) => entry.model === settings.model || entry.id === settings.model) ??
-    defaultModel;
+  const selectedModel = getSelectedWorkerModel(settings, models);
   const supportedReasoningEfforts =
     selectedModel?.supportedReasoningEfforts.length
       ? selectedModel.supportedReasoningEfforts
@@ -108,22 +123,36 @@ export const resolveWorkerSettings = (
     : selectedModel?.defaultReasoningEffort ?? FALLBACK_REASONING_EFFORT;
 
   return {
-    model: selectedModel?.model ?? settings.model,
+    model: settings.model,
     reasoningEffort,
     fastMode: settings.fastMode,
     approvalPolicy: settings.approvalPolicy
   };
 };
 
+export const getSelectedWorkerModel = (
+  settings: WorkerExecutionSettings,
+  models: WorkerModelOption[]
+) => {
+  const defaultModel = models.find((entry) => entry.isDefault) ?? models[0] ?? null;
+
+  if (!settings.model) {
+    return defaultModel;
+  }
+
+  return (
+    models.find((entry) => entry.model === settings.model || entry.id === settings.model) ??
+    defaultModel
+  );
+};
+
 export const supportsImageAttachments = (
   modelName: string | null,
   models: WorkerModelOption[]
 ) => {
-  if (!modelName) {
-    return false;
-  }
-
-  return models.some((entry) => entry.model === modelName && entry.supportsImageInput);
+  return Boolean(
+    models.find((entry) => entry.model === modelName || entry.id === modelName)?.supportsImageInput
+  );
 };
 
 export const isImagePath = (value: string) =>

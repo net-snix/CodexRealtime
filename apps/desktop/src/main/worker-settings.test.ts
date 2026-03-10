@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildWorkerInputs,
   resolveWorkerSettings,
-  supportsImageAttachments
+  supportsImageAttachments,
+  workerSettingsFromConfig
 } from "./worker-settings";
 
 describe("worker-settings", () => {
@@ -73,5 +74,21 @@ describe("worker-settings", () => {
       { type: "mention", name: "spec.md", path: "/tmp/spec.md" },
       { type: "text", text: "fix this", text_elements: [] }
     ]);
+  });
+
+  it("maps codex config defaults into worker settings", () => {
+    expect(
+      workerSettingsFromConfig({
+        model: "gpt-5.4",
+        model_reasoning_effort: "xhigh",
+        approval_policy: "never",
+        service_tier: "fast"
+      })
+    ).toEqual({
+      model: "gpt-5.4",
+      reasoningEffort: "xhigh",
+      approvalPolicy: "never",
+      fastMode: true
+    });
   });
 });
