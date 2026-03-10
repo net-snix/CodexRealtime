@@ -13,6 +13,9 @@ const WORKSPACE_OPEN_CURRENT = "workspace:open-current";
 const WORKSPACE_SELECT = "workspace:select";
 const THREAD_SELECT = "thread:select";
 const TIMELINE_GET_STATE = "timeline:get-state";
+const WORKER_SETTINGS_GET = "worker-settings:get";
+const WORKER_SETTINGS_UPDATE = "worker-settings:update";
+const WORKER_ATTACHMENTS_PICK = "worker-attachments:pick";
 const TURN_START = "turn:start";
 const TURN_INTERRUPT = "turn:interrupt";
 const APPROVAL_RESPOND = "approval:respond";
@@ -61,8 +64,16 @@ export const registerIpcHandlers = () => {
   );
   ipcMain.removeHandler(TIMELINE_GET_STATE);
   ipcMain.handle(TIMELINE_GET_STATE, () => workspaceService.getTimelineState());
+  ipcMain.removeHandler(WORKER_SETTINGS_GET);
+  ipcMain.handle(WORKER_SETTINGS_GET, () => workspaceService.getWorkerSettingsState());
+  ipcMain.removeHandler(WORKER_SETTINGS_UPDATE);
+  ipcMain.handle(WORKER_SETTINGS_UPDATE, (_event, patch) =>
+    workspaceService.updateWorkerSettings(patch)
+  );
+  ipcMain.removeHandler(WORKER_ATTACHMENTS_PICK);
+  ipcMain.handle(WORKER_ATTACHMENTS_PICK, () => workspaceService.pickWorkerAttachments());
   ipcMain.removeHandler(TURN_START);
-  ipcMain.handle(TURN_START, (_event, prompt: string) => workspaceService.startTurn(prompt));
+  ipcMain.handle(TURN_START, (_event, request) => workspaceService.startTurn(request));
   ipcMain.removeHandler(TURN_INTERRUPT);
   ipcMain.handle(TURN_INTERRUPT, () => workspaceService.interruptActiveTurn());
   ipcMain.removeHandler(APPROVAL_RESPOND);

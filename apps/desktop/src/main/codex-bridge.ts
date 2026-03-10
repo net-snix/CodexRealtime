@@ -5,7 +5,8 @@ import type {
   CodexAccountSummary,
   CodexFeatureFlags,
   RealtimeAudioChunk,
-  SessionState
+  SessionState,
+  WorkerExecutionSettings
 } from "@shared";
 
 type JsonRpcMessage = {
@@ -111,18 +112,30 @@ class CodexBridge extends EventEmitter {
     });
   }
 
-  async startTurn(threadId: string, prompt: string) {
+  async listModels(cursor?: string | null) {
+    await this.start();
+
+    return this.request("model/list", {
+      cursor: cursor ?? null,
+      limit: 100,
+      includeHidden: false
+    });
+  }
+
+  async startTurn(
+    threadId: string,
+    input: unknown[],
+    settings: WorkerExecutionSettings
+  ) {
     await this.start();
 
     return this.request("turn/start", {
       threadId,
-      input: [
-        {
-          type: "text",
-          text: prompt,
-          text_elements: []
-        }
-      ]
+      input,
+      approvalPolicy: settings.approvalPolicy,
+      model: settings.model,
+      serviceTier: settings.fastMode ? "fast" : "flex",
+      effort: settings.reasoningEffort
     });
   }
 

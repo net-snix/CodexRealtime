@@ -26,6 +26,22 @@
     grid-template-columns: minmax(0, 1fr) 84px;
   }
 
+  .timeline-worker-controls {
+    gap: 8px;
+  }
+
+  .timeline-worker-select-wrap,
+  .timeline-worker-select-wrap-narrow,
+  .timeline-worker-select-wrap-approval {
+    flex: 1 1 160px;
+  }
+
+  .timeline-worker-select,
+  .timeline-worker-button,
+  .timeline-worker-toggle {
+    width: 100%;
+  }
+
   .voice-bar {
     grid-template-columns: 1fr;
     justify-items: stretch;

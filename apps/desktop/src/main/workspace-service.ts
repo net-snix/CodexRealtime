@@ -9,11 +9,25 @@ import type {
   ThreadChangeSummary,
   ThreadSummary,
   TimelineState,
+  TurnStartRequest,
+  WorkerAttachment,
+  WorkerExecutionSettings,
+  WorkerModelOption,
+  WorkerSettingsState,
   WorkspaceProject,
   WorkspaceState,
   WorkspaceSummary
 } from "@shared";
 import { codexBridge } from "./codex-bridge";
+import {
+  DEFAULT_WORKER_SETTINGS,
+  buildWorkerInputs,
+  mapWorkerModel,
+  normalizeWorkerSettings,
+  resolveWorkerSettings,
+  supportsImageAttachments,
+  toWorkerAttachment
+} from "./worker-settings";
 import {
   applyBridgeNotification,
   applyBridgeRequest,
@@ -34,6 +48,7 @@ type PersistedWorkspace = WorkspaceSummary & {
 
 type PersistedState = {
   currentWorkspaceId: string | null;
+  workerSettings: WorkerExecutionSettings;
   workspaces: Record<string, PersistedWorkspace>;
 };
 
@@ -53,8 +68,14 @@ type ThreadReadResult = {
   };
 };
 
+type ModelListResult = {
+  data?: unknown[];
+  nextCursor?: string | null;
+};
+
 const EMPTY_STATE: PersistedState = {
   currentWorkspaceId: null,
+  workerSettings: DEFAULT_WORKER_SETTINGS,
   workspaces: {}
 };
 
@@ -222,6 +243,7 @@ class WorkspaceService {
   private liveTimelineState = emptyTimelineState();
   private activeTurnId: string | null = null;
   private readonly threadChangeCache = new Map<string, ThreadChangeSummary | null>();
+  private workerModelsCache: WorkerModelOption[] | null = null;
 
   constructor() {
     codexBridge.on("notification", (payload: NotificationPayload) => {
@@ -255,6 +277,49 @@ class WorkspaceService {
       threads: currentProject?.threads ?? [],
       projects
     };
+  }
+
+  async getWorkerSettingsState(): Promise<WorkerSettingsState> {
+    const persisted = this.readState();
+    const models = await this.loadWorkerModels().catch(() => []);
+
+    return {
+      settings: resolveWorkerSettings(persisted.workerSettings, models),
+      models
+    };
+  }
+
+  async updateWorkerSettings(
+    patch: Partial<WorkerExecutionSettings>
+  ): Promise<WorkerSettingsState> {
+    const persisted = this.readState();
+    persisted.workerSettings = normalizeWorkerSettings({
+      ...persisted.workerSettings,
+      ...patch
+    });
+    this.writeState(persisted);
+
+    return this.getWorkerSettingsState();
+  }
+
+  async pickWorkerAttachments(): Promise<WorkerAttachment[]> {
+    const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const persisted = this.readState();
+    const defaultPath = persisted.currentWorkspaceId
+      ? persisted.workspaces[persisted.currentWorkspaceId]?.path
+      : process.cwd();
+    const picked = await dialog.showOpenDialog({
+      title: "Attach files",
+      defaultPath,
+      properties: ["openFile", "multiSelections"]
+    });
+    restoreWindowFocus(parentWindow);
+
+    if (picked.canceled || picked.filePaths.length === 0) {
+      return [];
+    }
+
+    return picked.filePaths.map(toWorkerAttachment);
   }
 
   async openWorkspace(): Promise<WorkspaceState> {
@@ -380,8 +445,8 @@ class WorkspaceService {
     return timeline;
   }
 
-  async startTurn(prompt: string): Promise<TimelineState> {
-    const trimmedPrompt = prompt.trim();
+  async startTurn(request: TurnStartRequest): Promise<TimelineState> {
+    const trimmedPrompt = request.prompt.trim();
 
     if (!trimmedPrompt) {
       return this.getTimelineState();
@@ -406,7 +471,15 @@ class WorkspaceService {
     this.writeState(persisted);
     this.liveTimelineState = await this.hydrateLiveTimeline(threadId);
 
-    const started = (await codexBridge.startTurn(threadId, trimmedPrompt)) as {
+    const models = await this.loadWorkerModels().catch(() => []);
+    const settings = resolveWorkerSettings(persisted.workerSettings, models);
+    const input = buildWorkerInputs(
+      trimmedPrompt,
+      request.attachments,
+      supportsImageAttachments(settings.model, models)
+    );
+
+    const started = (await codexBridge.startTurn(threadId, input, settings)) as {
       turn?: { id?: string };
     };
     this.activeTurnId = started.turn?.id ?? this.activeTurnId;
@@ -445,14 +518,14 @@ class WorkspaceService {
     this.writeState(persisted);
 
     if (!this.activeTurnId) {
-      return this.startTurn(trimmedPrompt);
+      return this.startTurn({ prompt: trimmedPrompt, attachments: [] });
     }
 
     try {
       await codexBridge.steerTurn(threadId, this.activeTurnId, trimmedPrompt);
     } catch {
       this.activeTurnId = null;
-      return this.startTurn(trimmedPrompt);
+      return this.startTurn({ prompt: trimmedPrompt, attachments: [] });
     }
 
     this.liveTimelineState = {
@@ -666,6 +739,38 @@ class WorkspaceService {
     return summarizeThreadChanges(result.thread?.turns ?? []);
   }
 
+  private async loadWorkerModels(): Promise<WorkerModelOption[]> {
+    if (this.workerModelsCache) {
+      return this.workerModelsCache;
+    }
+
+    await codexBridge.start();
+
+    const models: WorkerModelOption[] = [];
+    let cursor: string | null = null;
+
+    do {
+      const result = (await codexBridge.listModels(cursor)) as ModelListResult;
+
+      for (const entry of result.data ?? []) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const model = mapWorkerModel(entry as Record<string, unknown>);
+
+        if (model) {
+          models.push(model);
+        }
+      }
+
+      cursor = typeof result.nextCursor === "string" ? result.nextCursor : null;
+    } while (cursor);
+
+    this.workerModelsCache = models;
+    return models;
+  }
+
   private listRecentWorkspaces(state: PersistedState): PersistedWorkspace[] {
     return Object.values(state.workspaces)
       .sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt))
@@ -679,10 +784,15 @@ class WorkspaceService {
 
       return {
         currentWorkspaceId: parsed.currentWorkspaceId ?? null,
+        workerSettings: normalizeWorkerSettings(parsed.workerSettings),
         workspaces: parsed.workspaces ?? {}
       };
     } catch {
-      return EMPTY_STATE;
+      return {
+        currentWorkspaceId: EMPTY_STATE.currentWorkspaceId,
+        workerSettings: { ...EMPTY_STATE.workerSettings },
+        workspaces: {}
+      };
     }
   }
 

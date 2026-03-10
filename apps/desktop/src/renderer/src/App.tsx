@@ -4,12 +4,14 @@ import type {
   AppInfo,
   SessionState,
   TimelineState,
+  TurnStartRequest,
   WorkspaceState
 } from "@shared";
 import { LeftRail } from "./components/LeftRail";
 import { RightPane } from "./components/RightPane";
 import { Timeline } from "./components/Timeline";
 import { useRealtimeVoice } from "./use-realtime-voice";
+import { useWorkerSettings } from "./use-worker-settings";
 import { VoiceBar } from "./components/VoiceBar";
 
 type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
@@ -59,6 +61,16 @@ export default function App() {
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
   const currentWorkspaceId = currentProject?.id ?? null;
   const currentThreadId = currentProject?.currentThreadId ?? null;
+  const {
+    settingsState: workerSettingsState,
+    attachments: workerAttachments,
+    isUpdating: isUpdatingWorkerSettings,
+    isPickingAttachments,
+    updateSettings: updateWorkerSettings,
+    pickAttachments: pickWorkerAttachments,
+    removeAttachment: removeWorkerAttachment,
+    clearAttachments: clearWorkerAttachments
+  } = useWorkerSettings(currentWorkspaceId);
   const [timelineState, setTimelineState] = useState<TimelineState>(emptyTimelineState);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [isStartingTurn, setIsStartingTurn] = useState(false);
@@ -287,14 +299,15 @@ export default function App() {
     setWorkspaceState(nextWorkspaceState);
   };
 
-  const handleStartTurn = async (prompt: string) => {
+  const handleStartTurn = async (request: TurnStartRequest) => {
     setIsStartingTurn(true);
 
     try {
-      const nextTimeline = await window.appBridge.startTurn(prompt);
+      const nextTimeline = await window.appBridge.startTurn(request);
       setTimelineState(nextTimeline);
       const nextWorkspaceState = await window.appBridge.getWorkspaceState();
       setWorkspaceState(nextWorkspaceState);
+      clearWorkerAttachments();
     } finally {
       setIsStartingTurn(false);
     }
@@ -427,6 +440,13 @@ export default function App() {
           voiceState={voiceState}
           isVoiceActive={isVoiceActive}
           liveTranscript={liveTranscript}
+          workerSettingsState={workerSettingsState}
+          workerAttachments={workerAttachments}
+          isUpdatingWorkerSettings={isUpdatingWorkerSettings}
+          isPickingAttachments={isPickingAttachments}
+          onUpdateWorkerSettings={updateWorkerSettings}
+          onPickAttachments={pickWorkerAttachments}
+          onRemoveAttachment={removeWorkerAttachment}
         />
         <RightPane
           activePane={activePane}

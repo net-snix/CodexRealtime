@@ -92,6 +92,9 @@ const isCommandExecutionItem = (item: ThreadItem): item is CommandExecutionItem 
   item.type === "commandExecution";
 const isFileChangeItem = (item: ThreadItem): item is FileChangeItem => item.type === "fileChange";
 
+const MAX_TIMELINE_EVENTS = 120;
+const MAX_HISTORY_TURNS = 48;
+
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
 
@@ -151,22 +154,23 @@ export const markUserInputSubmitting = (
 };
 
 export const buildTimelineState = (threadId: string, turns: TurnRecord[]): TimelineState => {
-  const events = turns.flatMap((turn) =>
+  const relevantTurns = turns.slice(-MAX_HISTORY_TURNS);
+  const events = relevantTurns.flatMap((turn) =>
     (turn.items ?? [])
       .map((item) => toTimelineEvent(item, turn.id ?? "turn"))
       .filter((event): event is TimelineEvent => event !== null)
   );
-  const activeTurn = turns.find((turn) => turn.status === "inProgress") ?? null;
+  const activeTurn = [...relevantTurns].reverse().find((turn) => turn.status === "inProgress") ?? null;
 
   return {
     threadId,
-    events,
+    events: trimTimelineEvents(events),
     planSteps: [],
     diff: "",
     approvals: [],
     userInputs: [],
     isRunning: Boolean(activeTurn),
-    statusLabel: activeTurn ? "Working" : turns.at(-1)?.status ?? "Idle"
+    statusLabel: activeTurn ? "Working" : relevantTurns.at(-1)?.status ?? "Idle"
   };
 };
 
@@ -492,11 +496,16 @@ const upsertTimelineEvent = (state: TimelineState, event: TimelineEvent) => {
 
   if (index >= 0) {
     state.events[index] = event;
+    state.events = trimTimelineEvents(state.events);
     return;
   }
 
   state.events.push(event);
+  state.events = trimTimelineEvents(state.events);
 };
+
+const trimTimelineEvents = (events: TimelineEvent[]) =>
+  events.length > MAX_TIMELINE_EVENTS ? events.slice(-MAX_TIMELINE_EVENTS) : events;
 
 const upsertApproval = (state: TimelineState, approval: TimelineApproval) => {
   const index = state.approvals.findIndex((entry) => entry.id === approval.id);

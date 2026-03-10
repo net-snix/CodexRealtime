@@ -1,10 +1,15 @@
-import { useState, type KeyboardEventHandler } from "react";
+import { useEffect, useRef, useState, type KeyboardEventHandler } from "react";
 import type {
   RealtimeState,
   RealtimeTranscriptEntry,
   TimelineEvent,
   TimelineState,
+  TurnStartRequest,
   VoiceState,
+  WorkerApprovalPolicy,
+  WorkerExecutionSettings,
+  WorkerReasoningEffort,
+  WorkerSettingsState,
   WorkspaceState
 } from "@shared";
 
@@ -17,8 +22,42 @@ interface TimelineProps {
   voiceState: VoiceState;
   isVoiceActive: boolean;
   liveTranscript: RealtimeTranscriptEntry[];
-  onStartTurn: (prompt: string) => void | Promise<void>;
+  workerSettingsState: WorkerSettingsState;
+  workerAttachments: TurnStartRequest["attachments"];
+  isUpdatingWorkerSettings: boolean;
+  isPickingAttachments: boolean;
+  onStartTurn: (request: TurnStartRequest) => void | Promise<void>;
+  onUpdateWorkerSettings: (
+    patch: Partial<WorkerExecutionSettings>
+  ) => Promise<WorkerSettingsState>;
+  onPickAttachments: () => Promise<TurnStartRequest["attachments"]>;
+  onRemoveAttachment: (attachmentId: string) => void;
 }
+
+const REASONING_ORDER: WorkerReasoningEffort[] = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh"
+];
+
+const REASONING_LABELS: Record<WorkerReasoningEffort, string> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high"
+};
+
+const APPROVAL_OPTIONS: Array<{ value: WorkerApprovalPolicy; label: string }> = [
+  { value: "untrusted", label: "Untrusted" },
+  { value: "on-failure", label: "On failure" },
+  { value: "on-request", label: "On request" },
+  { value: "never", label: "Never" }
+];
 
 const voiceStripLabel = (
   realtimeState: RealtimeState,
@@ -131,6 +170,15 @@ const getEventPresentation = (event: TimelineEvent): EventPresentation => {
 const getEventMetaLabel = (createdAt: string) =>
   createdAt === "Thread history" ? null : createdAt;
 
+const buildReasoningOptions = (
+  selectedEffort: WorkerReasoningEffort,
+  supportedEfforts: WorkerReasoningEffort[]
+) => {
+  const allowed = new Set(supportedEfforts.length > 0 ? supportedEfforts : [selectedEffort]);
+  allowed.add(selectedEffort);
+  return REASONING_ORDER.filter((value) => allowed.has(value));
+};
+
 export function Timeline({
   timelineState,
   workspaceState,
@@ -140,7 +188,14 @@ export function Timeline({
   voiceState,
   isVoiceActive,
   liveTranscript,
-  onStartTurn
+  workerSettingsState,
+  workerAttachments,
+  isUpdatingWorkerSettings,
+  isPickingAttachments,
+  onStartTurn,
+  onUpdateWorkerSettings,
+  onPickAttachments,
+  onRemoveAttachment
 }: TimelineProps) {
   const [draft, setDraft] = useState("");
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
@@ -158,7 +213,28 @@ export function Timeline({
   const hasLiveVoice = isVoiceActive || realtimeState.status !== "idle" || liveTranscript.length > 0;
   const visibleTranscript = liveTranscript.slice(-4).reverse();
   const latestTranscript = visibleTranscript[0] ?? null;
-  const orderedEvents = [...timelineState.events].reverse();
+  const orderedEvents = timelineState.events;
+  const streamRef = useRef<HTMLDivElement | null>(null);
+  const defaultModel =
+    workerSettingsState.models.find((model) => model.isDefault) ??
+    workerSettingsState.models[0] ??
+    null;
+  const selectedModel =
+    workerSettingsState.models.find(
+      (model) => model.model === workerSettingsState.settings.model
+    ) ??
+    defaultModel;
+  const reasoningOptions = buildReasoningOptions(
+    workerSettingsState.settings.reasoningEffort,
+    selectedModel?.supportedReasoningEfforts ?? []
+  );
+  const autoModelLabel = defaultModel ? `Auto · ${defaultModel.label}` : "Auto model";
+  const attachmentNote =
+    workerAttachments.some((attachment) => attachment.kind === "image") &&
+    selectedModel &&
+    !selectedModel.supportsImageInput
+      ? "Images will be sent as file refs on this model."
+      : null;
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -167,7 +243,10 @@ export function Timeline({
       return;
     }
 
-    await onStartTurn(prompt);
+    await onStartTurn({
+      prompt,
+      attachments: workerAttachments
+    });
     setDraft("");
   };
 
@@ -177,6 +256,14 @@ export function Timeline({
       void handleSubmit();
     }
   };
+
+  useEffect(() => {
+    if (!streamRef.current) {
+      return;
+    }
+
+    streamRef.current.scrollTop = streamRef.current.scrollHeight;
+  }, [orderedEvents, latestTranscript, timelineState.isRunning, timelineState.threadId]);
 
   return (
     <section className="timeline panel stagger-2">
@@ -197,7 +284,9 @@ export function Timeline({
       {hasWorkspace && (planCount > 0 || hasDiff || hasPendingHumanGate || hasLiveVoice) ? (
         <div className="timeline-utility-strip">
           {planCount > 0 ? <span className="timeline-utility-pill">plan {planCount}</span> : null}
-          {hasDiff ? <span className="timeline-utility-pill timeline-utility-pill-warm">diff ready</span> : null}
+          {hasDiff ? (
+            <span className="timeline-utility-pill timeline-utility-pill-warm">diff ready</span>
+          ) : null}
           {approvalCount > 0 ? (
             <span className="timeline-utility-pill timeline-utility-pill-alert">
               approvals {approvalCount}
@@ -228,7 +317,7 @@ export function Timeline({
 
       {hasWorkspace ? (
         orderedEvents.length > 0 ? (
-          <div className="timeline-stream timeline-stream-log">
+          <div ref={streamRef} className="timeline-stream timeline-stream-log">
             {orderedEvents.map((event) => {
               const presentation = getEventPresentation(event);
               const metaLabel = getEventMetaLabel(event.createdAt);
@@ -276,6 +365,28 @@ export function Timeline({
       )}
 
       <div className={`timeline-composer ${!hasWorkspace ? "timeline-composer-disabled" : ""}`}>
+        {workerAttachments.length > 0 ? (
+          <div className="timeline-attachment-row">
+            {workerAttachments.map((attachment) => (
+              <div key={attachment.id} className="timeline-attachment-chip">
+                <span className="timeline-attachment-kind">{attachment.kind}</span>
+                <span className="timeline-attachment-name" title={attachment.path}>
+                  {attachment.name}
+                </span>
+                <button
+                  type="button"
+                  className="timeline-attachment-remove"
+                  onClick={() => onRemoveAttachment(attachment.id)}
+                  disabled={isStartingTurn}
+                  aria-label={`Remove ${attachment.name}`}
+                >
+                  x
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="composer-row">
           <textarea
             className="timeline-input"
@@ -295,6 +406,96 @@ export function Timeline({
             {isStartingTurn ? "Starting…" : "Send"}
           </button>
         </div>
+
+        <div className="timeline-worker-controls">
+          <button
+            type="button"
+            className="timeline-worker-button"
+            onClick={() => void onPickAttachments()}
+            disabled={!hasWorkspace || isStartingTurn || isPickingAttachments}
+          >
+            {isPickingAttachments
+              ? "Adding…"
+              : workerAttachments.length > 0
+                ? `Attach ${workerAttachments.length}`
+                : "Attach"}
+          </button>
+
+          <label className="timeline-worker-select-wrap">
+            <select
+              className="timeline-worker-select"
+              value={workerSettingsState.settings.model ?? ""}
+              onChange={(event) =>
+                void onUpdateWorkerSettings({
+                  model: event.target.value || null
+                })
+              }
+              disabled={!hasWorkspace || isUpdatingWorkerSettings}
+            >
+              <option value="">{autoModelLabel}</option>
+              {workerSettingsState.models.map((model) => (
+                <option key={model.id} value={model.model}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="timeline-worker-select-wrap timeline-worker-select-wrap-narrow">
+            <select
+              className="timeline-worker-select"
+              value={workerSettingsState.settings.reasoningEffort}
+              onChange={(event) =>
+                void onUpdateWorkerSettings({
+                  reasoningEffort: event.target.value as WorkerReasoningEffort
+                })
+              }
+              disabled={!hasWorkspace || isUpdatingWorkerSettings}
+            >
+              {reasoningOptions.map((effort) => (
+                <option key={effort} value={effort}>
+                  {REASONING_LABELS[effort]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className={`timeline-worker-toggle ${
+              workerSettingsState.settings.fastMode ? "timeline-worker-toggle-active" : ""
+            }`}
+            onClick={() =>
+              void onUpdateWorkerSettings({
+                fastMode: !workerSettingsState.settings.fastMode
+              })
+            }
+            disabled={!hasWorkspace || isUpdatingWorkerSettings || isStartingTurn}
+          >
+            Fast
+          </button>
+
+          <label className="timeline-worker-select-wrap timeline-worker-select-wrap-approval">
+            <select
+              className="timeline-worker-select"
+              value={workerSettingsState.settings.approvalPolicy}
+              onChange={(event) =>
+                void onUpdateWorkerSettings({
+                  approvalPolicy: event.target.value as WorkerApprovalPolicy
+                })
+              }
+              disabled={!hasWorkspace || isUpdatingWorkerSettings}
+            >
+              {APPROVAL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {attachmentNote ? <p className="timeline-worker-note">{attachmentNote}</p> : null}
       </div>
     </section>
   );

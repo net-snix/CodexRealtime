@@ -46,7 +46,12 @@ export interface AppBridge {
   selectWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
   selectThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
   getTimelineState: () => Promise<TimelineState>;
-  startTurn: (prompt: string) => Promise<TimelineState>;
+  getWorkerSettingsState: () => Promise<WorkerSettingsState>;
+  updateWorkerSettings: (
+    patch: Partial<WorkerExecutionSettings>
+  ) => Promise<WorkerSettingsState>;
+  pickWorkerAttachments: () => Promise<WorkerAttachment[]>;
+  startTurn: (request: TurnStartRequest) => Promise<TimelineState>;
   dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;
   interruptActiveTurn: () => Promise<TimelineState>;
   respondToApproval: (
@@ -102,6 +107,51 @@ export interface WorkspaceState {
   recentWorkspaces: WorkspaceSummary[];
   threads: ThreadSummary[];
   projects: WorkspaceProject[];
+}
+
+export type WorkerReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+export type WorkerApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
+
+export interface WorkerExecutionSettings {
+  model: string | null;
+  reasoningEffort: WorkerReasoningEffort;
+  fastMode: boolean;
+  approvalPolicy: WorkerApprovalPolicy;
+}
+
+export interface WorkerModelOption {
+  id: string;
+  model: string;
+  label: string;
+  description: string;
+  isDefault: boolean;
+  supportsImageInput: boolean;
+  supportedReasoningEfforts: WorkerReasoningEffort[];
+  defaultReasoningEffort: WorkerReasoningEffort;
+}
+
+export interface WorkerSettingsState {
+  settings: WorkerExecutionSettings;
+  models: WorkerModelOption[];
+}
+
+export interface WorkerAttachment {
+  id: string;
+  name: string;
+  path: string;
+  kind: "file" | "image";
+}
+
+export interface TurnStartRequest {
+  prompt: string;
+  attachments: WorkerAttachment[];
 }
 
 export interface TimelineState {
