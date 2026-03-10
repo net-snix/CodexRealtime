@@ -12,6 +12,7 @@ import type {
   WorkerSettingsState,
   WorkspaceState
 } from "@shared";
+import { shouldSubmitComposerKey } from "../composer-shortcuts";
 
 interface TimelineProps {
   timelineState: TimelineState;
@@ -251,7 +252,7 @@ export function Timeline({
   };
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    if (shouldSubmitComposerKey(event)) {
       event.preventDefault();
       void handleSubmit();
     }

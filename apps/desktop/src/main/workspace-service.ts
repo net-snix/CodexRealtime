@@ -40,6 +40,7 @@ import {
   type RequestPayload,
   type TurnRecord
 } from "./workspace-timeline";
+import { isThreadNotMaterializedError } from "./thread-materialization";
 
 type PersistedWorkspace = WorkspaceSummary & {
   lastOpenedAt: string;
@@ -535,7 +536,12 @@ class WorkspaceService {
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
-    this.liveTimelineState = await this.hydrateLiveTimeline(threadId);
+    this.liveTimelineState = hadThread
+      ? await this.hydrateLiveTimeline(threadId)
+      : {
+          ...emptyTimelineState(threadId),
+          statusLabel: "Starting"
+        };
     const started = (await codexBridge.startTurn(threadId, input, settings)) as {
       turn?: { id?: string };
     };
@@ -734,7 +740,22 @@ class WorkspaceService {
 
   private async readThreadTimeline(threadId: string): Promise<TimelineState> {
     await codexBridge.start();
-    const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+    let result: ThreadReadResult;
+
+    try {
+      result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+    } catch (error) {
+      if (isThreadNotMaterializedError(error)) {
+        this.activeTurnId = null;
+        return {
+          ...emptyTimelineState(threadId),
+          statusLabel: "Idle"
+        };
+      }
+
+      throw error;
+    }
+
     const turns = result.thread?.turns ?? [];
     this.activeTurnId = turns.find((turn) => turn.status === "inProgress")?.id ?? null;
     return buildTimelineState(threadId, turns);
@@ -812,7 +833,18 @@ class WorkspaceService {
 
   private async readThreadChangeSummary(threadId: string): Promise<ThreadChangeSummary | null> {
     await codexBridge.start();
-    const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+    let result: ThreadReadResult;
+
+    try {
+      result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+    } catch (error) {
+      if (isThreadNotMaterializedError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+
     return summarizeThreadChanges(result.thread?.turns ?? []);
   }
 
