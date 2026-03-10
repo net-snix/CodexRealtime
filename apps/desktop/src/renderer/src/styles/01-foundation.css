@@ -18,7 +18,7 @@
   --warning-soft: #f4ece7;
   --danger: #8d5750;
   --danger-soft: #f5e9e7;
-  --panel-radius: 28px;
+  --panel-radius: 24px;
   --shadow: 0 24px 60px rgba(28, 23, 18, 0.06), 0 2px 10px rgba(28, 23, 18, 0.04);
   font-family: "Avenir Next", "Helvetica Neue", sans-serif;
 }
@@ -87,17 +87,17 @@ select {
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 10px;
   height: 100vh;
-  padding: 18px;
+  padding: 14px;
   overflow: hidden;
 }
 
 .backdrop {
   position: absolute;
-  inset: 10px;
+  inset: 8px;
   border: 1px solid rgba(255, 255, 255, 0.65);
-  border-radius: 34px;
+  border-radius: 30px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
   pointer-events: none;
 }
@@ -106,8 +106,8 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 258px minmax(0, 1fr) 304px;
-  gap: 14px;
+  grid-template-columns: 246px minmax(0, 1fr) 292px;
+  gap: 12px;
   min-height: 0;
 }
 
@@ -121,7 +121,6 @@ select {
 }
 
 .left-rail,
-.timeline,
 .right-pane {
   overflow: auto;
 }
@@ -149,7 +148,7 @@ select {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .pane-header h2,
@@ -157,7 +156,7 @@ select {
   margin: 8px 0 0;
   color: var(--text);
   font-family: "Iowan Old Style", "Baskerville", serif;
-  font-size: 1.9rem;
+  font-size: 1.7rem;
   font-weight: 600;
   letter-spacing: -0.04em;
   line-height: 1.02;
@@ -167,12 +166,12 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 11px;
+  padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface-soft);
   color: var(--muted-strong);
-  font-size: 0.74rem;
+  font-size: 0.71rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;

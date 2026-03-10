@@ -193,28 +193,6 @@ export function Timeline({
         </div>
       </header>
 
-      <div className={`timeline-composer ${!hasWorkspace ? "timeline-composer-disabled" : ""}`}>
-        <div className="composer-row">
-          <textarea
-            className="timeline-input"
-            placeholder={hasWorkspace ? "Ask Codex" : "Open a repo first"}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={!hasWorkspace || isStartingTurn}
-            rows={3}
-          />
-          <button
-            type="button"
-            className="timeline-submit"
-            onClick={() => void handleSubmit()}
-            disabled={!hasWorkspace || isStartingTurn || draft.trim().length === 0}
-          >
-            {isStartingTurn ? "Starting…" : "Send"}
-          </button>
-        </div>
-      </div>
-
       {hasWorkspace && (planCount > 0 || hasDiff || hasPendingHumanGate || hasLiveVoice) ? (
         <div className="timeline-utility-strip">
           {planCount > 0 ? <span className="timeline-utility-pill">plan {planCount}</span> : null}
@@ -295,6 +273,28 @@ export function Timeline({
           <p>Open a repo.</p>
         </div>
       )}
+
+      <div className={`timeline-composer ${!hasWorkspace ? "timeline-composer-disabled" : ""}`}>
+        <div className="composer-row">
+          <textarea
+            className="timeline-input"
+            placeholder={hasWorkspace ? "Ask Codex" : "Open a repo first"}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!hasWorkspace || isStartingTurn}
+            rows={2}
+          />
+          <button
+            type="button"
+            className="timeline-submit"
+            onClick={() => void handleSubmit()}
+            disabled={!hasWorkspace || isStartingTurn || draft.trim().length === 0}
+          >
+            {isStartingTurn ? "Starting…" : "Send"}
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

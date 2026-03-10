@@ -1,8 +1,9 @@
 .timeline {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  gap: 12px;
-  padding: 18px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 14px;
+  overflow: hidden;
 }
 
 .timeline .pane-header {
@@ -10,11 +11,16 @@
 }
 
 .timeline .pane-header h2 {
-  margin-top: 6px;
+  margin-top: 4px;
   font-family: "Avenir Next", "Helvetica Neue", sans-serif;
-  font-size: 1.28rem;
+  font-size: 1.16rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.timeline .status-pill {
+  padding: 6px 10px;
+  font-size: 0.67rem;
 }
 
 .timeline-composer,
@@ -26,9 +32,10 @@
 }
 
 .timeline-composer {
+  grid-row: 5;
   display: grid;
-  gap: 10px;
-  padding: 10px;
+  gap: 8px;
+  padding: 8px;
   background: rgba(255, 253, 250, 0.84);
 }
 
@@ -39,20 +46,20 @@
 .composer-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 92px;
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
 }
 
 .timeline-input {
   width: 100%;
-  min-height: 78px;
-  padding: 12px 14px;
+  min-height: 64px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface-strong);
   color: var(--text);
-  font-size: 0.92rem;
-  line-height: 1.45;
+  font-size: 0.88rem;
+  line-height: 1.4;
   outline: none;
   resize: none;
 }
@@ -94,6 +101,7 @@
 }
 
 .timeline-utility-strip {
+  grid-row: 2;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -140,6 +148,7 @@
 }
 
 .timeline-voice-ribbon {
+  grid-row: 3;
   display: grid;
   gap: 4px;
   padding: 1px 2px 0;
@@ -168,6 +177,7 @@
 }
 
 .timeline-stream {
+  grid-row: 4;
   display: grid;
   min-height: 0;
   align-content: start;
@@ -175,7 +185,8 @@
 
 .timeline-stream-log {
   gap: 0;
-  padding: 6px 0;
+  height: 100%;
+  padding: 4px 0;
   background: rgba(255, 253, 250, 0.6);
   overflow: auto;
 }
@@ -183,7 +194,7 @@
 .timeline-log-item {
   position: relative;
   display: block;
-  padding: 8px 16px;
+  padding: 7px 14px;
   border-bottom: 1px solid rgba(24, 23, 20, 0.05);
 }
 
@@ -203,9 +214,9 @@
 .timeline-log-item-assistant::after {
   content: "";
   position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 8px;
+  top: 9px;
+  bottom: 9px;
+  left: 7px;
   width: 2px;
   border-radius: 999px;
 }
@@ -223,9 +234,9 @@
 .timeline-log-item-commentary,
 .timeline-log-item-plan,
 .timeline-log-item-patch {
-  padding-top: 7px;
-  padding-bottom: 7px;
-  padding-left: 30px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 28px;
 }
 
 .timeline-log-item-tool::before,
@@ -235,9 +246,9 @@
 .timeline-log-item-patch::before {
   content: "";
   position: absolute;
-  top: 9px;
-  bottom: 9px;
-  left: 16px;
+  top: 8px;
+  bottom: 8px;
+  left: 14px;
   width: 1px;
   border-radius: 999px;
   background: rgba(24, 23, 20, 0.08);
@@ -255,8 +266,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 4px;
+  gap: 6px;
+  margin-bottom: 3px;
 }
 
 .timeline-log-badge,
@@ -285,8 +296,8 @@
   margin: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.42;
+  font-size: 0.86rem;
+  line-height: 1.38;
   white-space: pre-wrap;
   word-break: break-word;
   -webkit-box-orient: vertical;
@@ -323,8 +334,8 @@
 .timeline-log-item-plan .timeline-log-title,
 .timeline-log-item-patch .timeline-log-title {
   color: var(--muted-strong);
-  font-size: 0.78rem;
-  line-height: 1.38;
+  font-size: 0.75rem;
+  line-height: 1.32;
   -webkit-line-clamp: 2;
 }
 
@@ -344,14 +355,14 @@
 
 .timeline-log-output {
   display: -webkit-box;
-  margin: 6px 0 0;
+  margin: 5px 0 0;
   overflow: hidden;
-  padding: 8px 10px;
-  border-radius: 12px;
+  padding: 7px 9px;
+  border-radius: 10px;
   background: rgba(24, 23, 20, 0.045);
   color: rgba(73, 69, 63, 0.78);
-  font-size: 0.7rem;
-  line-height: 1.42;
+  font-size: 0.68rem;
+  line-height: 1.36;
   white-space: pre-wrap;
   word-break: break-word;
   -webkit-box-orient: vertical;
@@ -359,16 +370,17 @@
 }
 
 .timeline-empty-state {
+  grid-row: 4;
   display: grid;
-  gap: 6px;
-  padding: 14px 16px;
+  gap: 5px;
+  padding: 12px 14px;
   background: rgba(255, 253, 250, 0.74);
 }
 
 .timeline-empty-state p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .timeline-empty-state-muted {

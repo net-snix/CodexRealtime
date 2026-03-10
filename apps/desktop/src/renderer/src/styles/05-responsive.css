@@ -10,7 +10,7 @@
 
 @media (max-width: 960px) {
   .app-shell {
-    padding: 14px;
+    padding: 12px;
   }
 
   .workspace-frame {
@@ -18,9 +18,12 @@
     min-height: auto;
   }
 
-  .workspace-action-row,
-  .composer-row {
+  .workspace-action-row {
     grid-template-columns: 1fr;
+  }
+
+  .composer-row {
+    grid-template-columns: minmax(0, 1fr) 84px;
   }
 
   .voice-bar {
