@@ -204,6 +204,7 @@ export default function App() {
       const nextState = await window.appBridge.openWorkspace();
       setWorkspaceState(nextState);
       await refreshTimelineState();
+      window.focus();
     } finally {
       setIsOpeningWorkspace(false);
     }

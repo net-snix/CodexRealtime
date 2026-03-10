@@ -1,8 +1,23 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
 import { workspaceService } from "./workspace-service";
+
+const installApplicationMenu = () => {
+  const template: MenuItemConstructorOptions[] =
+    process.platform === "darwin"
+      ? [
+          { role: "appMenu" },
+          { role: "fileMenu" },
+          { role: "editMenu" },
+          { role: "viewMenu" },
+          { role: "windowMenu" }
+        ]
+      : [{ role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+};
 
 const createMainWindow = () => {
   const window = new BrowserWindow({
@@ -32,6 +47,7 @@ const createMainWindow = () => {
 };
 
 app.whenReady().then(async () => {
+  installApplicationMenu();
   void codexBridge.start().then(() => codexBridge.refreshState());
   registerIpcHandlers();
   await workspaceService.restoreLastWorkspace();

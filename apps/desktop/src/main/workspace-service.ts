@@ -126,6 +126,11 @@ class WorkspaceService {
           properties: ["openDirectory", "createDirectory"]
         });
 
+    if (parentWindow && !parentWindow.isDestroyed()) {
+      parentWindow.focus();
+      parentWindow.webContents.focus();
+    }
+
     if (picked.canceled || picked.filePaths.length === 0) {
       return this.getWorkspaceState();
     }
