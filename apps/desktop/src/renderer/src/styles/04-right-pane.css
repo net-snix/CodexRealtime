@@ -1,166 +1,171 @@
 .right-pane {
-  padding: 18px;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 18px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px;
 }
 
 .pane-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-soft);
 }
 
 .pane-tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(239, 229, 206, 0.08);
-  background: rgba(255, 248, 234, 0.05);
-  color: rgba(239, 229, 206, 0.72);
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--muted-strong);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.pane-tab:hover {
+  transform: translateY(-1px);
 }
 
 .pane-tab.active {
-  background: rgba(211, 110, 58, 0.16);
-  border-color: rgba(211, 110, 58, 0.34);
-  color: #ffd3b6;
+  border-color: var(--line);
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: 0 6px 16px rgba(24, 23, 20, 0.04);
 }
 
 .pane-tab-badge {
-  min-width: 24px;
-  padding: 3px 7px;
+  min-width: 22px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(239, 229, 206, 0.1);
-  color: rgba(239, 229, 206, 0.9);
-  font-size: 0.72rem;
+  background: var(--surface-soft);
+  color: var(--muted-strong);
+  font-size: 0.68rem;
+  font-weight: 600;
 }
 
 .pane-body {
-  padding: 18px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
   gap: 12px;
+  padding: 4px 0 0;
 }
 
-.pane-body p {
-  margin: 0;
-  line-height: 1.6;
+.pane-empty-state,
+.dossier-card {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface-strong);
 }
 
 .pane-empty-state {
   padding: 18px;
-  border-radius: 20px;
-  border: 1px dashed rgba(239, 229, 206, 0.14);
-  background: rgba(255, 248, 234, 0.03);
 }
 
 .pane-empty-state h3,
 .dossier-card h3 {
   margin: 0 0 8px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .dossier-stack {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .dossier-card {
   padding: 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(239, 229, 206, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 234, 0.06), rgba(255, 248, 234, 0.03)),
-    rgba(0, 0, 0, 0.12);
 }
 
 .dossier-card-alert {
-  border-color: rgba(211, 84, 58, 0.28);
-  background:
-    linear-gradient(180deg, rgba(211, 84, 58, 0.12), rgba(255, 248, 234, 0.03)),
-    rgba(0, 0, 0, 0.12);
+  border-color: rgba(141, 87, 80, 0.15);
+  background: var(--danger-soft);
 }
 
 .dossier-card-olive {
-  border-color: rgba(106, 108, 59, 0.3);
-  background:
-    linear-gradient(180deg, rgba(106, 108, 59, 0.12), rgba(255, 248, 234, 0.03)),
-    rgba(0, 0, 0, 0.12);
+  border-color: rgba(71, 97, 84, 0.15);
+  background: var(--success-soft);
 }
 
 .dossier-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
   margin-bottom: 10px;
 }
 
 .dossier-status {
   display: inline-flex;
   align-items: center;
-  padding: 6px 10px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  border: 1px solid rgba(239, 229, 206, 0.12);
-  background: rgba(255, 248, 234, 0.06);
-  color: rgba(239, 229, 206, 0.88);
-  font-size: 0.73rem;
+  background: var(--surface-soft);
+  color: var(--muted-strong);
+  font-size: 0.68rem;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.dossier-status-pending {
-  border-color: rgba(239, 229, 206, 0.14);
-}
-
 .dossier-status-in_progress {
-  border-color: rgba(211, 110, 58, 0.38);
-  background: rgba(211, 110, 58, 0.16);
-  color: #ffd1b3;
+  border-color: rgba(138, 106, 89, 0.16);
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .dossier-status-completed,
 .dossier-status-olive {
-  border-color: rgba(106, 108, 59, 0.38);
-  background: rgba(106, 108, 59, 0.16);
-  color: #d5d69d;
+  border-color: rgba(71, 97, 84, 0.16);
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .dossier-status-alert {
-  border-color: rgba(211, 84, 58, 0.38);
-  background: rgba(211, 84, 58, 0.18);
-  color: #ffb9a5;
+  border-color: rgba(141, 87, 80, 0.16);
+  background: rgba(245, 233, 231, 0.92);
+  color: var(--danger);
 }
 
 .diff-preview-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
 }
 
 .diff-preview {
   margin: 0;
   padding: 16px;
+  border: 1px solid var(--line);
   border-radius: 18px;
-  border: 1px solid rgba(239, 229, 206, 0.08);
-  background: rgba(10, 8, 6, 0.46);
-  color: #f3ead7;
+  background: #f4f0e8;
+  color: #2a2824;
   font-family: "SF Mono", "Menlo", monospace;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .question-list {
-  margin: 10px 0 0;
-  padding-left: 18px;
-  color: rgba(239, 229, 206, 0.74);
   display: grid;
   gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted-strong);
 }
 
 .question-list li {
@@ -168,65 +173,68 @@
 }
 
 .approval-actions,
-.request-submit-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  margin-top: 14px;
-}
-
+.request-submit-row,
 .option-pill-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.approval-actions,
+.request-submit-row {
+  margin-top: 14px;
 }
 
 .option-pill {
-  border: 1px solid rgba(106, 108, 59, 0.28);
-  background: rgba(106, 108, 59, 0.12);
-  color: #dfe0aa;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted-strong);
+  font-size: 0.82rem;
 }
 
 .option-pill:hover:not(:disabled) {
-  border-color: rgba(106, 108, 59, 0.44);
-  background: rgba(106, 108, 59, 0.18);
+  background: var(--surface-soft);
 }
 
-.option-pill:disabled {
+.option-pill:disabled,
+.request-action-button:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .request-action-button {
-  border: none;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 11px 14px;
-  color: #fff6ec;
-  transition: transform 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-weight: 600;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
 }
 
 .request-action-button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.request-action-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-  box-shadow: none;
+.request-action-button-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fffdfa;
 }
 
-.request-action-button-primary {
-  background: linear-gradient(135deg, rgba(211, 110, 58, 0.92), rgba(183, 84, 46, 0.9));
-  box-shadow: 0 12px 28px rgba(211, 110, 58, 0.16);
+.request-action-button-primary:hover:not(:disabled) {
+  background: #192930;
 }
 
 .request-action-button-ghost {
-  background: rgba(255, 248, 234, 0.08);
-  border: 1px solid rgba(239, 229, 206, 0.12);
-  color: rgba(239, 229, 206, 0.9);
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .request-input-list {
@@ -241,40 +249,40 @@
 }
 
 .request-question span {
-  color: rgba(239, 229, 206, 0.86);
+  color: var(--text);
   line-height: 1.5;
 }
 
 .request-input {
   width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  border: 1px solid rgba(239, 229, 206, 0.12);
-  background: rgba(10, 8, 6, 0.34);
-  color: var(--paper);
-  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text);
   outline: none;
 }
 
 .request-input::placeholder {
-  color: rgba(239, 229, 206, 0.34);
+  color: rgba(109, 104, 95, 0.72);
 }
 
 .request-input:focus {
-  border-color: rgba(106, 108, 59, 0.4);
-  box-shadow: 0 0 0 4px rgba(106, 108, 59, 0.1);
+  border-color: rgba(33, 53, 61, 0.18);
+  box-shadow: 0 0 0 4px rgba(33, 53, 61, 0.06);
 }
 
 .request-note,
 .request-error {
-  margin: 10px 0 0;
-  font-size: 0.84rem;
+  margin: 8px 0 0;
+  font-size: 0.83rem;
   line-height: 1.5;
 }
 
 .request-note {
-  color: rgba(239, 229, 206, 0.62);
+  color: var(--muted);
 }
 
 .request-error {
-  color: #ffbaaa;
+  color: var(--danger);
 }

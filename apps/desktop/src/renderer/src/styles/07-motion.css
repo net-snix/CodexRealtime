@@ -3,20 +3,20 @@
 .stagger-3,
 .stagger-4 {
   opacity: 0;
-  transform: translateY(16px);
-  animation: rise-in 0.7s ease forwards;
+  transform: translateY(10px);
+  animation: rise-in 0.42s ease forwards;
 }
 
 .stagger-2 {
-  animation-delay: 0.08s;
+  animation-delay: 0.04s;
 }
 
 .stagger-3 {
-  animation-delay: 0.16s;
+  animation-delay: 0.08s;
 }
 
 .stagger-4 {
-  animation-delay: 0.24s;
+  animation-delay: 0.12s;
 }
 
 @keyframes rise-in {
@@ -29,12 +29,24 @@
 @keyframes breathe {
   0%,
   100% {
-    transform: scaleY(0.82);
-    opacity: 0.66;
+    transform: scaleY(0.85);
+    opacity: 0.6;
   }
 
   50% {
-    transform: scaleY(1.08);
+    transform: scaleY(1.05);
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-1,
+  .stagger-2,
+  .stagger-3,
+  .stagger-4,
+  .voice-meter span {
+    opacity: 1;
+    transform: none;
+    animation: none;
   }
 }

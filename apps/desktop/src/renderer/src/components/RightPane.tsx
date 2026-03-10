@@ -4,23 +4,23 @@ import type { ApprovalDecision, TimelineState } from "@shared";
 const PANELS = {
   plan: {
     title: "Plan",
-    eyebrow: "Live orchestration"
+    eyebrow: "Thread state"
   },
   diff: {
     title: "Diff",
-    eyebrow: "Change preview"
+    eyebrow: "Changes"
   },
   commands: {
     title: "Commands",
-    eyebrow: "Operator feed"
+    eyebrow: "Activity"
   },
   approvals: {
     title: "Approvals",
-    eyebrow: "Human gate"
+    eyebrow: "Decisions"
   },
   errors: {
     title: "Errors",
-    eyebrow: "Debug rail"
+    eyebrow: "Logs"
   }
 } as const;
 
@@ -127,7 +127,7 @@ export function RightPane({
       ) : (
         <div className="pane-empty-state">
           <h3>No plan yet</h3>
-          <p>As soon as Codex exposes plan updates, they stack here in order.</p>
+          <p>Steps will land here.</p>
         </div>
       );
     }
@@ -144,7 +144,7 @@ export function RightPane({
       ) : (
         <div className="pane-empty-state">
           <h3>No diff yet</h3>
-          <p>File changes will show up here before we add approval actions.</p>
+          <p>Edits will preview here.</p>
         </div>
       );
     }
@@ -157,14 +157,14 @@ export function RightPane({
               <span className="dossier-index">Thread</span>
               <span className="session-meta">{timelineState.threadId ?? "unbound"}</span>
             </div>
-            <p>{timelineState.statusLabel ?? "No live command activity yet."}</p>
+            <p>{timelineState.statusLabel ?? "No command activity."}</p>
           </article>
           <article className="dossier-card">
             <div className="dossier-row">
               <span className="dossier-index">Stream</span>
               <span className="session-meta">{timelineState.events.length} events</span>
             </div>
-            <p>Command-level streaming lands next. For now this rail shows thread pulse and event volume.</p>
+            <p>Thread pulse and event count.</p>
           </article>
         </div>
       );
@@ -188,7 +188,7 @@ export function RightPane({
                   </span>
                 </div>
                 <h3>{approval.title}</h3>
-                <p>{approval.detail || "No extra context from Codex."}</p>
+                <p>{approval.detail || "No extra context."}</p>
                 <div className="approval-actions">
                   {approval.availableDecisions.map((decision) => (
                     <button
@@ -279,12 +279,10 @@ export function RightPane({
                     disabled={isPromptSubmitting || hasIncompleteAnswer}
                     onClick={() => void onSubmitUserInput(prompt.id, promptDrafts)}
                   >
-                    {isPromptSubmitting
-                      ? "Submitting..."
-                      : "Send answers"}
+                    {isPromptSubmitting ? "Submitting..." : "Submit"}
                   </button>
                 </div>
-                <p className="request-note">All answers required.</p>
+                <p className="request-note">All fields required.</p>
                 {userInputErrors[prompt.id] ? (
                   <p className="request-error">{userInputErrors[prompt.id]}</p>
                 ) : null}
@@ -295,7 +293,7 @@ export function RightPane({
       ) : (
         <div className="pane-empty-state">
           <h3>No blockers</h3>
-          <p>Approvals and clarification prompts will queue here as action cards.</p>
+          <p>Requests will queue here.</p>
         </div>
       );
     }
@@ -303,7 +301,7 @@ export function RightPane({
     return (
       <div className="pane-empty-state">
         <h3>Quiet rail</h3>
-        <p>Developer logs stay muted here until main starts sending dedicated error events.</p>
+        <p>No error events.</p>
       </div>
     );
   };

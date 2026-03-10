@@ -21,22 +21,22 @@ interface TimelineProps {
 
 const voiceHeadline = (realtimeState: RealtimeState, isVoiceActive: boolean) => {
   if (realtimeState.status === "error") {
-    return "Voice session hit an error.";
+    return "Voice error.";
   }
 
   if (realtimeState.status === "connecting") {
-    return "Voice session spinning up.";
+    return "Voice connecting.";
   }
 
   if (realtimeState.status === "live" && isVoiceActive) {
-    return "Voice thread is live.";
+    return "Mic live.";
   }
 
   if (realtimeState.status === "live") {
-    return "Realtime thread is live.";
+    return "Voice ready.";
   }
 
-  return "Voice stays on standby.";
+  return "Voice idle.";
 };
 
 const voiceSupportCopy = (
@@ -49,22 +49,22 @@ const voiceSupportCopy = (
   }
 
   if (realtimeState.status === "connecting") {
-    return "Starting the realtime thread and waiting for the transport handshake.";
+    return "Connecting voice transport.";
   }
 
   if (realtimeState.status === "live" && voiceState === "working") {
-    return "Codex is talking back now. New transcript lines land below.";
+    return "Assistant speaking.";
   }
 
   if (realtimeState.status === "live" && isVoiceActive) {
-    return "Mic is open. Speak naturally; renderer will surface transcript lines as items arrive.";
+    return "Listening.";
   }
 
   if (realtimeState.status === "live") {
-    return "Thread is up. Start the mic when you want voice turns instead of typed turns.";
+    return "Voice available.";
   }
 
-  return "Typed turns stay primary until you start the mic.";
+  return "Text turns ready.";
 };
 
 export function Timeline({
@@ -117,8 +117,8 @@ export function Timeline({
     <section className="timeline panel stagger-2">
       <header className="pane-header">
         <div>
-          <span className="panel-eyebrow">Conversation</span>
-          <h2>{hasWorkspace ? "One assistant. One live thread." : "Thread waits on a repo."}</h2>
+          <span className="panel-eyebrow">Thread</span>
+          <h2>{hasWorkspace ? workspaceState.currentWorkspace?.name : "Open a workspace"}</h2>
         </div>
         <div
           className={`status-pill ${
@@ -131,11 +131,11 @@ export function Timeline({
 
       <div className={`timeline-composer ${!hasWorkspace ? "timeline-composer-disabled" : ""}`}>
         <div className="composer-copy">
-          <span className="panel-eyebrow">Turn input</span>
+          <span className="panel-eyebrow">Compose</span>
           <p>
             {hasWorkspace
-              ? `Current repo: ${workspaceState.currentWorkspace?.name}`
-              : "Open a repo first. Then you can kick off the first text turn from here."}
+              ? "Ask, steer, or assign the next step."
+              : "Open a repo to enable the thread."}
           </p>
         </div>
         <div className="composer-row">
@@ -143,8 +143,8 @@ export function Timeline({
             className="timeline-input"
             placeholder={
               hasWorkspace
-                ? "Ask a repo-aware question or give the next coding instruction..."
-                : "Open a repo to enable turn input"
+                ? "What should Codex do next?"
+                : "Open a repo first"
             }
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -158,7 +158,7 @@ export function Timeline({
             onClick={() => void handleSubmit()}
             disabled={!hasWorkspace || isStartingTurn || draft.trim().length === 0}
           >
-            {isStartingTurn ? "Starting…" : "Start turn"}
+            {isStartingTurn ? "Starting…" : "Run"}
           </button>
         </div>
       </div>
@@ -194,7 +194,7 @@ export function Timeline({
           </div>
           {hasPendingHumanGate ? (
             <p className="timeline-briefing-note">
-              Human gate open. Use the right rail to approve, deny, or answer clarification prompts.
+              Waiting on approval or clarification.
             </p>
           ) : null}
         </div>
@@ -210,7 +210,7 @@ export function Timeline({
               ? `${userInputCount} clarification ${userInputCount === 1 ? "prompt" : "prompts"}`
               : null}
           </h3>
-          <p>The thread is waiting on human input before it can keep moving.</p>
+          <p>Answer in the right rail.</p>
         </div>
       ) : null}
 
@@ -256,7 +256,7 @@ export function Timeline({
           ) : (
             <div className="voice-transcript-empty">
               <span className="panel-eyebrow">Transcript</span>
-              <p>Waiting for the first live voice item.</p>
+              <p>No live voice yet.</p>
             </div>
           )}
         </section>
@@ -278,15 +278,15 @@ export function Timeline({
         ) : (
           <div className="timeline-empty-state">
             <span className="panel-eyebrow">Primary thread</span>
-            <h3>Ready. No turns yet.</h3>
-            <p>Use the composer above to kick off the first repo-aware turn for this workspace.</p>
+            <h3>No turns yet.</h3>
+            <p>Start with a short instruction.</p>
           </div>
         )
       ) : (
         <div className="timeline-empty-state timeline-empty-state-muted">
           <span className="panel-eyebrow">Workspace needed</span>
-          <h3>Open a repo first.</h3>
-          <p>The center pane stays read-only until a workspace is bound and its primary thread exists.</p>
+          <h3>Open a repo.</h3>
+          <p>The thread will bind here.</p>
         </div>
       )}
     </section>

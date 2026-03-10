@@ -1,6 +1,6 @@
 @media (max-width: 1280px) {
   .workspace-frame {
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 290px) minmax(0, 1fr);
   }
 
   .right-pane {
@@ -10,7 +10,7 @@
 
 @media (max-width: 960px) {
   .app-shell {
-    padding: 18px 18px 16px;
+    padding: 14px;
   }
 
   .workspace-frame {
@@ -18,12 +18,17 @@
     min-height: auto;
   }
 
+  .workspace-action-row,
   .composer-row {
     grid-template-columns: 1fr;
   }
 
   .voice-bar {
     grid-template-columns: 1fr;
-    justify-items: start;
+    justify-items: stretch;
+  }
+
+  .voice-actions {
+    justify-content: flex-start;
   }
 }

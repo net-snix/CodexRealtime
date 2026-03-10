@@ -39,7 +39,7 @@ const helperCopy = (
   isStopping: boolean
 ) => {
   if (isStopping) {
-    return "Stopping mic and interrupting active work...";
+    return "Stopping voice and active work.";
   }
 
   if (realtimeState.error) {
@@ -47,30 +47,30 @@ const helperCopy = (
   }
 
   if (realtimeState.status === "live") {
-    return "Realtime thread connected. Transcript rolls in live.";
+    return "Voice connected.";
   }
 
   if (realtimeState.status === "connecting") {
-    return "Opening realtime voice transport...";
+    return "Connecting voice...";
   }
 
   if (!sessionState) {
-    return "Loading Codex session...";
+    return "Loading session...";
   }
 
   if (sessionState.status === "connected" && sessionState.features.realtimeConversation) {
-    return "Codex realtime ready when you open the mic.";
+    return "Voice ready.";
   }
 
   if (sessionState.status === "connected") {
-    return "Codex connected. Waiting on realtime support.";
+    return "Connected. Voice unavailable.";
   }
 
   if (sessionState.status === "connecting") {
-    return "Connecting app-server...";
+    return "Connecting...";
   }
 
-  return sessionState.error ?? "Codex session failed.";
+  return sessionState.error ?? "Session failed.";
 };
 
 export function VoiceBar({
@@ -113,7 +113,7 @@ export function VoiceBar({
           disabled={disabled || isStopping}
           onClick={() => void onToggle()}
         >
-          {isActive ? "Mic live" : "Start mic"}
+          {isActive ? "Mic on" : "Start mic"}
         </button>
         <div className="voice-meter" aria-hidden="true">
           <span />
@@ -162,13 +162,12 @@ export function VoiceBar({
           {shouldShowDeviceHint ? (
             <div className="voice-device-hint" role="note">
               <p>
-                Start the mic once to unlock full device names. Until then, this panel may show
-                generic labels.
+                Start the mic once to unlock device names.
               </p>
               <p>
                 {supportsOutputSelection
-                  ? "Output changes apply right away after labels appear."
-                  : "Output stays on the system default in this runtime."}
+                  ? "Output changes apply right away."
+                  : "Output stays on the system default."}
               </p>
               <button
                 type="button"
@@ -211,8 +210,8 @@ export function VoiceBar({
 
           <p className="voice-device-note">
             {supportsOutputSelection
-              ? "Output changes apply right away. Input changes apply next mic start."
-              : "Output routing uses the system default on this browser runtime."}
+              ? "Output applies now. Input applies next mic start."
+              : "Output uses the system default."}
           </p>
         </div>
       ) : null}

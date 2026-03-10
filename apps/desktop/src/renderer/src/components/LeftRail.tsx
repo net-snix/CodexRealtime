@@ -15,7 +15,7 @@ const sessionLabel = (sessionState: SessionState | null) => {
   }
 
   if (sessionState.status === "connected") {
-    return "Connected";
+    return "Ready";
   }
 
   if (sessionState.status === "connecting") {
@@ -34,20 +34,20 @@ export function LeftRail({
   onOpenCurrentWorkspace
 }: LeftRailProps) {
   const featureBadges = [
-    sessionState?.features.realtimeConversation ? "realtime" : null,
-    sessionState?.features.defaultModeRequestUserInput ? "ask-first" : null,
-    sessionState?.features.voiceTranscription ? "transcription" : null
+    sessionState?.features.realtimeConversation ? "Realtime" : null,
+    sessionState?.features.defaultModeRequestUserInput ? "Ask first" : null,
+    sessionState?.features.voiceTranscription ? "Transcript" : null
   ].filter(Boolean) as string[];
 
   return (
     <aside className="left-rail panel stagger-1">
-      <div className="panel-eyebrow">Codex Realtime</div>
+      <div className="panel-eyebrow">Workspace</div>
       <div className="brand-lockup">
         <div>
-          <h1>Speaking terminal.</h1>
-          <p>A voice-native SWE shell. Warm paper. Sharp edges.</p>
+          <h1>Codex Realtime</h1>
+          <p>One repo. One thread. Voice when you want it.</p>
         </div>
-        <div className="brand-chip">Phase 4</div>
+        <div className="brand-chip">Prototype</div>
       </div>
 
       <div className="workspace-action-row">
@@ -63,13 +63,13 @@ export function LeftRail({
           className="open-workspace-button open-workspace-button-secondary"
           onClick={() => void onOpenCurrentWorkspace()}
         >
-          Use current repo
+          This repo
         </button>
       </div>
 
       <section className="rail-section">
         <header>
-          <span>Codex session</span>
+          <span>Session</span>
           <span>{appInfo?.platform ?? "darwin"}</span>
         </header>
         <div className={`session-card session-${sessionState?.status ?? "loading"}`}>
@@ -92,7 +92,7 @@ export function LeftRail({
             </div>
           ) : (
             <div className="session-account muted">
-              {sessionState?.requiresOpenaiAuth ? "Auth required or still loading" : "No account info yet"}
+              {sessionState?.requiresOpenaiAuth ? "Waiting for login" : "No account yet"}
             </div>
           )}
           {sessionState?.error ? <div className="session-error">{sessionState.error}</div> : null}
@@ -104,7 +104,7 @@ export function LeftRail({
                 </span>
               ))
             ) : (
-              <span className="feature-badge muted">features pending</span>
+              <span className="feature-badge muted">Pending</span>
             )}
           </div>
         </div>
@@ -112,7 +112,7 @@ export function LeftRail({
 
       <section className="rail-section">
         <header>
-          <span>Current workspace</span>
+          <span>Workspace</span>
           <span>{workspaceState.currentWorkspace ? "bound" : "none"}</span>
         </header>
         <div className="workspace-focus">
@@ -124,7 +124,7 @@ export function LeftRail({
           ) : (
             <>
               <div className="list-title">No repo open</div>
-              <div className="list-subtitle">Pick a repo to create or resume its primary thread.</div>
+              <div className="list-subtitle">Open one to bind the thread.</div>
             </>
           )}
         </div>
@@ -132,7 +132,7 @@ export function LeftRail({
 
       <section className="rail-section">
         <header>
-          <span>Recent workspaces</span>
+          <span>Recent</span>
           <span>{workspaceState.recentWorkspaces.length}</span>
         </header>
         <ul className="rail-list">
@@ -147,7 +147,7 @@ export function LeftRail({
 
       <section className="rail-section">
         <header>
-          <span>Thread memory</span>
+          <span>Threads</span>
           <span>{workspaceState.threads.length}</span>
         </header>
         <ul className="rail-list compact">
