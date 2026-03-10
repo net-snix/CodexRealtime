@@ -106,7 +106,7 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 292px minmax(0, 1fr) 320px;
+  grid-template-columns: 258px minmax(0, 1fr) 304px;
   gap: 14px;
   min-height: 0;
 }

@@ -53,6 +53,8 @@ describe("useRealtimeVoice", () => {
         getWorkspaceState: vi.fn(),
         openWorkspace: vi.fn(),
         openCurrentWorkspace: vi.fn(),
+        selectWorkspace: vi.fn(),
+        selectThread: vi.fn(),
         getTimelineState: vi.fn(),
         startTurn: vi.fn(),
         dispatchVoicePrompt: vi.fn(),

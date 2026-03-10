@@ -43,6 +43,8 @@ export interface AppBridge {
   getWorkspaceState: () => Promise<WorkspaceState>;
   openWorkspace: () => Promise<WorkspaceState>;
   openCurrentWorkspace: () => Promise<WorkspaceState>;
+  selectWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
+  selectThread: (threadId: string) => Promise<TimelineState>;
   getTimelineState: () => Promise<TimelineState>;
   startTurn: (prompt: string) => Promise<TimelineState>;
   dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;
@@ -81,6 +83,7 @@ export interface ThreadSummary {
 
 export interface WorkspaceState {
   currentWorkspace: WorkspaceSummary | null;
+  currentThreadId: string | null;
   recentWorkspaces: WorkspaceSummary[];
   threads: ThreadSummary[];
 }

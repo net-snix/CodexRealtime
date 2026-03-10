@@ -132,6 +132,7 @@ class WorkspaceService {
 
     return {
       currentWorkspace: currentWorkspace ? toWorkspaceSummary(currentWorkspace) : null,
+      currentThreadId: currentWorkspace?.threadId ?? null,
       recentWorkspaces: this.listRecentWorkspaces(persisted),
       threads: currentWorkspace ? await this.listThreadsSnapshot(currentWorkspace.path) : []
     };
@@ -154,6 +155,44 @@ class WorkspaceService {
 
   async openCurrentWorkspace(): Promise<WorkspaceState> {
     return this.openWorkspacePath(process.cwd());
+  }
+
+  async selectWorkspace(workspaceId: string): Promise<WorkspaceState> {
+    const persisted = this.readState();
+    const workspace = persisted.workspaces[workspaceId];
+
+    if (!workspace) {
+      throw new Error("Workspace not found.");
+    }
+
+    workspace.lastOpenedAt = now();
+    persisted.currentWorkspaceId = workspaceId;
+    persisted.workspaces[workspaceId] = workspace;
+    this.writeState(persisted);
+
+    return this.getWorkspaceState();
+  }
+
+  async selectThread(threadId: string): Promise<TimelineState> {
+    const persisted = this.readState();
+
+    if (!persisted.currentWorkspaceId) {
+      throw new Error("Open a workspace first.");
+    }
+
+    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
+
+    if (!workspace) {
+      throw new Error("Current workspace is missing.");
+    }
+
+    workspace.threadId = threadId;
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    this.liveTimelineState = await this.hydrateLiveTimeline(threadId);
+    return cloneTimelineState(this.liveTimelineState);
   }
 
   private async openWorkspacePath(inputPath: string): Promise<WorkspaceState> {

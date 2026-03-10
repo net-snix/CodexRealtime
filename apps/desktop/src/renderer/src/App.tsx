@@ -51,6 +51,7 @@ export default function App() {
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
     currentWorkspace: null,
+    currentThreadId: null,
     recentWorkspaces: [],
     threads: []
   });
@@ -197,6 +198,44 @@ export default function App() {
     };
   }, [approvalCount, isTimelinePolling, timelineState.threadId, userInputCount]);
 
+  useEffect(() => {
+    if (
+      !workspaceState.currentWorkspace ||
+      workspaceState.currentThreadId ||
+      workspaceState.threads.length === 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void window.appBridge
+      .selectThread(workspaceState.threads[0].id)
+      .then(async (nextTimeline) => {
+        if (cancelled) {
+          return;
+        }
+
+        setTimelineState(nextTimeline);
+        const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+
+        if (!cancelled) {
+          setWorkspaceState(nextWorkspaceState);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to bind the latest thread", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    workspaceState.currentThreadId,
+    workspaceState.currentWorkspace,
+    workspaceState.threads
+  ]);
+
   const handleOpenWorkspace = async () => {
     setIsOpeningWorkspace(true);
 
@@ -221,6 +260,31 @@ export default function App() {
     } finally {
       setIsOpeningWorkspace(false);
     }
+  };
+
+  const handleSelectWorkspace = async (workspaceId: string) => {
+    if (isVoiceActive) {
+      await stopVoice();
+    }
+
+    const nextState = await window.appBridge.selectWorkspace(workspaceId);
+    setWorkspaceState(nextState);
+    await refreshTimelineState();
+  };
+
+  const handleSelectThread = async (threadId: string) => {
+    if (!threadId || threadId === workspaceState.currentThreadId) {
+      return;
+    }
+
+    if (isVoiceActive) {
+      await stopVoice();
+    }
+
+    const nextTimeline = await window.appBridge.selectThread(threadId);
+    setTimelineState(nextTimeline);
+    const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+    setWorkspaceState(nextWorkspaceState);
   };
 
   const handleStartTurn = async (prompt: string) => {
@@ -347,9 +411,12 @@ export default function App() {
           appInfo={appInfo}
           sessionState={sessionState}
           workspaceState={workspaceState}
+          currentThreadId={workspaceState.currentThreadId}
           isOpeningWorkspace={isOpeningWorkspace}
           onOpenWorkspace={handleOpenWorkspace}
           onOpenCurrentWorkspace={handleOpenCurrentWorkspace}
+          onSelectWorkspace={handleSelectWorkspace}
+          onSelectThread={handleSelectThread}
         />
         <Timeline
           timelineState={timelineState}
