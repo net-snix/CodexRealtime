@@ -270,7 +270,6 @@ export function Timeline({
     <section className="timeline panel stagger-2">
       <header className="pane-header">
         <div>
-          <span className="panel-eyebrow">Thread</span>
           <h2>{hasWorkspace ? currentProject?.name : "Open a workspace"}</h2>
         </div>
         <div

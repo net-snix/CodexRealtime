@@ -149,7 +149,6 @@ export function LeftRail({
     >
       <div className="rail-header">
         <div>
-          <div className="panel-eyebrow">Workspace</div>
           <h1>Threads</h1>
         </div>
         <div className="rail-header-actions">
