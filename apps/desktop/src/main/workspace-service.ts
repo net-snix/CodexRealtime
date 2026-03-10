@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import { realpathSync } from "node:fs";
 import type {
   ApprovalDecision,
+  ThreadChangeSummary,
   ThreadSummary,
   TimelineState,
   WorkspaceProject,
@@ -56,6 +57,8 @@ const EMPTY_STATE: PersistedState = {
   currentWorkspaceId: null,
   workspaces: {}
 };
+
+const THREAD_CHANGE_SUMMARY_LIMIT = 6;
 
 const now = () => new Date().toISOString();
 
@@ -114,6 +117,84 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: 
   }
 };
 
+const DIFF_METADATA_PREFIXES = [
+  "diff --git",
+  "index ",
+  "@@",
+  "---",
+  "+++",
+  "new file mode",
+  "deleted file mode",
+  "rename from",
+  "rename to",
+  "similarity index"
+];
+
+const countDiffLines = (diff: string): ThreadChangeSummary => {
+  let additions = 0;
+  let deletions = 0;
+
+  for (const line of diff.split("\n")) {
+    if (!line) {
+      continue;
+    }
+
+    if (DIFF_METADATA_PREFIXES.some((prefix) => line.startsWith(prefix))) {
+      continue;
+    }
+
+    if (line.startsWith("+")) {
+      additions += 1;
+      continue;
+    }
+
+    if (line.startsWith("-")) {
+      deletions += 1;
+    }
+  }
+
+  return { additions, deletions };
+};
+
+const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null => {
+  const isFileChangeItem = (
+    item: unknown
+  ): item is { type: "fileChange"; changes?: Array<{ diff?: string }> } =>
+    Boolean(item) &&
+    typeof item === "object" &&
+    item !== null &&
+    "type" in item &&
+    (item as { type?: unknown }).type === "fileChange" &&
+    "changes" in item;
+
+  for (const turn of [...turns].reverse()) {
+    let additions = 0;
+    let deletions = 0;
+    let sawFileChange = false;
+
+    for (const item of turn.items ?? []) {
+      if (!isFileChangeItem(item) || !Array.isArray(item.changes)) {
+        continue;
+      }
+
+      sawFileChange = true;
+
+      for (const change of item.changes) {
+        const diff = typeof change.diff === "string" ? change.diff : "";
+        const counts = countDiffLines(diff);
+        additions += counts.additions;
+        deletions += counts.deletions;
+      }
+    }
+
+    if (sawFileChange) {
+      return additions > 0 || deletions > 0 ? { additions, deletions } : null;
+    }
+  }
+
+  return null;
+};
+
 const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
   if (!window || window.isDestroyed()) {
     return;
@@ -140,6 +221,7 @@ const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
 class WorkspaceService {
   private liveTimelineState = emptyTimelineState();
   private activeTurnId: string | null = null;
+  private readonly threadChangeCache = new Map<string, ThreadChangeSummary | null>();
 
   constructor() {
     codexBridge.on("notification", (payload: NotificationPayload) => {
@@ -529,11 +611,20 @@ class WorkspaceService {
       await codexBridge.start();
       const result = (await codexBridge.listThreads(workspacePath)) as ThreadListResult;
 
-      return (result.data ?? []).map((thread) => ({
+      const threads: ThreadSummary[] = (result.data ?? []).map((thread) => ({
         id: thread.id ?? randomUUID(),
         title: thread.name ?? thread.preview ?? "Untitled thread",
-        updatedAt: formatUpdatedAt(thread.updatedAt)
+        updatedAt: formatUpdatedAt(thread.updatedAt),
+        changeSummary: null
       }));
+
+      await Promise.all(
+        threads.slice(0, THREAD_CHANGE_SUMMARY_LIMIT).map(async (thread) => {
+          thread.changeSummary = await this.getThreadChangeSummary(thread.id);
+        })
+      );
+
+      return threads;
     } catch {
       return [];
     }
@@ -555,6 +646,24 @@ class WorkspaceService {
         threads: await this.listThreadsSnapshot(workspace.path)
       }))
     );
+  }
+
+  private async getThreadChangeSummary(threadId: string): Promise<ThreadChangeSummary | null> {
+    if (this.threadChangeCache.has(threadId)) {
+      return this.threadChangeCache.get(threadId) ?? null;
+    }
+
+    const summary = await withTimeout(this.readThreadChangeSummary(threadId), 900, null).catch(
+      () => null
+    );
+    this.threadChangeCache.set(threadId, summary);
+    return summary;
+  }
+
+  private async readThreadChangeSummary(threadId: string): Promise<ThreadChangeSummary | null> {
+    await codexBridge.start();
+    const result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
+    return summarizeThreadChanges(result.thread?.turns ?? []);
   }
 
   private listRecentWorkspaces(state: PersistedState): PersistedWorkspace[] {
@@ -600,6 +709,7 @@ class WorkspaceService {
 
   private async handleBridgeNotification(payload: NotificationPayload) {
     this.syncActiveTurnFromNotification(payload);
+    this.invalidateThreadCache(payload);
     this.liveTimelineState = await applyBridgeNotification(
       this.liveTimelineState,
       payload,
@@ -668,6 +778,25 @@ class WorkspaceService {
 
     if (payload.method === "turn/completed") {
       this.activeTurnId = null;
+    }
+  }
+
+  private invalidateThreadCache(payload: NotificationPayload) {
+    const params = payload.params as { threadId?: unknown } | undefined;
+    const threadId = typeof params?.threadId === "string" ? params.threadId : null;
+
+    if (!threadId) {
+      return;
+    }
+
+    if (
+      payload.method === "turn/started" ||
+      payload.method === "turn/completed" ||
+      payload.method === "turn/diff/updated" ||
+      payload.method === "item/started" ||
+      payload.method === "item/completed"
+    ) {
+      this.threadChangeCache.delete(threadId);
     }
   }
 }

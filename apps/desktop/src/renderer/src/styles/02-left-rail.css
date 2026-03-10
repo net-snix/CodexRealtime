@@ -178,6 +178,29 @@
   font-size: 0.86rem;
 }
 
+.project-thread-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-thread-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.thread-count-add {
+  color: #2f8f55;
+}
+
+.thread-count-delete {
+  color: #c35a4c;
+}
+
 .project-thread-time,
 .project-empty {
   color: var(--muted);

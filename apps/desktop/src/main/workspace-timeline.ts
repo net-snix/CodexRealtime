@@ -41,7 +41,14 @@ export type ThreadItem =
   | {
       type: "fileChange";
       id?: string;
-      changes?: Array<{ path?: string }>;
+      changes?: Array<{
+        path?: string;
+        diff?: string;
+        kind?: {
+          type?: "add" | "delete" | "update";
+          move_path?: string | null;
+        };
+      }>;
     }
   | {
       type: string;

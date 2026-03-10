@@ -207,7 +207,23 @@ export function LeftRail({
                           title={thread.title}
                         >
                           <span className="project-thread-title">{thread.title}</span>
-                          <span className="project-thread-time">{thread.updatedAt}</span>
+                          <span className="project-thread-meta">
+                            {thread.changeSummary ? (
+                              <span className="project-thread-counts">
+                                {thread.changeSummary.additions > 0 ? (
+                                  <span className="thread-count-add">
+                                    +{thread.changeSummary.additions}
+                                  </span>
+                                ) : null}
+                                {thread.changeSummary.deletions > 0 ? (
+                                  <span className="thread-count-delete">
+                                    -{thread.changeSummary.deletions}
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : null}
+                            <span className="project-thread-time">{thread.updatedAt}</span>
+                          </span>
                         </button>
                       </li>
                     ))}

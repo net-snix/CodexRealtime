@@ -79,6 +79,12 @@ export interface ThreadSummary {
   id: string;
   title: string;
   updatedAt: string;
+  changeSummary: ThreadChangeSummary | null;
+}
+
+export interface ThreadChangeSummary {
+  additions: number;
+  deletions: number;
 }
 
 export interface WorkspaceProject {
