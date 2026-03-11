@@ -118,6 +118,7 @@ const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
   "image/bmp": ".bmp",
   "image/tiff": ".tiff"
 };
+const MAX_PASTED_IMAGE_BYTES = 10 * 1024 * 1024;
 
 const now = () => new Date().toISOString();
 
@@ -264,6 +265,22 @@ const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null
   }
 
   return null;
+};
+
+const estimateBase64DecodedBytes = (value: string) => {
+  if (!value) {
+    return 0;
+  }
+
+  let paddingBytes = 0;
+
+  if (value.endsWith("==")) {
+    paddingBytes = 2;
+  } else if (value.endsWith("=")) {
+    paddingBytes = 1;
+  }
+
+  return Math.floor((value.length * 3) / 4) - paddingBytes;
 };
 
 const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
@@ -463,7 +480,7 @@ export class WorkspaceService extends EventEmitter {
         this.pastedAttachmentDirectoryPath,
         `${randomUUID()}-${normalizedImage.fileName}`
       );
-      writeFileSync(filePath, Buffer.from(normalizedImage.dataBase64, "base64"));
+      writeFileSync(filePath, normalizedImage.data);
       attachments.push(toWorkerAttachment(filePath));
     }
 
@@ -1428,6 +1445,22 @@ export class WorkspaceService extends EventEmitter {
       return null;
     }
 
+    const isBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(dataBase64) && dataBase64.length % 4 === 0;
+
+    if (!isBase64) {
+      return null;
+    }
+
+    if (estimateBase64DecodedBytes(dataBase64) > MAX_PASTED_IMAGE_BYTES) {
+      return null;
+    }
+
+    const data = Buffer.from(dataBase64, "base64");
+
+    if (data.byteLength === 0 || data.byteLength > MAX_PASTED_IMAGE_BYTES) {
+      return null;
+    }
+
     const extension = PASTED_IMAGE_EXTENSIONS[mimeType] ?? ".png";
     const sanitizedBaseName = image.name
       .trim()
@@ -1438,7 +1471,7 @@ export class WorkspaceService extends EventEmitter {
     const fileNameBase = baseNameWithoutExtension || "pasted-image";
 
     return {
-      dataBase64,
+      data,
       fileName: `${fileNameBase}${extension}`
     };
   }
