@@ -1,15 +1,159 @@
 .right-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 3px;
+  padding: 0 6px 10px;
+}
+
+.right-pane-window-strip {
+  min-height: 2px;
+  -webkit-app-region: drag;
+}
+
+.pane-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+}
+
+.pane-header-copy {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  padding: 10px 8px;
+  min-width: 0;
+}
+
+.pane-header-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted-strong);
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pane-header-badge-plan {
+  color: var(--accent);
+}
+
+.pane-header-badge-diff {
+  color: var(--warning);
+}
+
+.pane-header-meta {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.pane-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pane-action-menu {
+  position: relative;
+}
+
+.pane-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.9);
+  color: var(--muted-strong);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.pane-icon-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.pane-icon-button-active {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.pane-icon-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  transform: translateY(-1px);
+}
+
+.pane-close-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.pane-action-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 2px;
+  min-width: 152px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 250, 0.98);
+  box-shadow: 0 16px 30px rgba(24, 23, 20, 0.08);
+}
+
+.pane-action-popover-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.pane-action-popover-button:hover:not(:disabled) {
+  background: rgba(24, 23, 20, 0.045);
+  color: var(--text);
+}
+
+.pane-action-popover-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .pane-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface-soft);
@@ -57,7 +201,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 0 0;
+  padding: 0;
 }
 
 .pane-empty-state,
@@ -86,6 +230,11 @@
 
 .dossier-card {
   padding: 10px;
+}
+
+.dossier-card-active {
+  border-color: rgba(24, 23, 20, 0.09);
+  box-shadow: 0 10px 24px rgba(24, 23, 20, 0.05);
 }
 
 .dossier-card-alert {
@@ -137,6 +286,49 @@
   border-color: rgba(141, 87, 80, 0.16);
   background: rgba(245, 233, 231, 0.92);
   color: var(--danger);
+}
+
+.pane-rich-text {
+  display: grid;
+  gap: 10px;
+  color: var(--muted-strong);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.pane-file-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pane-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(24, 23, 20, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.pane-file-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-file-meta {
+  flex-shrink: 0;
+  color: var(--success);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .diff-preview-header {

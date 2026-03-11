@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type {
+  PastedImageAttachment,
   WorkerAttachment,
   WorkerExecutionSettings,
   WorkerSettingsState
@@ -9,12 +10,14 @@ const defaultSettings: WorkerExecutionSettings = {
   model: null,
   reasoningEffort: "high",
   fastMode: false,
-  approvalPolicy: "untrusted"
+  approvalPolicy: "untrusted",
+  collaborationMode: "default"
 };
 
 const emptyState: WorkerSettingsState = {
   settings: defaultSettings,
-  models: []
+  models: [],
+  collaborationModes: []
 };
 
 const mergeAttachments = (
@@ -88,6 +91,36 @@ export function useWorkerSettings(contextKey: string | null) {
     }
   };
 
+  const addAttachments = async (paths: string[]) => {
+    if (paths.length === 0) {
+      return [];
+    }
+
+    const added = await window.appBridge.addWorkerAttachments(paths);
+
+    if (added.length === 0) {
+      return [];
+    }
+
+    setAttachments((current) => mergeAttachments(current, added));
+    return added;
+  };
+
+  const addPastedImageAttachments = async (images: PastedImageAttachment[]) => {
+    if (images.length === 0) {
+      return [];
+    }
+
+    const added = await window.appBridge.addPastedImageAttachments(images);
+
+    if (added.length === 0) {
+      return [];
+    }
+
+    setAttachments((current) => mergeAttachments(current, added));
+    return added;
+  };
+
   const removeAttachment = (id: string) => {
     setAttachments((current) => current.filter((attachment) => attachment.id !== id));
   };
@@ -103,6 +136,8 @@ export function useWorkerSettings(contextKey: string | null) {
     isPickingAttachments,
     updateSettings,
     pickAttachments,
+    addAttachments,
+    addPastedImageAttachments,
     removeAttachment,
     clearAttachments
   };

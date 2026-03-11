@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AudioDeviceOption,
   RealtimeState,
@@ -73,6 +73,21 @@ const helperCopy = (
   return sessionState.error ?? "Session failed.";
 };
 
+function VoiceBarChevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
+        d={collapsed ? "m4.25 9.5 3.75-3.75 3.75 3.75" : "m4.25 6.5 3.75 3.75 3.75-3.75"}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
 export function VoiceBar({
   sessionState,
   state,
@@ -96,6 +111,7 @@ export function VoiceBar({
   onStop
   }: VoiceBarProps) {
   const [isDevicePickerOpen, setIsDevicePickerOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const latestTranscript = liveTranscript.at(-1) ?? null;
   const transcriptLabel =
     latestTranscript?.speaker === "user"
@@ -104,9 +120,15 @@ export function VoiceBar({
         ? "Codex"
         : "Thread";
 
+  useEffect(() => {
+    if (isCollapsed) {
+      setIsDevicePickerOpen(false);
+    }
+  }, [isCollapsed]);
+
   return (
-    <footer className="voice-bar stagger-4">
-      <div className="voice-cluster">
+    <footer className={`voice-bar stagger-4${isCollapsed ? " voice-bar-collapsed" : ""}`}>
+      <div className="voice-cluster voice-bar-panel-section">
         <button
           type="button"
           className="voice-button primary"
@@ -124,7 +146,7 @@ export function VoiceBar({
         </div>
       </div>
 
-      <div className="voice-status">
+      <div className="voice-status voice-bar-panel-section">
         <span className="panel-eyebrow">State</span>
         <strong>{isStopping ? "stopping" : state}</strong>
         <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
@@ -139,7 +161,7 @@ export function VoiceBar({
         ) : null}
       </div>
 
-      <div className="voice-actions">
+      <div className="voice-actions voice-bar-panel-section">
         <button
           type="button"
           className="voice-button ghost"
@@ -157,7 +179,18 @@ export function VoiceBar({
         </button>
       </div>
 
-      {isDevicePickerOpen ? (
+      <button
+        type="button"
+        className={`voice-bar-toggle${isCollapsed ? " voice-bar-toggle-collapsed" : ""}`}
+        onClick={() => setIsCollapsed((current) => !current)}
+        aria-label={isCollapsed ? "Show voice bar" : "Hide voice bar"}
+        title={isCollapsed ? "Show voice bar" : "Hide voice bar"}
+      >
+        <VoiceBarChevron collapsed={isCollapsed} />
+        <span>{isCollapsed ? "Voice" : "Hide"}</span>
+      </button>
+
+      {!isCollapsed && isDevicePickerOpen ? (
         <div className="voice-device-panel">
           {shouldShowDeviceHint ? (
             <div className="voice-device-hint" role="note">

@@ -1,24 +1,35 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import type { AppInfo } from "@shared";
+import { appNotificationService } from "./notification-service";
+import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
 import { realtimeService } from "./realtime-service";
 import { voicePreferencesService } from "./voice-preferences-service";
 import { workspaceService } from "./workspace-service";
 
 const APP_GET_INFO = "app:get-info";
+const APP_SETTINGS_GET = "app-settings:get";
+const APP_SETTINGS_UPDATE = "app-settings:update";
+const APP_NOTIFICATION_SHOW = "app-notification:show";
+const APP_USER_DATA_OPEN = "app-user-data:open";
 const SESSION_GET_STATE = "session:get-state";
 const WORKSPACE_GET_STATE = "workspace:get-state";
 const WORKSPACE_OPEN = "workspace:open";
 const WORKSPACE_OPEN_CURRENT = "workspace:open-current";
+const WORKSPACE_CLEAR_RECENT = "workspace:clear-recent";
+const WORKSPACE_REMOVE = "workspace:remove";
 const WORKSPACE_SELECT = "workspace:select";
 const THREAD_CREATE = "thread:create";
 const THREAD_SELECT = "thread:select";
 const THREAD_ARCHIVE = "thread:archive";
 const THREAD_UNARCHIVE = "thread:unarchive";
 const TIMELINE_GET_STATE = "timeline:get-state";
+const TIMELINE_EVENT = "timeline:event";
 const WORKER_SETTINGS_GET = "worker-settings:get";
 const WORKER_SETTINGS_UPDATE = "worker-settings:update";
 const WORKER_ATTACHMENTS_PICK = "worker-attachments:pick";
+const WORKER_ATTACHMENTS_ADD = "worker-attachments:add";
+const WORKER_ATTACHMENTS_ADD_PASTED_IMAGES = "worker-attachments:add-pasted-images";
 const TURN_START = "turn:start";
 const TURN_INTERRUPT = "turn:interrupt";
 const APPROVAL_RESPOND = "approval:respond";
@@ -32,6 +43,7 @@ const REALTIME_DISPATCH_PROMPT = "realtime:dispatch-prompt";
 const REALTIME_EVENT = "realtime:event";
 const VOICE_PREFERENCES_GET = "voice-preferences:get";
 const VOICE_PREFERENCES_UPDATE = "voice-preferences:update";
+const VOICE_PREFERENCES_RESET = "voice-preferences:reset";
 
 const readAppInfo = (): AppInfo => ({
   name: app.getName(),
@@ -46,9 +58,26 @@ export const registerIpcHandlers = () => {
       window.webContents.send(REALTIME_EVENT, event);
     }
   });
+  workspaceService.removeAllListeners("timeline");
+  workspaceService.on("timeline", (timeline) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send(TIMELINE_EVENT, timeline);
+    }
+  });
 
   ipcMain.removeHandler(APP_GET_INFO);
   ipcMain.handle(APP_GET_INFO, () => readAppInfo());
+  ipcMain.removeHandler(APP_SETTINGS_GET);
+  ipcMain.handle(APP_SETTINGS_GET, () => appSettingsService.getSettingsState());
+  ipcMain.removeHandler(APP_SETTINGS_UPDATE);
+  ipcMain.handle(APP_SETTINGS_UPDATE, (_event, patch) => appSettingsService.updateSettings(patch));
+  ipcMain.removeHandler(APP_NOTIFICATION_SHOW);
+  ipcMain.handle(APP_NOTIFICATION_SHOW, (_event, request) => appNotificationService.show(request));
+  ipcMain.removeHandler(APP_USER_DATA_OPEN);
+  ipcMain.handle(APP_USER_DATA_OPEN, async () => {
+    const { shell } = await import("electron");
+    await shell.openPath(app.getPath("userData"));
+  });
   ipcMain.removeHandler(SESSION_GET_STATE);
   ipcMain.handle(SESSION_GET_STATE, () => codexBridge.refreshState());
   ipcMain.removeHandler(WORKSPACE_GET_STATE);
@@ -57,6 +86,12 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(WORKSPACE_OPEN, () => workspaceService.openWorkspace());
   ipcMain.removeHandler(WORKSPACE_OPEN_CURRENT);
   ipcMain.handle(WORKSPACE_OPEN_CURRENT, () => workspaceService.openCurrentWorkspace());
+  ipcMain.removeHandler(WORKSPACE_CLEAR_RECENT);
+  ipcMain.handle(WORKSPACE_CLEAR_RECENT, () => workspaceService.clearRecentWorkspaces());
+  ipcMain.removeHandler(WORKSPACE_REMOVE);
+  ipcMain.handle(WORKSPACE_REMOVE, (_event, workspaceId: string) =>
+    workspaceService.removeWorkspace(workspaceId)
+  );
   ipcMain.removeHandler(WORKSPACE_SELECT);
   ipcMain.handle(WORKSPACE_SELECT, (_event, workspaceId: string) =>
     workspaceService.selectWorkspace(workspaceId)
@@ -87,6 +122,14 @@ export const registerIpcHandlers = () => {
   );
   ipcMain.removeHandler(WORKER_ATTACHMENTS_PICK);
   ipcMain.handle(WORKER_ATTACHMENTS_PICK, () => workspaceService.pickWorkerAttachments());
+  ipcMain.removeHandler(WORKER_ATTACHMENTS_ADD);
+  ipcMain.handle(WORKER_ATTACHMENTS_ADD, (_event, paths: string[]) =>
+    workspaceService.addWorkerAttachments(paths)
+  );
+  ipcMain.removeHandler(WORKER_ATTACHMENTS_ADD_PASTED_IMAGES);
+  ipcMain.handle(WORKER_ATTACHMENTS_ADD_PASTED_IMAGES, (_event, images) =>
+    workspaceService.addPastedImageAttachments(images)
+  );
   ipcMain.removeHandler(TURN_START);
   ipcMain.handle(TURN_START, (_event, request) => workspaceService.startTurn(request));
   ipcMain.removeHandler(TURN_INTERRUPT);
@@ -119,4 +162,6 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(VOICE_PREFERENCES_UPDATE, (_event, preferences) =>
     voicePreferencesService.updatePreferences(preferences)
   );
+  ipcMain.removeHandler(VOICE_PREFERENCES_RESET);
+  ipcMain.handle(VOICE_PREFERENCES_RESET, () => voicePreferencesService.resetPreferences());
 };

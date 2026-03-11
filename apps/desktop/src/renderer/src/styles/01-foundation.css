@@ -48,6 +48,7 @@ textarea,
 select {
   appearance: none;
   font: inherit;
+  -webkit-app-region: no-drag;
 }
 
 button {
@@ -87,9 +88,9 @@ select {
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 4px;
   height: 100vh;
-  padding: 6px;
+  padding: 2px 6px 6px;
   overflow: hidden;
 }
 
@@ -109,6 +110,11 @@ select {
   grid-template-columns: 246px minmax(0, 1fr) 292px;
   gap: 6px;
   min-height: 0;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-frame-right-pane-closed {
+  grid-template-columns: 246px minmax(0, 1fr);
 }
 
 .panel {
@@ -118,6 +124,10 @@ select {
   background: var(--surface);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+}
+
+.voice-bar {
+  -webkit-app-region: no-drag;
 }
 
 .left-rail,
@@ -149,11 +159,12 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  -webkit-app-region: drag;
 }
 
 .pane-header h2,
 .pane-body h2 {
-  margin: 8px 0 0;
+  margin: 2px 0 0;
   color: var(--text);
   font-family: "Iowan Old Style", "Baskerville", serif;
   font-size: 1.7rem;

@@ -6,5 +6,12 @@
     "lib": ["ES2023"],
     "types": ["node", "electron-vite/node"]
   },
-  "include": ["electron.vite.config.ts", "src/main", "src/preload", "../../packages/shared/src"]
+  "include": [
+    "electron.vite.config.ts",
+    "vitest.e2e.config.ts",
+    "src/main",
+    "src/preload",
+    "e2e",
+    "../../packages/shared/src"
+  ]
 }

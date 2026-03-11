@@ -2,6 +2,8 @@ import { basename, extname } from "node:path";
 import type {
   WorkerAttachment,
   WorkerApprovalPolicy,
+  WorkerCollaborationMode,
+  WorkerCollaborationModeOption,
   WorkerExecutionSettings,
   WorkerModelOption,
   WorkerReasoningEffort
@@ -25,6 +27,13 @@ type RawConfig = {
   model_reasoning_effort?: WorkerReasoningEffort | null;
   approval_policy?: WorkerApprovalPolicy | null;
   service_tier?: "fast" | "flex" | null;
+};
+
+type RawCollaborationMode = {
+  name?: string | null;
+  mode?: WorkerCollaborationMode | null;
+  model?: string | null;
+  reasoning_effort?: WorkerReasoningEffort | null;
 };
 
 type WorkerInputItem =
@@ -58,12 +67,29 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 export const FALLBACK_REASONING_EFFORT: WorkerReasoningEffort = "high";
+export const DEFAULT_WORKER_COLLABORATION_MODES: WorkerCollaborationModeOption[] = [
+  {
+    mode: "default",
+    label: "Code",
+    name: "Code",
+    model: null,
+    reasoningEffort: null
+  },
+  {
+    mode: "plan",
+    label: "Plan",
+    name: "Plan",
+    model: null,
+    reasoningEffort: null
+  }
+];
 
 export const DEFAULT_WORKER_SETTINGS: WorkerExecutionSettings = {
   model: null,
   reasoningEffort: FALLBACK_REASONING_EFFORT,
   fastMode: false,
-  approvalPolicy: "untrusted"
+  approvalPolicy: "untrusted",
+  collaborationMode: "default"
 };
 
 export const normalizeWorkerSettings = (
@@ -72,7 +98,8 @@ export const normalizeWorkerSettings = (
   model: typeof value?.model === "string" && value.model.trim() ? value.model : null,
   reasoningEffort: value?.reasoningEffort ?? FALLBACK_REASONING_EFFORT,
   fastMode: Boolean(value?.fastMode),
-  approvalPolicy: value?.approvalPolicy ?? "untrusted"
+  approvalPolicy: value?.approvalPolicy ?? "untrusted",
+  collaborationMode: value?.collaborationMode === "plan" ? "plan" : "default"
 });
 
 export const workerSettingsFromConfig = (
@@ -82,8 +109,35 @@ export const workerSettingsFromConfig = (
     model: value?.model ?? null,
     reasoningEffort: value?.model_reasoning_effort ?? FALLBACK_REASONING_EFFORT,
     approvalPolicy: value?.approval_policy ?? "untrusted",
-    fastMode: value?.service_tier === "fast"
+    fastMode: value?.service_tier === "fast",
+    collaborationMode: "default"
   });
+
+export const mapWorkerCollaborationMode = (
+  value: RawCollaborationMode
+): WorkerCollaborationModeOption | null => {
+  const mode = value.mode === "plan" || value.mode === "default" ? value.mode : null;
+
+  if (!mode) {
+    return null;
+  }
+
+  const displayLabel = mode === "plan" ? "Plan" : "Code";
+  const name =
+    mode === "plan"
+      ? "Plan"
+      : typeof value.name === "string" && value.name.trim()
+        ? value.name.trim()
+        : displayLabel;
+
+  return {
+    mode,
+    label: displayLabel,
+    name,
+    model: typeof value.model === "string" && value.model.trim() ? value.model : null,
+    reasoningEffort: value.reasoning_effort ?? null
+  };
+};
 
 export const mapWorkerModel = (model: RawModel): WorkerModelOption | null => {
   if (!model.id || !model.model || !model.displayName) {
@@ -126,7 +180,8 @@ export const resolveWorkerSettings = (
     model: settings.model,
     reasoningEffort,
     fastMode: settings.fastMode,
-    approvalPolicy: settings.approvalPolicy
+    approvalPolicy: settings.approvalPolicy,
+    collaborationMode: settings.collaborationMode
   };
 };
 

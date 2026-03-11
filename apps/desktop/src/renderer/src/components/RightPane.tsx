@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import type { ApprovalDecision, TimelineState, WorkspaceState } from "@shared";
+import { useEffect, useRef, useState } from "react";
+import type { TimelineDiffEntry, TimelinePlan, TimelineState } from "@shared";
+import { TimelineRichText } from "./TimelineRichText";
 
 const PANELS = {
   plan: {
@@ -9,22 +10,6 @@ const PANELS = {
   diff: {
     title: "Diff",
     eyebrow: "Changes"
-  },
-  commands: {
-    title: "Commands",
-    eyebrow: "Activity"
-  },
-  approvals: {
-    title: "Approvals",
-    eyebrow: "Decisions"
-  },
-  errors: {
-    title: "Errors",
-    eyebrow: "Logs"
-  },
-  settings: {
-    title: "Settings",
-    eyebrow: "Archive"
   }
 } as const;
 
@@ -33,36 +18,14 @@ type PaneKey = keyof typeof PANELS;
 interface RightPaneProps {
   activePane: PaneKey;
   onSelect: (pane: PaneKey) => void;
+  onClose: () => void;
   timelineState: TimelineState;
-  workspaceState: WorkspaceState;
-  archivingThreadId: string | null;
-  restoringThreadId: string | null;
-  archiveError: string | null;
-  submittingApprovals: Record<string, ApprovalDecision>;
-  approvalErrors: Record<string, string>;
-  submittingUserInputs: Record<string, boolean>;
-  userInputErrors: Record<string, string>;
-  onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
-  onUnarchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
-  onApproveRequest: (id: string, decision?: ApprovalDecision) => void | Promise<void>;
-  onDenyRequest: (id: string) => void | Promise<void>;
-  onSubmitUserInput: (
-    id: string,
-    answers: Record<string, string | string[]>
-  ) => void | Promise<void>;
 }
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   in_progress: "In progress",
   completed: "Completed"
-};
-
-const APPROVAL_LABELS: Record<ApprovalDecision, string> = {
-  accept: "Approve",
-  acceptForSession: "Approve for session",
-  decline: "Decline",
-  cancel: "Cancel"
 };
 
 const truncateDiff = (diff: string) => {
@@ -75,70 +38,164 @@ const truncateDiff = (diff: string) => {
   return `${trimmed.slice(0, 1800)}\n\n...diff preview truncated`;
 };
 
+const downloadTextFile = (filename: string, text: string, mimeType: string) => {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+const safeFileFragment = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "export";
+
+const resolvePlanExportName = (plan: TimelinePlan) => `${safeFileFragment(plan.title)}.md`;
+const resolveDiffExportName = (entry: TimelineDiffEntry) => `${safeFileFragment(entry.title)}.diff`;
+
+function ActionDotsIcon() {
+  return <span aria-hidden="true" className="pane-icon-dots">...</span>;
+}
+
+function ClosePaneIcon() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true" className="pane-close-icon">
+      <path
+        d="M3 3 9 9M9 3 3 9"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
+const renderDiffCard = (entry: TimelineDiffEntry, emphasis = false) => (
+  <article
+    key={entry.id}
+    className={emphasis ? "dossier-card dossier-card-active" : "dossier-card"}
+  >
+    <div className="dossier-row">
+      <span className="dossier-status dossier-status-completed">
+        +{entry.additions} -{entry.deletions}
+      </span>
+      <span className="dossier-index">{entry.files.length} files</span>
+    </div>
+    <h3>{entry.title}</h3>
+    {entry.files.length > 0 ? (
+      <div className="pane-file-list">
+        {entry.files.map((file) => (
+          <div key={`${entry.id}-${file.path}`} className="pane-file-row">
+            <span className="pane-file-path">{file.path}</span>
+            <span className="pane-file-meta">
+              +{file.additions} -{file.deletions}
+            </span>
+          </div>
+        ))}
+      </div>
+    ) : null}
+    {entry.diff.trim() ? <pre className="diff-preview">{truncateDiff(entry.diff)}</pre> : null}
+  </article>
+);
+
 export function RightPane({
   activePane,
   onSelect,
-  timelineState,
-  workspaceState,
-  archivingThreadId,
-  restoringThreadId,
-  archiveError,
-  submittingApprovals,
-  approvalErrors,
-  submittingUserInputs,
-  userInputErrors,
-  onArchiveThread,
-  onUnarchiveThread,
-  onApproveRequest,
-  onDenyRequest,
-  onSubmitUserInput
+  onClose,
+  timelineState
 }: RightPaneProps) {
-  const [draftAnswers, setDraftAnswers] = useState<Record<string, Record<string, string>>>({});
-  const pane = PANELS[activePane];
-  const planSteps = timelineState.planSteps;
-  const approvals = timelineState.approvals;
-  const userInputs = timelineState.userInputs;
-  const diff = timelineState.diff;
-  const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
-  const currentThread =
-    currentProject?.threads.find((thread) => thread.id === workspaceState.currentThreadId) ?? null;
-  const archivedProjects = workspaceState.archivedProjects;
-  const archivedThreadCount = archivedProjects.reduce(
-    (count, project) => count + project.threads.length,
-    0
-  );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const paneKey: PaneKey = activePane === "diff" ? "diff" : "plan";
+  const pane = PANELS[paneKey];
+  const activePlan = timelineState.activePlan ?? timelineState.latestProposedPlan;
+  const diffEntries = timelineState.turnDiffs;
+  const activeDiff = timelineState.activeDiffPreview ?? diffEntries.at(-1) ?? null;
+  const paneTimestamp =
+    paneKey === "plan"
+      ? activePlan?.createdAt ?? null
+      : activeDiff?.createdAt ?? null;
   const paneBadges: Partial<Record<PaneKey, number>> = {
-    plan: planSteps.length,
-    approvals: approvals.length + userInputs.length,
-    settings: archivedThreadCount
+    plan: activePlan?.steps.length ?? (activePlan ? 1 : 0),
+    diff: diffEntries.length
+  };
+  const canCopy = paneKey === "plan" ? Boolean(activePlan?.text.trim()) : Boolean(activeDiff?.diff.trim());
+  const canDownload = canCopy;
+
+  const handleCopy = async () => {
+    const text = paneKey === "plan" ? activePlan?.text ?? "" : activeDiff?.diff ?? "";
+
+    if (!text.trim()) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(text);
+    setMenuOpen(false);
+  };
+
+  const handleDownload = () => {
+    if (paneKey === "plan") {
+      if (!activePlan?.text.trim()) {
+        return;
+      }
+
+      downloadTextFile(resolvePlanExportName(activePlan), activePlan.text, "text/markdown;charset=utf-8");
+      setMenuOpen(false);
+      return;
+    }
+
+    if (!activeDiff?.diff.trim()) {
+      return;
+    }
+
+    downloadTextFile(resolveDiffExportName(activeDiff), activeDiff.diff, "text/plain;charset=utf-8");
+    setMenuOpen(false);
   };
 
   useEffect(() => {
-    const activePromptIds = new Set(userInputs.map((prompt) => prompt.id));
+    setMenuOpen(false);
+  }, [paneKey]);
 
-    setDraftAnswers((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([requestId]) => activePromptIds.has(requestId))
-      ) as Record<string, Record<string, string>>
-    );
-  }, [userInputs]);
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
 
-  const setDraftAnswer = (requestId: string, questionId: string, value: string) => {
-    setDraftAnswers((current) => ({
-      ...current,
-      [requestId]: {
-        ...(current[requestId] ?? {}),
-        [questionId]: value
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || menuRef.current?.contains(event.target)) {
+        return;
       }
-    }));
-  };
+
+      setMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuOpen]);
 
   const renderPaneBody = () => {
-    if (activePane === "plan") {
-      return planSteps.length > 0 ? (
+    if (paneKey === "plan") {
+      return activePlan ? (
         <div className="dossier-stack">
-          {planSteps.map((step, index) => (
-            <article key={`${step.step}-${index}`} className="dossier-card">
+          <article className="dossier-card dossier-card-active">
+            <div className="dossier-row">
+              <span className="dossier-status dossier-status-in_progress">
+                {timelineState.activePlan ? "Live plan" : "Latest plan"}
+              </span>
+              <span className="dossier-index">
+                {activePlan.steps.length > 0 ? `${activePlan.steps.length} steps` : "Draft"}
+              </span>
+            </div>
+            <h3>{activePlan.title}</h3>
+            <TimelineRichText className="pane-rich-text" text={activePlan.text} />
+          </article>
+          {activePlan.steps.map((step, index) => (
+            <article key={`${activePlan.id}-${step.step}-${index}`} className="dossier-card">
               <div className="dossier-row">
                 <span className={`dossier-status dossier-status-${step.status}`}>
                   {PLAN_STATUS_LABELS[step.status] ?? step.status}
@@ -152,263 +209,87 @@ export function RightPane({
       ) : (
         <div className="pane-empty-state">
           <h3>No plan yet</h3>
-          <p>Steps will land here.</p>
+          <p>Plans will land here once the worker starts sketching the approach.</p>
         </div>
       );
     }
 
-    if (activePane === "diff") {
-      return diff.trim() ? (
+    if (paneKey === "diff") {
+      return activeDiff ? (
         <div className="dossier-stack">
-          <div className="diff-preview-header">
-            <span className="status-pill status-pill-live">Live preview</span>
-            <span className="diff-preview-meta">{diff.split("\n").length} lines surfaced</span>
-          </div>
-          <pre className="diff-preview">{truncateDiff(diff)}</pre>
+          {renderDiffCard(activeDiff, true)}
+          {diffEntries
+            .filter((entry) => entry.id !== activeDiff.id)
+            .map((entry) => renderDiffCard(entry))}
         </div>
       ) : (
         <div className="pane-empty-state">
           <h3>No diff yet</h3>
-          <p>Edits will preview here.</p>
+          <p>Changed files and previews will show up here.</p>
         </div>
       );
     }
 
-    if (activePane === "commands") {
-      return (
-        <div className="dossier-stack">
-          <article className="dossier-card">
-            <div className="dossier-row">
-              <span className="dossier-index">Thread</span>
-              <span className="session-meta">{timelineState.threadId ?? "unbound"}</span>
-            </div>
-            <p>{timelineState.statusLabel ?? "No command activity."}</p>
-          </article>
-          <article className="dossier-card">
-            <div className="dossier-row">
-              <span className="dossier-index">Stream</span>
-              <span className="session-meta">{timelineState.events.length} events</span>
-            </div>
-            <p>Thread pulse and event count.</p>
-          </article>
-        </div>
-      );
-    }
-
-    if (activePane === "approvals") {
-      return approvals.length > 0 || userInputs.length > 0 ? (
-        <div className="dossier-stack">
-          {approvals.map((approval) => {
-            const pendingDecision = submittingApprovals[approval.id] ?? null;
-            const isApprovalSubmitting = approval.isSubmitting || pendingDecision !== null;
-
-            return (
-              <article key={approval.id} className="dossier-card dossier-card-alert">
-                <div className="dossier-row">
-                  <span className="dossier-status dossier-status-alert">
-                    {approval.kind === "command" ? "Command approval" : "File approval"}
-                  </span>
-                  <span className="dossier-index">
-                    {isApprovalSubmitting ? "Sending" : "Pending"}
-                  </span>
-                </div>
-                <h3>{approval.title}</h3>
-                <p>{approval.detail || "No extra context."}</p>
-                <div className="approval-actions">
-                  {approval.availableDecisions.map((decision) => (
-                    <button
-                      key={decision}
-                      type="button"
-                      className={`request-action-button ${
-                        decision === "decline" || decision === "cancel"
-                          ? "request-action-button-ghost"
-                          : "request-action-button-primary"
-                      }`}
-                      disabled={isApprovalSubmitting}
-                      onClick={() =>
-                        decision === "decline"
-                          ? void onDenyRequest(approval.id)
-                          : void onApproveRequest(approval.id, decision)
-                      }
-                    >
-                      {pendingDecision === decision ? "Sending..." : APPROVAL_LABELS[decision]}
-                    </button>
-                  ))}
-                </div>
-                {approval.availableDecisions.length === 0 ? (
-                  <p className="request-note">No decisions surfaced for this approval yet.</p>
-                ) : null}
-                {approvalErrors[approval.id] ? (
-                  <p className="request-error">{approvalErrors[approval.id]}</p>
-                ) : null}
-              </article>
-            );
-          })}
-
-          {userInputs.map((prompt) => {
-            const promptDrafts = draftAnswers[prompt.id] ?? {};
-            const isPromptSubmitting = submittingUserInputs[prompt.id] || prompt.isSubmitting;
-            const hasIncompleteAnswer = prompt.questions.some(
-              (question) => (promptDrafts[question.id] ?? "").trim().length === 0
-            );
-
-            return (
-              <article key={prompt.id} className="dossier-card dossier-card-olive">
-                <div className="dossier-row">
-                  <span className="dossier-status dossier-status-olive">Request user input</span>
-                  <span className="dossier-index">
-                    {isPromptSubmitting ? "Sending" : `${prompt.questions.length} questions`}
-                  </span>
-                </div>
-                <h3>{prompt.title}</h3>
-                <div className="request-input-list">
-                  {prompt.questions.map((question) => (
-                    <label key={question.id} className="request-question">
-                      <span>{question.header}</span>
-                      <span className="request-note">{question.question}</span>
-                      {question.options.length > 0 ? (
-                        <div className="option-pill-row">
-                          {question.options.map((option) => (
-                            <button
-                              key={`${question.id}-${option.label}`}
-                              type="button"
-                              className="option-pill"
-                              title={option.description || option.label}
-                              onClick={() =>
-                                setDraftAnswer(prompt.id, question.id, option.label)
-                              }
-                              disabled={isPromptSubmitting}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                      <input
-                        className="request-input"
-                        type={question.isSecret ? "password" : "text"}
-                        value={promptDrafts[question.id] ?? ""}
-                        placeholder={question.options[0]?.label ?? "Type your answer"}
-                        disabled={isPromptSubmitting}
-                        onChange={(event) =>
-                          setDraftAnswer(prompt.id, question.id, event.target.value)
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-                <div className="approval-actions">
-                  <button
-                    type="button"
-                    className="request-action-button request-action-button-primary"
-                    disabled={isPromptSubmitting || hasIncompleteAnswer}
-                    onClick={() => void onSubmitUserInput(prompt.id, promptDrafts)}
-                  >
-                    {isPromptSubmitting ? "Submitting..." : "Submit"}
-                  </button>
-                </div>
-                <p className="request-note">All fields required.</p>
-                {userInputErrors[prompt.id] ? (
-                  <p className="request-error">{userInputErrors[prompt.id]}</p>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="pane-empty-state">
-          <h3>No blockers</h3>
-          <p>Requests will queue here.</p>
-        </div>
-      );
-    }
-
-    if (activePane === "settings") {
-      return (
-        <div className="dossier-stack">
-          <article className="dossier-card">
-            <div className="dossier-row">
-              <span className="dossier-index">Current chat</span>
-              <span className="session-meta">{currentProject?.name ?? "No workspace"}</span>
-            </div>
-            <h3>{currentThread?.title ?? "Nothing selected"}</h3>
-            <p>
-              {currentThread
-                ? "Archive the selected chat. It will leave the active thread list and stay available below."
-                : "Open or create a thread first."}
-            </p>
-            {currentProject && currentThread ? (
-              <div className="approval-actions">
-                <button
-                  type="button"
-                  className="request-action-button request-action-button-primary"
-                  disabled={timelineState.isRunning || archivingThreadId === currentThread.id}
-                  onClick={() => void onArchiveThread(currentProject.id, currentThread.id)}
-                >
-                  {archivingThreadId === currentThread.id ? "Archiving..." : "Archive chat"}
-                </button>
-              </div>
-            ) : null}
-            {timelineState.isRunning && currentThread ? (
-              <p className="request-note">Stop active work before archiving this chat.</p>
-            ) : null}
-          </article>
-
-          {archivedProjects.length > 0 ? (
-            archivedProjects.map((project) => (
-              <article key={project.id} className="dossier-card">
-                <div className="dossier-row">
-                  <h3>{project.name}</h3>
-                  <span className="session-meta">{project.threads.length} archived</span>
-                </div>
-                <div className="archive-thread-list">
-                  {project.threads.map((thread) => (
-                    <div key={thread.id} className="archive-thread-row">
-                      <div className="archive-thread-copy">
-                        <span className="archive-thread-title">{thread.title}</span>
-                        <span className="archive-thread-meta">{thread.updatedAt}</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="request-action-button request-action-button-ghost"
-                        disabled={restoringThreadId === thread.id}
-                        onClick={() => void onUnarchiveThread(project.id, thread.id)}
-                      >
-                        {restoringThreadId === thread.id ? "Restoring..." : "Restore"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))
-          ) : (
-            <div className="pane-empty-state">
-              <h3>No archived chats</h3>
-              <p>Archived threads will show up here.</p>
-            </div>
-          )}
-
-          {archiveError ? <p className="request-error">{archiveError}</p> : null}
-        </div>
-      );
-    }
-
-    return (
-      <div className="pane-empty-state">
-        <h3>Quiet rail</h3>
-        <p>No error events.</p>
-      </div>
-    );
+    return null;
   };
 
   return (
     <aside className="right-pane panel stagger-3">
+      <div className="right-pane-window-strip" aria-hidden="true" />
+
+      <div className="pane-header-bar">
+        <div className="pane-header-copy">
+          <span className={`pane-header-badge pane-header-badge-${paneKey}`}>{pane.title}</span>
+          {paneTimestamp ? <span className="pane-header-meta">{paneTimestamp}</span> : null}
+        </div>
+        <div className="pane-header-actions">
+          <div ref={menuRef} className="pane-action-menu">
+            <button
+              type="button"
+              className={`pane-icon-button${menuOpen ? " pane-icon-button-active" : ""}`}
+              aria-label={`${pane.title} actions`}
+              onClick={() => setMenuOpen((current) => !current)}
+            >
+              <ActionDotsIcon />
+            </button>
+            {menuOpen ? (
+              <div className="pane-action-popover">
+                <button
+                  type="button"
+                  className="pane-action-popover-button"
+                  onClick={() => void handleCopy()}
+                  disabled={!canCopy}
+                >
+                  Copy {pane.title.toLowerCase()}
+                </button>
+                <button
+                  type="button"
+                  className="pane-action-popover-button"
+                  onClick={handleDownload}
+                  disabled={!canDownload}
+                >
+                  Download {pane.title.toLowerCase()}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="pane-icon-button"
+            aria-label="Close right pane"
+            onClick={onClose}
+          >
+            <ClosePaneIcon />
+          </button>
+        </div>
+      </div>
+
       <div className="pane-tabs" role="tablist" aria-label="Utility panels">
         {(Object.keys(PANELS) as PaneKey[]).map((key) => (
           <button
             key={key}
             type="button"
-            className={key === activePane ? "pane-tab active" : "pane-tab"}
+            className={key === paneKey ? "pane-tab active" : "pane-tab"}
             onClick={() => onSelect(key)}
           >
             {PANELS[key].title}

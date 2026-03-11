@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
-import type { TimelineEvent } from "@shared";
+import type { TimelineEntry } from "@shared";
 import { presentTimelineEvent } from "./timeline-presenter";
 
-const makeEvent = (event: Partial<TimelineEvent>): TimelineEvent => ({
-  id: "event-1",
-  kind: "commentary",
-  text: "",
+const makeEntry = (entry: Partial<TimelineEntry>): TimelineEntry => ({
+  id: "entry-1",
+  kind: "work",
   createdAt: "Live update",
-  ...event
-});
+  turnId: "turn-1",
+  tone: "info",
+  label: "",
+  detail: null,
+  command: null,
+  changedFiles: [],
+  ...entry
+}) as TimelineEntry;
 
 describe("presentTimelineEvent", () => {
   it("keeps user prompts as full message rows", () => {
     expect(
       presentTimelineEvent(
-        makeEvent({
-          kind: "user",
+        makeEntry({
+          kind: "message",
+          role: "user",
           text: "Remove the extra label"
         })
       )
@@ -29,8 +35,9 @@ describe("presentTimelineEvent", () => {
   it("compresses assistant progress into activity rows while working", () => {
     expect(
       presentTimelineEvent(
-        makeEvent({
-          kind: "assistant",
+        makeEntry({
+          kind: "message",
+          role: "assistant",
           text: "Hi Espen. The generator is running. Once it lands, I'll grep the real turn params.",
           summary: "The generator is running"
         }),
@@ -42,27 +49,43 @@ describe("presentTimelineEvent", () => {
     });
   });
 
-  it("compresses explored commentary into activity rows", () => {
+  it("does not show a Codex badge on assistant replies", () => {
     expect(
       presentTimelineEvent(
-        makeEvent({
-          text: "Explored 3 files",
-          summary: "Explored 3 files"
+        makeEntry({
+          kind: "message",
+          role: "assistant",
+          text: "Archive smoke path looks healthy."
+        })
+      )
+    ).toMatchObject({
+      variant: "message",
+      badge: null,
+      tone: "assistant"
+    });
+  });
+
+  it("renders reasoning entries as compact activity rows", () => {
+    expect(
+      presentTimelineEvent(
+        makeEntry({
+          tone: "thinking",
+          label: "Explored 3 files",
+          detail: "Explored 3 files"
         })
       )
     ).toMatchObject({
       variant: "activity",
-      badge: "Explore"
+      badge: "Think"
     });
   });
 
   it("compresses command events into tool activity rows", () => {
     expect(
       presentTimelineEvent(
-        makeEvent({
-          kind: "system",
-          text: "pnpm build",
-          summary: "Ran pnpm build",
+        makeEntry({
+          label: "Ran pnpm build",
+          command: "pnpm build",
           detail: "Done"
         })
       )
@@ -76,13 +99,16 @@ describe("presentTimelineEvent", () => {
   it("compresses file changes into edit activity rows with diff counts", () => {
     expect(
       presentTimelineEvent(
-        makeEvent({
-          kind: "system",
-          text: "Edited Timeline.tsx",
-          summary: "Edited Timeline.tsx",
-          path: "apps/desktop/src/renderer/src/components/Timeline.tsx",
-          additions: 4,
-          deletions: 1
+        makeEntry({
+          label: "Edited Timeline.tsx",
+          changedFiles: [
+            {
+              path: "apps/desktop/src/renderer/src/components/Timeline.tsx",
+              additions: 4,
+              deletions: 1,
+              diff: null
+            }
+          ]
         })
       )
     ).toMatchObject({

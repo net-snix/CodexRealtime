@@ -4,6 +4,36 @@ export interface AppInfo {
   platform: string;
 }
 
+export type AppDensity = "comfortable" | "compact";
+
+export interface AppSettings {
+  launchAtLogin: boolean;
+  restoreLastWorkspace: boolean;
+  reopenLastThread: boolean;
+  autoNameNewThreads: boolean;
+  autoStartVoice: boolean;
+  showVoiceCaptions: boolean;
+  density: AppDensity;
+  reduceMotion: boolean;
+  desktopNotifications: boolean;
+  notifyOnApprovals: boolean;
+  notifyOnTurnComplete: boolean;
+  notifyOnErrors: boolean;
+  developerMode: boolean;
+}
+
+export interface AppSettingsState {
+  settings: AppSettings;
+  userDataPath: string;
+  loginItemSupported: boolean;
+  notificationsSupported: boolean;
+}
+
+export interface DesktopNotificationRequest {
+  title: string;
+  body: string;
+}
+
 export interface AudioDeviceOption {
   id: string;
   label: string;
@@ -39,14 +69,20 @@ export interface SessionState {
 
 export interface AppBridge {
   getAppInfo: () => Promise<AppInfo>;
+  getAppSettingsState: () => Promise<AppSettingsState>;
+  updateAppSettings: (patch: Partial<AppSettings>) => Promise<AppSettingsState>;
+  showDesktopNotification: (request: DesktopNotificationRequest) => Promise<boolean>;
+  openUserDataDirectory: () => Promise<void>;
   getSessionState: () => Promise<SessionState>;
   getWorkspaceState: () => Promise<WorkspaceState>;
   openWorkspace: () => Promise<WorkspaceState>;
   openCurrentWorkspace: () => Promise<WorkspaceState>;
+  clearRecentWorkspaces: () => Promise<WorkspaceState>;
+  removeWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
   selectWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
   createThread: (workspaceId: string) => Promise<TimelineState>;
   selectThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
-  archiveThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
+  archiveThread: (workspaceId: string, threadId: string) => Promise<ArchiveThreadResult>;
   unarchiveThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
   getTimelineState: () => Promise<TimelineState>;
   getWorkerSettingsState: () => Promise<WorkerSettingsState>;
@@ -54,6 +90,8 @@ export interface AppBridge {
     patch: Partial<WorkerExecutionSettings>
   ) => Promise<WorkerSettingsState>;
   pickWorkerAttachments: () => Promise<WorkerAttachment[]>;
+  addWorkerAttachments: (paths: string[]) => Promise<WorkerAttachment[]>;
+  addPastedImageAttachments: (images: PastedImageAttachment[]) => Promise<WorkerAttachment[]>;
   startTurn: (request: TurnStartRequest) => Promise<TimelineState>;
   dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;
   interruptActiveTurn: () => Promise<TimelineState>;
@@ -74,7 +112,9 @@ export interface AppBridge {
   updateVoicePreferences: (
     preferences: Partial<VoicePreferences>
   ) => Promise<VoicePreferences>;
+  resetVoicePreferences: () => Promise<VoicePreferences>;
   subscribeRealtimeEvents: (listener: RealtimeEventListener) => () => void;
+  subscribeTimelineUpdates: (listener: TimelineUpdateListener) => () => void;
 }
 
 export interface WorkspaceSummary {
@@ -87,8 +127,15 @@ export interface ThreadSummary {
   id: string;
   title: string;
   updatedAt: string;
+  preview: string | null;
   changeSummary: ThreadChangeSummary | null;
+  state: ThreadState;
+  isRunning: boolean;
+  hasPendingApproval: boolean;
+  hasPendingUserInput: boolean;
 }
+
+export type ThreadState = "idle" | "running" | "approval" | "input";
 
 export interface ThreadChangeSummary {
   additions: number;
@@ -122,12 +169,14 @@ export type WorkerReasoningEffort =
   | "xhigh";
 
 export type WorkerApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
+export type WorkerCollaborationMode = "default" | "plan";
 
 export interface WorkerExecutionSettings {
   model: string | null;
   reasoningEffort: WorkerReasoningEffort;
   fastMode: boolean;
   approvalPolicy: WorkerApprovalPolicy;
+  collaborationMode: WorkerCollaborationMode;
 }
 
 export interface WorkerModelOption {
@@ -141,9 +190,18 @@ export interface WorkerModelOption {
   defaultReasoningEffort: WorkerReasoningEffort;
 }
 
+export interface WorkerCollaborationModeOption {
+  mode: WorkerCollaborationMode;
+  label: string;
+  name: string;
+  model: string | null;
+  reasoningEffort: WorkerReasoningEffort | null;
+}
+
 export interface WorkerSettingsState {
   settings: WorkerExecutionSettings;
   models: WorkerModelOption[];
+  collaborationModes: WorkerCollaborationModeOption[];
 }
 
 export interface WorkerAttachment {
@@ -153,6 +211,12 @@ export interface WorkerAttachment {
   kind: "file" | "image";
 }
 
+export interface PastedImageAttachment {
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+}
+
 export interface TurnStartRequest {
   prompt: string;
   attachments: WorkerAttachment[];
@@ -160,13 +224,94 @@ export interface TurnStartRequest {
 
 export interface TimelineState {
   threadId: string | null;
-  events: TimelineEvent[];
-  planSteps: TimelinePlanStep[];
-  diff: string;
+  entries: TimelineEntry[];
+  activePlan: TimelinePlan | null;
+  latestProposedPlan: TimelinePlan | null;
+  turnDiffs: TimelineDiffEntry[];
+  activeDiffPreview: TimelineDiffEntry | null;
   approvals: TimelineApproval[];
   userInputs: TimelineUserInputRequest[];
   isRunning: boolean;
-  statusLabel: string | null;
+  runState: TimelineRunState;
+}
+
+export interface TimelineRunState {
+  phase:
+    | "idle"
+    | "starting"
+    | "running"
+    | "steering"
+    | "interrupted"
+    | "historyUnavailable";
+  label: string | null;
+}
+
+export type TimelineEntry =
+  | TimelineMessageEntry
+  | TimelineWorkEntry
+  | TimelinePlanEntry
+  | TimelineDiffEntry;
+
+export interface TimelineMessageEntry {
+  id: string;
+  kind: "message";
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+  turnId: string | null;
+  summary: string | null;
+  isStreaming: boolean;
+}
+
+export interface TimelineWorkEntry {
+  id: string;
+  kind: "work";
+  createdAt: string;
+  turnId: string | null;
+  tone: "thinking" | "tool" | "info" | "error";
+  label: string;
+  detail: string | null;
+  command: string | null;
+  changedFiles: TimelineChangedFile[];
+}
+
+export interface TimelinePlan {
+  id: string;
+  createdAt: string;
+  turnId: string | null;
+  title: string;
+  text: string;
+  steps: TimelinePlanStep[];
+}
+
+export interface TimelinePlanEntry extends TimelinePlan {
+  kind: "plan";
+}
+
+export interface TimelineChangedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  diff: string | null;
+}
+
+export interface TimelineDiffEntry {
+  id: string;
+  kind: "diff";
+  createdAt: string;
+  turnId: string | null;
+  title: string;
+  diff: string;
+  files: TimelineChangedFile[];
+  additions: number;
+  deletions: number;
+}
+
+export interface ArchiveThreadResult {
+  timelineState: TimelineState;
+  workspaceId: string;
+  archivedThreadId: string;
+  selectedThreadId: string | null;
 }
 
 export type VoiceState =
@@ -177,21 +322,9 @@ export type VoiceState =
   | "approval"
   | "error";
 
-export interface TimelineEvent {
-  id: string;
-  kind: "user" | "assistant" | "commentary" | "system";
-  text: string;
-  createdAt: string;
-  summary?: string | null;
-  detail?: string | null;
-  path?: string | null;
-  additions?: number | null;
-  deletions?: number | null;
-}
-
 export interface TimelinePlanStep {
   step: string;
-  status: string;
+  status: "pending" | "in_progress" | "completed";
 }
 
 export interface TimelineApproval {
@@ -254,3 +387,4 @@ export type RealtimeEvent =
   | { type: "error"; message: string };
 
 export type RealtimeEventListener = (event: RealtimeEvent) => void;
+export type TimelineUpdateListener = (timeline: TimelineState) => void;

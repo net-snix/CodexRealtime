@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { TimelineEvent } from "@shared";
+import type { TimelineEntry } from "@shared";
 import { presentTimelineEvent } from "./timeline-presenter";
 
 const THINKING_FRAMES = ["Thinking", "Thinking.", "Thinking..", "Thinking..."];
@@ -7,7 +7,8 @@ const WORKING_LABELS = new Map<string, string>([
   ["Command", "Running"],
   ["Edit", "Editing"],
   ["Plan", "Planning"],
-  ["Retry", "Reconnecting"]
+  ["Think", "Thinking"],
+  ["Work", "Working"]
 ]);
 
 export const useThinkingLabel = (enabled: boolean) => {
@@ -30,17 +31,19 @@ export const useThinkingLabel = (enabled: boolean) => {
 };
 
 export const getLatestWorkingStatus = (
-  events: TimelineEvent[],
+  entries: TimelineEntry[],
   isWorkingLogMode: boolean
 ) => {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    if (events[index].createdAt === "Thread history") {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+
+    if (entry.createdAt === "Thread history" || entry.kind === "message") {
       continue;
     }
 
-    const presentation = presentTimelineEvent(events[index], isWorkingLogMode);
+    const presentation = presentTimelineEvent(entry, isWorkingLogMode);
 
-    if (presentation.variant === "activity" && presentation.title.trim()) {
+    if (presentation.title.trim()) {
       return presentation.title.trim();
     }
   }
@@ -49,7 +52,7 @@ export const getLatestWorkingStatus = (
 };
 
 export const getWorkingStatusLabel = (
-  events: TimelineEvent[],
+  entries: TimelineEntry[],
   isWorkingLogMode: boolean,
   thinkingLabel: string,
   isResolvingRequests: boolean
@@ -58,12 +61,14 @@ export const getWorkingStatusLabel = (
     return "Waiting";
   }
 
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    if (events[index].createdAt === "Thread history") {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+
+    if (entry.createdAt === "Thread history" || entry.kind === "message") {
       continue;
     }
 
-    const presentation = presentTimelineEvent(events[index], isWorkingLogMode);
+    const presentation = presentTimelineEvent(entry, isWorkingLogMode);
     const label = presentation.badge ? WORKING_LABELS.get(presentation.badge) : null;
 
     if (label) {

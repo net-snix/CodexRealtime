@@ -8,6 +8,7 @@ import type {
   SessionState,
   WorkerExecutionSettings
 } from "@shared";
+import { CodexBridgeFixture } from "./codex-bridge-fixture";
 
 type JsonRpcMessage = {
   jsonrpc?: string;
@@ -22,8 +23,10 @@ type JsonRpcMessage = {
 };
 
 type PendingRequest = {
+  method: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+  timeoutId: NodeJS.Timeout;
 };
 
 type ServerNotificationMessage = {
@@ -44,12 +47,22 @@ const emptyFeatures = (): CodexFeatureFlags => ({
 });
 
 const now = () => new Date().toISOString();
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const MALFORMED_MESSAGE_ERROR = "Codex app-server sent malformed JSON";
 
-class CodexBridge extends EventEmitter {
+const normalizeError = (error: unknown, fallback: string) =>
+  error instanceof Error ? error : new Error(fallback);
+
+export class CodexBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
   private buffer = "";
   private readonly pending = new Map<string, PendingRequest>();
+  private stdinWriteChain: Promise<void> = Promise.resolve();
   private startPromise: Promise<void> | null = null;
+  private readonly fixture = process.env.CODEX_REALTIME_E2E_FIXTURE_PATH
+    ? new CodexBridgeFixture(process.env.CODEX_REALTIME_E2E_FIXTURE_PATH)
+    : null;
+  private readonly requestTimeoutMs: number;
   private state: SessionState = {
     status: "connecting",
     account: null,
@@ -59,12 +72,20 @@ class CodexBridge extends EventEmitter {
     lastUpdatedAt: null
   };
 
+  constructor(options?: { requestTimeoutMs?: number }) {
+    super();
+    this.requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+
   async start() {
     if (this.startPromise) {
       return this.startPromise;
     }
 
-    this.startPromise = this.startInternal();
+    this.startPromise = this.startInternal().catch((error) => {
+      this.startPromise = null;
+      throw error;
+    });
     return this.startPromise;
   }
 
@@ -74,6 +95,10 @@ class CodexBridge extends EventEmitter {
 
   async startThread(cwd: string) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.startThread(cwd);
+    }
 
     return this.request("thread/start", {
       cwd,
@@ -86,6 +111,10 @@ class CodexBridge extends EventEmitter {
   async resumeThread(threadId: string, cwd: string) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.resumeThread(threadId, cwd);
+    }
+
     return this.request("thread/resume", {
       threadId,
       cwd,
@@ -95,6 +124,10 @@ class CodexBridge extends EventEmitter {
 
   async listThreads(cwd: string, archived = false) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.listThreads(cwd, archived);
+    }
 
     return this.request("thread/list", {
       cwd,
@@ -106,6 +139,10 @@ class CodexBridge extends EventEmitter {
   async archiveThread(threadId: string) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.archiveThread(threadId);
+    }
+
     return this.request("thread/archive", {
       threadId
     });
@@ -114,6 +151,10 @@ class CodexBridge extends EventEmitter {
   async unarchiveThread(threadId: string) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.unarchiveThread(threadId);
+    }
+
     return this.request("thread/unarchive", {
       threadId
     });
@@ -121,6 +162,10 @@ class CodexBridge extends EventEmitter {
 
   async readThread(threadId: string) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.readThread(threadId);
+    }
 
     return this.request("thread/read", {
       threadId,
@@ -131,6 +176,10 @@ class CodexBridge extends EventEmitter {
   async listModels(cursor?: string | null) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.listModels();
+    }
+
     return this.request("model/list", {
       cursor: cursor ?? null,
       limit: 100,
@@ -138,8 +187,22 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async listCollaborationModes() {
+    await this.start();
+
+    if (this.fixture) {
+      return this.fixture.listCollaborationModes();
+    }
+
+    return this.request("collaborationMode/list", {});
+  }
+
   async readConfig(cwd?: string | null) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.readConfig();
+    }
 
     return this.request("config/read", {
       includeLayers: false,
@@ -147,12 +210,42 @@ class CodexBridge extends EventEmitter {
     });
   }
 
+  async getConversationSummary(threadId: string) {
+    await this.start();
+
+    if (this.fixture) {
+      return this.fixture.getConversationSummary(threadId);
+    }
+
+    return this.request("getConversationSummary", {
+      conversationId: threadId
+    });
+  }
+
+  async setThreadName(threadId: string, name: string) {
+    await this.start();
+
+    if (this.fixture) {
+      return this.fixture.setThreadName(threadId, name);
+    }
+
+    return this.request("thread/name/set", {
+      threadId,
+      name
+    });
+  }
+
   async startTurn(
     threadId: string,
     input: unknown[],
-    settings: WorkerExecutionSettings
+    settings: WorkerExecutionSettings,
+    resolvedModel: string | null = settings.model
   ) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.startTurn(threadId, input, settings, resolvedModel);
+    }
 
     return this.request("turn/start", {
       threadId,
@@ -160,12 +253,27 @@ class CodexBridge extends EventEmitter {
       approvalPolicy: settings.approvalPolicy,
       model: settings.model,
       serviceTier: settings.fastMode ? "fast" : "flex",
-      effort: settings.reasoningEffort
+      effort: settings.reasoningEffort,
+      collaborationMode:
+        settings.collaborationMode === "plan" && resolvedModel
+          ? {
+              mode: settings.collaborationMode,
+              settings: {
+                model: resolvedModel,
+                reasoning_effort: settings.reasoningEffort,
+                developer_instructions: null
+              }
+            }
+          : null
     });
   }
 
   async steerTurn(threadId: string, expectedTurnId: string, prompt: string) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.steerTurn(threadId, expectedTurnId, prompt);
+    }
 
     return this.request("turn/steer", {
       threadId,
@@ -183,6 +291,10 @@ class CodexBridge extends EventEmitter {
   async interruptTurn(threadId: string, turnId: string) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.interruptTurn(threadId, turnId);
+    }
+
     return this.request("turn/interrupt", {
       threadId,
       turnId
@@ -191,6 +303,10 @@ class CodexBridge extends EventEmitter {
 
   async startRealtime(threadId: string, prompt: string, sessionId?: string | null) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.startRealtime(threadId, prompt, sessionId);
+    }
 
     return this.request("thread/realtime/start", {
       threadId,
@@ -202,6 +318,10 @@ class CodexBridge extends EventEmitter {
   async appendRealtimeAudio(threadId: string, audio: RealtimeAudioChunk) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.appendRealtimeAudio();
+    }
+
     return this.request("thread/realtime/appendAudio", {
       threadId,
       audio
@@ -210,6 +330,10 @@ class CodexBridge extends EventEmitter {
 
   async appendRealtimeText(threadId: string, text: string) {
     await this.start();
+
+    if (this.fixture) {
+      return this.fixture.appendRealtimeText();
+    }
 
     return this.request("thread/realtime/appendText", {
       threadId,
@@ -220,6 +344,10 @@ class CodexBridge extends EventEmitter {
   async stopRealtime(threadId: string) {
     await this.start();
 
+    if (this.fixture) {
+      return this.fixture.stopRealtime();
+    }
+
     return this.request("thread/realtime/stop", {
       threadId
     });
@@ -228,14 +356,30 @@ class CodexBridge extends EventEmitter {
   async respond(id: string, result: unknown) {
     await this.start();
 
+    if (this.fixture) {
+      this.fixture.respond();
+      return;
+    }
+
     if (!this.child) {
       throw new Error("Codex app-server is not running");
     }
 
-    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+    await this.writeMessage({
+      jsonrpc: "2.0",
+      id,
+      result
+    });
   }
 
   async refreshState(): Promise<SessionState> {
+    if (this.fixture) {
+      await this.start();
+      this.state = this.fixture.refreshState();
+      this.emit("stateChanged", this.state);
+      return this.state;
+    }
+
     try {
       await this.start();
       const [accountResult, featureResult] = await Promise.all([
@@ -265,13 +409,24 @@ class CodexBridge extends EventEmitter {
   }
 
   async stop() {
-    if (!this.child) {
+    if (this.fixture) {
+      this.startPromise = null;
       return;
     }
 
-    this.child.kill("SIGTERM");
+    if (!this.child) {
+      this.stdinWriteChain = Promise.resolve();
+      this.startPromise = null;
+      return;
+    }
+
+    const child = this.child;
     this.child = null;
+    this.buffer = "";
+    this.stdinWriteChain = Promise.resolve();
     this.startPromise = null;
+    this.rejectAllPending("Codex app-server stopped before responding");
+    child.kill("SIGTERM");
   }
 
   private async startInternal() {
@@ -281,6 +436,12 @@ class CodexBridge extends EventEmitter {
       error: null
     };
 
+    if (this.fixture) {
+      return;
+    }
+
+    this.buffer = "";
+    this.stdinWriteChain = Promise.resolve();
     this.child = spawn("codex", ["app-server"], {
       stdio: ["pipe", "pipe", "pipe"],
       env: process.env
@@ -304,17 +465,7 @@ class CodexBridge extends EventEmitter {
       this.emit("stateChanged", this.state);
     });
 
-    this.child.on("exit", () => {
-      this.child = null;
-      this.startPromise = null;
-      this.state = {
-        ...this.state,
-        status: "error",
-        error: this.state.error ?? "Codex app-server exited unexpectedly",
-        lastUpdatedAt: now()
-      };
-      this.emit("stateChanged", this.state);
-    });
+    this.child.on("exit", () => this.handleChildExit());
 
     await this.request("initialize", {
       clientInfo: {
@@ -343,16 +494,25 @@ class CodexBridge extends EventEmitter {
         continue;
       }
 
-      const message = JSON.parse(line) as JsonRpcMessage;
+      let message: JsonRpcMessage;
+
+      try {
+        message = JSON.parse(line) as JsonRpcMessage;
+      } catch (error) {
+        this.state = {
+          ...this.state,
+          error: `${MALFORMED_MESSAGE_ERROR}: ${normalizeError(error, MALFORMED_MESSAGE_ERROR).message}`,
+          lastUpdatedAt: now()
+        };
+        this.emit("stateChanged", this.state);
+        continue;
+      }
 
       if (message.id && this.pending.has(message.id)) {
-        const pending = this.pending.get(message.id)!;
-        this.pending.delete(message.id);
-
         if (message.error) {
-          pending.reject(new Error(message.error.message));
+          this.rejectPendingRequest(message.id, message.error.message);
         } else {
-          pending.resolve(message.result);
+          this.resolvePendingRequest(message.id, message.result);
         }
 
         continue;
@@ -384,11 +544,141 @@ class CodexBridge extends EventEmitter {
     const id = randomUUID();
 
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.child!.stdin.write(
-        `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`
-      );
+      const timeoutId = setTimeout(() => {
+        this.rejectPendingRequest(id, `Codex app-server request timed out: ${method}`);
+      }, this.requestTimeoutMs);
+
+      this.pending.set(id, {
+        method,
+        resolve,
+        reject,
+        timeoutId
+      });
+
+      void this.writeMessage({ jsonrpc: "2.0", id, method, params }).catch((error) => {
+        this.rejectPendingRequest(
+          id,
+          normalizeError(error, `Failed to send Codex app-server request: ${method}`).message
+        );
+      });
     });
+  }
+
+  private handleChildExit() {
+    this.child = null;
+    this.buffer = "";
+    this.stdinWriteChain = Promise.resolve();
+    this.startPromise = null;
+    this.rejectAllPending("Codex app-server exited before responding");
+    this.state = {
+      ...this.state,
+      status: "error",
+      error: this.state.error ?? "Codex app-server exited unexpectedly",
+      lastUpdatedAt: now()
+    };
+    this.emit("stateChanged", this.state);
+  }
+
+  private async writeMessage(message: JsonRpcMessage) {
+    const payload = `${JSON.stringify(message)}\n`;
+    const runWrite = async () => {
+      const child = this.child;
+      if (!child) {
+        throw new Error("Codex app-server is not running");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        let needsDrain = false;
+        let settled = false;
+
+        const cleanup = () => {
+          child.stdin.off("drain", handleDrain);
+          child.stdin.off("error", handleError);
+          child.off("exit", handleExit);
+        };
+
+        const settle = (error?: Error) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          cleanup();
+
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        };
+
+        const handleDrain = () => settle();
+        const handleError = (error: Error) =>
+          settle(normalizeError(error, "Failed to write to Codex app-server"));
+        const handleExit = () =>
+          settle(new Error("Codex app-server exited before request write completed"));
+
+        child.stdin.once("error", handleError);
+        child.once("exit", handleExit);
+
+        try {
+          needsDrain = !child.stdin.write(payload, (error?: Error | null) => {
+            if (error) {
+              settle(normalizeError(error, "Failed to write to Codex app-server"));
+              return;
+            }
+
+            if (!needsDrain) {
+              settle();
+            }
+          });
+        } catch (error) {
+          settle(normalizeError(error, "Failed to write to Codex app-server"));
+          return;
+        }
+
+        if (needsDrain) {
+          child.stdin.once("drain", handleDrain);
+        }
+      });
+    };
+
+    const writePromise = this.stdinWriteChain.then(runWrite, runWrite);
+    this.stdinWriteChain = writePromise.catch(() => {});
+    await writePromise;
+  }
+
+  private resolvePendingRequest(id: string, result: unknown) {
+    const pending = this.pending.get(id);
+
+    if (!pending) {
+      return;
+    }
+
+    this.pending.delete(id);
+    clearTimeout(pending.timeoutId);
+    pending.resolve(result);
+  }
+
+  private rejectPendingRequest(id: string, message: string) {
+    const pending = this.pending.get(id);
+
+    if (!pending) {
+      return;
+    }
+
+    this.pending.delete(id);
+    clearTimeout(pending.timeoutId);
+    pending.reject(new Error(message));
+  }
+
+  private rejectAllPending(message: string) {
+    for (const [id, pending] of this.pending.entries()) {
+      clearTimeout(pending.timeoutId);
+      pending.reject(new Error(`${message}: ${pending.method}`));
+      this.pending.delete(id);
+    }
   }
 
   private mapAccount(account: unknown): CodexAccountSummary | null {

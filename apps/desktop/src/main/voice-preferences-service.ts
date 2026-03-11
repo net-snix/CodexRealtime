@@ -10,12 +10,18 @@ const DEFAULT_PREFERENCES: VoicePreferences = {
   deviceSetupComplete: false
 };
 
-class VoicePreferencesService {
+const clonePreferences = (preferences: VoicePreferences): VoicePreferences => ({
+  ...preferences
+});
+
+export class VoicePreferencesService {
+  private cachedPreferences: VoicePreferences | null = null;
+
   private get statePath() {
     return join(app.getPath("userData"), "voice-preferences.json");
   }
 
-  getPreferences(): VoicePreferences {
+  private loadPreferences(): VoicePreferences {
     try {
       const raw = readFileSync(this.statePath, "utf8");
       const parsed = JSON.parse(raw) as Partial<VoicePreferences>;
@@ -29,16 +35,32 @@ class VoicePreferencesService {
     }
   }
 
+  getPreferences(): VoicePreferences {
+    if (!this.cachedPreferences) {
+      this.cachedPreferences = this.loadPreferences();
+    }
+
+    return clonePreferences(this.cachedPreferences);
+  }
+
   updatePreferences(nextPreferences: Partial<VoicePreferences>): VoicePreferences {
     const nextState = {
       ...this.getPreferences(),
       ...nextPreferences
     };
 
+    this.cachedPreferences = clonePreferences(nextState);
     mkdirSync(app.getPath("userData"), { recursive: true });
     writeFileSync(this.statePath, JSON.stringify(nextState, null, 2), "utf8");
 
-    return nextState;
+    return clonePreferences(nextState);
+  }
+
+  resetPreferences(): VoicePreferences {
+    this.cachedPreferences = clonePreferences(DEFAULT_PREFERENCES);
+    mkdirSync(app.getPath("userData"), { recursive: true });
+    writeFileSync(this.statePath, JSON.stringify(DEFAULT_PREFERENCES, null, 2), "utf8");
+    return clonePreferences(DEFAULT_PREFERENCES);
   }
 }
 

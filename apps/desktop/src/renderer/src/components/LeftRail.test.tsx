@@ -3,8 +3,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInfo, SessionState, WorkspaceState } from "@shared";
+import type { AppInfo, SessionState, ThreadSummary, WorkspaceState } from "@shared";
 import { LeftRail } from "./LeftRail";
+
+type CreateThreadHandler = (workspaceId: string) => void;
+type RemoveWorkspaceHandler = (workspaceId: string) => void;
+type ArchiveThreadHandler = (workspaceId: string, threadId: string) => void;
 
 const appInfo: AppInfo = {
   name: "Codex Realtime",
@@ -28,6 +32,24 @@ const sessionState: SessionState = {
   lastUpdatedAt: "2026-03-11T08:00:00.000Z"
 };
 
+const createThread = (
+  id: string,
+  title: string,
+  updatedAt: string,
+  overrides: Partial<ThreadSummary> = {}
+): ThreadSummary => ({
+  id,
+  title,
+  updatedAt,
+  preview: null,
+  changeSummary: null,
+  state: "idle",
+  isRunning: false,
+  hasPendingApproval: false,
+  hasPendingUserInput: false,
+  ...overrides
+});
+
 const workspaceState: WorkspaceState = {
   currentWorkspace: {
     id: "workspace-1",
@@ -37,12 +59,9 @@ const workspaceState: WorkspaceState = {
   currentThreadId: "thread-1",
   recentWorkspaces: [],
   threads: [
-    {
-      id: "thread-1",
-      title: "archive smoke test",
-      updatedAt: "30m",
-      changeSummary: null
-    }
+    createThread("thread-1", "archive smoke test", "30m", {
+      preview: "Package the VS Code smoke path and verify the archive."
+    })
   ],
   projects: [
     {
@@ -52,12 +71,9 @@ const workspaceState: WorkspaceState = {
       isCurrent: true,
       currentThreadId: "thread-1",
       threads: [
-        {
-          id: "thread-1",
-          title: "archive smoke test",
-          updatedAt: "30m",
-          changeSummary: null
-        }
+        createThread("thread-1", "archive smoke test", "30m", {
+          preview: "Package the VS Code smoke path and verify the archive."
+        })
       ]
     }
   ],
@@ -89,32 +105,73 @@ describe("LeftRail", () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  const renderLeftRail = async (onArchiveThread = vi.fn()) => {
+  const renderLeftRail = async ({
+    workspaceStateOverride = workspaceState,
+    onArchiveThread = vi.fn<ArchiveThreadHandler>(),
+    onCreateThread = vi.fn<CreateThreadHandler>(),
+    onRemoveWorkspace = vi.fn<RemoveWorkspaceHandler>(),
+    onOpenWorkspace = vi.fn<() => void>()
+  }: {
+    workspaceStateOverride?: WorkspaceState;
+    onArchiveThread?: ReturnType<typeof vi.fn<ArchiveThreadHandler>>;
+    onCreateThread?: ReturnType<typeof vi.fn<CreateThreadHandler>>;
+    onRemoveWorkspace?: ReturnType<typeof vi.fn<RemoveWorkspaceHandler>>;
+    onOpenWorkspace?: ReturnType<typeof vi.fn<() => void>>;
+  } = {}) => {
     await act(async () => {
       root?.render(
         <LeftRail
           appInfo={appInfo}
           sessionState={sessionState}
-          workspaceState={workspaceState}
+          workspaceState={workspaceStateOverride}
           isOpeningWorkspace={false}
           isCreatingThread={false}
           archivingThreadId={null}
+          removingWorkspaceId={null}
           runningThreadId={null}
-          onOpenWorkspace={vi.fn()}
-          onOpenCurrentWorkspace={vi.fn()}
-          onCreateThread={vi.fn()}
+          isSettingsView={false}
+          onOpenWorkspace={onOpenWorkspace}
+          onCreateThread={onCreateThread as CreateThreadHandler}
+          onRemoveWorkspace={onRemoveWorkspace as RemoveWorkspaceHandler}
+          onOpenSettings={vi.fn()}
           onSelectWorkspace={vi.fn()}
           onSelectThread={vi.fn()}
-          onArchiveThread={onArchiveThread}
+          onArchiveThread={onArchiveThread as ArchiveThreadHandler}
         />
       );
     });
 
-    return onArchiveThread;
+    return {
+      onArchiveThread,
+      onCreateThread,
+      onRemoveWorkspace,
+      onOpenWorkspace
+    };
   };
 
+  it("keeps the rail hierarchy compact with repo action first and threads label second", async () => {
+    const { onOpenWorkspace } = await renderLeftRail({
+      onOpenWorkspace: vi.fn<() => void>()
+    });
+
+    const openRepoButton = container?.querySelector(
+      'button[aria-label="Open repo"]'
+    ) as HTMLButtonElement | null;
+
+    expect(openRepoButton?.textContent).toContain("Open repo");
+    expect(container?.textContent).toContain("Threads");
+    expect(container?.textContent).not.toContain("Projects");
+    expect(container?.querySelector('button[aria-label="New thread"]')).toBeNull();
+
+    await act(async () => {
+      openRepoButton?.click();
+    });
+
+    expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
+  });
+
   it("swaps time to archive then confirm before archiving", async () => {
-    const onArchiveThread = await renderLeftRail();
+    const { onArchiveThread } = await renderLeftRail();
 
     const threadRow = container?.querySelector('[data-thread-id="thread-1"]') as HTMLDivElement | null;
     const timeSlot = threadRow?.querySelector(".project-thread-time-slot") as HTMLSpanElement | null;
@@ -157,5 +214,100 @@ describe("LeftRail", () => {
 
     expect(onArchiveThread).toHaveBeenCalledTimes(1);
     expect(onArchiveThread).toHaveBeenCalledWith("workspace-1", "thread-1");
+  });
+
+  it("creates a new thread from the project row action", async () => {
+    const { onCreateThread } = await renderLeftRail({
+      onCreateThread: vi.fn<CreateThreadHandler>()
+    });
+
+    const button = container?.querySelector(
+      'button[aria-label="New thread in AskInLine"]'
+    ) as HTMLButtonElement | null;
+
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button?.click();
+    });
+
+    expect(onCreateThread).toHaveBeenCalledTimes(1);
+    expect(onCreateThread).toHaveBeenCalledWith("workspace-1");
+  });
+
+  it("opens the project menu and removes the project", async () => {
+    const { onRemoveWorkspace } = await renderLeftRail({
+      onRemoveWorkspace: vi.fn<RemoveWorkspaceHandler>()
+    });
+
+    const moreButton = container?.querySelector(
+      'button[aria-label="More actions for AskInLine"]'
+    ) as HTMLButtonElement | null;
+
+    expect(moreButton).not.toBeNull();
+
+    await act(async () => {
+      moreButton?.click();
+    });
+
+    const removeButton = Array.from(container?.querySelectorAll("button") ?? []).find((button) =>
+      button.textContent?.includes("Remove project")
+    ) as HTMLButtonElement | undefined;
+
+    expect(removeButton).toBeDefined();
+
+    await act(async () => {
+      removeButton?.click();
+    });
+
+    expect(onRemoveWorkspace).toHaveBeenCalledTimes(1);
+    expect(onRemoveWorkspace).toHaveBeenCalledWith("workspace-1");
+  });
+
+  it("caps project threads and lets the current thread break into the preview set", async () => {
+    const manyThreads = Array.from({ length: 8 }, (_, index) =>
+      createThread(`thread-${index + 1}`, `thread ${index + 1}`, `${index + 1}m`, {
+        preview: `Preview ${index + 1}`,
+        ...(index === 7
+          ? {
+              state: "approval",
+              hasPendingApproval: true
+            }
+          : {})
+      })
+    );
+    const workspaceStateOverride: WorkspaceState = {
+      ...workspaceState,
+      currentThreadId: "thread-8",
+      threads: manyThreads,
+      projects: [
+        {
+          ...workspaceState.projects[0],
+          currentThreadId: "thread-8",
+          threads: manyThreads
+        }
+      ]
+    };
+
+    await renderLeftRail({ workspaceStateOverride });
+
+    expect(container?.textContent).toContain("Show 2 more");
+    expect(container?.querySelector('[data-thread-id="thread-8"]')).not.toBeNull();
+    expect(container?.textContent).toContain("Approval");
+    expect(container?.textContent).toContain("thread 8");
+    expect(container?.querySelector('[data-thread-id="thread-7"]')).toBeNull();
+
+    const showMoreButton = Array.from(container?.querySelectorAll("button") ?? []).find((button) =>
+      button.textContent?.includes("Show 2 more")
+    ) as HTMLButtonElement | undefined;
+
+    expect(showMoreButton).toBeDefined();
+
+    await act(async () => {
+      showMoreButton?.click();
+    });
+
+    expect(container?.textContent).toContain("Show less");
+    expect(container?.querySelector('[data-thread-id="thread-7"]')).not.toBeNull();
   });
 });

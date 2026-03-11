@@ -1,7 +1,7 @@
-import type { TimelineEvent } from "@shared";
+import type { TimelineChangedFile, TimelineEntry } from "@shared";
 
 export type TimelinePresentation = {
-  variant: "message" | "activity";
+  variant: "message" | "activity" | "plan" | "diff";
   badge: string | null;
   tone:
     | "user"
@@ -17,114 +17,122 @@ export type TimelinePresentation = {
   body: string | null;
   monospace?: boolean;
   metaLabel: string | null;
+  files?: TimelineChangedFile[];
+  additions?: number;
+  deletions?: number;
 };
 
-const getEventMetaLabel = (createdAt: string) =>
-  createdAt === "Thread history" ? null : createdAt;
+const getMetaLabel = (createdAt: string) => (createdAt === "Thread history" ? null : createdAt);
 
-const COMMENTARY_ACTIVITY_BADGES: Array<[prefix: string, badge: string, tone: TimelinePresentation["tone"]]> =
-  [
-    ["Plan update:", "Plan", "plan"],
-    ["Explored ", "Explore", "system"],
-    ["Edited ", "Edit", "success"],
-    ["Reconnecting", "Retry", "warning"],
-    ["Read ", "Read", "system"],
-    ["Opened ", "Open", "system"],
-    ["Updated ", "Update", "system"],
-    ["Searching ", "Search", "system"],
-    ["Ran ", "Command", "tool"]
-  ];
-
-const getCompactCommentaryBadge = (text: string) =>
-  COMMENTARY_ACTIVITY_BADGES.find(([prefix]) => text.startsWith(prefix)) ?? null;
-
-export const presentTimelineEvent = (
-  event: TimelineEvent,
-  isWorkingLogMode = false
-): TimelinePresentation => {
-  const fallbackMetaLabel = getEventMetaLabel(event.createdAt);
-
-  if (event.kind === "user") {
-    return {
-      variant: "message",
-      badge: null,
-      tone: "user",
-      title: event.text,
-      body: null,
-      metaLabel: null
-    };
+const getChangedFileLabel = (files: TimelineChangedFile[]) => {
+  if (files.length === 0) {
+    return null;
   }
 
-  if (event.kind === "assistant") {
-    if (isWorkingLogMode) {
+  const additions = files.reduce((total, file) => total + file.additions, 0);
+  const deletions = files.reduce((total, file) => total + file.deletions, 0);
+
+  return additions > 0 || deletions > 0 ? `+${additions} -${deletions}` : null;
+};
+
+export const presentTimelineEvent = (
+  entry: TimelineEntry,
+  isWorkingLogMode = false
+): TimelinePresentation => {
+  if (entry.kind === "message") {
+    if (entry.role === "user") {
+      return {
+        variant: "message",
+        badge: null,
+        tone: "user",
+        title: entry.text,
+        body: null,
+        metaLabel: null
+      };
+    }
+
+    if (isWorkingLogMode && entry.summary?.trim()) {
       return {
         variant: "activity",
         badge: null,
         tone: "commentary",
-        title: event.summary?.trim() || event.text,
+        title: entry.summary.trim(),
         body: null,
-        metaLabel: fallbackMetaLabel
+        metaLabel: getMetaLabel(entry.createdAt)
       };
     }
 
     return {
       variant: "message",
-      badge: "Codex",
+      badge: null,
       tone: "assistant",
-      title: event.text,
+      title: entry.text,
       body: null,
-      metaLabel: fallbackMetaLabel
+      metaLabel: getMetaLabel(entry.createdAt)
     };
   }
 
-  if (event.kind === "commentary") {
-    const compact = getCompactCommentaryBadge(event.summary ?? event.text);
-    const [, badge = "Log", tone = "commentary"] = compact ?? [];
+  if (entry.kind === "work") {
+    if (entry.command) {
+      return {
+        variant: "activity",
+        badge: "Command",
+        tone: "tool",
+        title: entry.label,
+        body: entry.detail,
+        monospace: true,
+        metaLabel: getMetaLabel(entry.createdAt)
+      };
+    }
+
+    if (entry.changedFiles.length > 0) {
+      return {
+        variant: "activity",
+        badge: "Edit",
+        tone: "success",
+        title: entry.label,
+        body: entry.detail,
+        metaLabel: getChangedFileLabel(entry.changedFiles) ?? getMetaLabel(entry.createdAt)
+      };
+    }
+
+    const tone =
+      entry.tone === "thinking"
+        ? "commentary"
+        : entry.tone === "error"
+          ? "warning"
+          : "system";
 
     return {
       variant: "activity",
-      badge,
+      badge: entry.tone === "thinking" ? "Think" : "Work",
       tone,
-      title: event.summary?.trim() || event.text.replace("Plan update:", "").trim(),
-      body: null,
-      metaLabel: fallbackMetaLabel
+      title: entry.label,
+      body: entry.detail,
+      metaLabel: getMetaLabel(entry.createdAt)
     };
   }
 
-  if (event.detail !== undefined && event.path === undefined) {
+  if (entry.kind === "plan") {
     return {
-      variant: "activity",
-      badge: "Command",
-      tone: "tool",
-      title: event.summary?.trim() || event.text,
-      body: null,
-      monospace: true,
-      metaLabel: fallbackMetaLabel
-    };
-  }
-
-  if (event.path || event.additions !== undefined || event.deletions !== undefined) {
-    const diffLabel =
-      event.additions !== undefined && event.deletions !== undefined
-        ? `+${event.additions ?? 0} -${event.deletions ?? 0}`
-        : fallbackMetaLabel;
-
-    return {
-      variant: "activity",
-      badge: "Edit",
-      tone: "success",
-      title: event.summary?.trim() || event.text,
-      body: null,
-      metaLabel: diffLabel
+      variant: "plan",
+      badge: "Plan",
+      tone: "plan",
+      title: entry.title,
+      body: entry.text,
+      metaLabel: getMetaLabel(entry.createdAt)
     };
   }
 
   return {
-    variant: "activity",
-    badge: "State",
-    tone: "system",
-    title: event.summary?.trim() || event.text,
-    body: null,
-    metaLabel: fallbackMetaLabel
+    variant: "diff",
+    badge: "Diff",
+    tone: "success",
+    title: entry.title,
+    body: entry.diff,
+    metaLabel: `+${entry.additions} -${entry.deletions}`,
+    files: entry.files,
+    additions: entry.additions,
+    deletions: entry.deletions
   };
 };

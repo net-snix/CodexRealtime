@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppInfo, SessionState, WorkspaceState } from "@shared";
+import type { AppInfo, SessionState, ThreadSummary, WorkspaceState } from "@shared";
 
 interface LeftRailProps {
   appInfo: AppInfo | null;
@@ -8,10 +8,13 @@ interface LeftRailProps {
   isOpeningWorkspace: boolean;
   isCreatingThread: boolean;
   archivingThreadId: string | null;
+  removingWorkspaceId: string | null;
   runningThreadId: string | null;
+  isSettingsView: boolean;
   onOpenWorkspace: () => void | Promise<void>;
-  onOpenCurrentWorkspace: () => void | Promise<void>;
-  onCreateThread: () => void | Promise<void>;
+  onCreateThread: (workspaceId: string) => void | Promise<void>;
+  onRemoveWorkspace: (workspaceId: string) => void | Promise<void>;
+  onOpenSettings: () => void | Promise<void>;
   onSelectWorkspace: (workspaceId: string) => void | Promise<void>;
   onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
   onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
@@ -94,21 +97,6 @@ function PlusIcon() {
   );
 }
 
-function CurrentIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16">
-      <path
-        d="M8 2.75v2.1M8 11.15v2.1M2.75 8h2.1M11.15 8h2.1M5.45 5.45l1.1 1.1M9.45 9.45l1.1 1.1M10.55 5.45l-1.1 1.1M6.55 9.45l-1.1 1.1"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.2"
-      />
-      <circle cx="8" cy="8" r="2.15" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
 function ArchiveIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16">
@@ -124,6 +112,74 @@ function ArchiveIcon() {
   );
 }
 
+function SettingsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
+        d="M8 3.15a4.85 4.85 0 1 0 0 9.7 4.85 4.85 0 0 0 0-9.7Zm0 2.2a2.65 2.65 0 1 1 0 5.3 2.65 2.65 0 0 1 0-5.3ZM8 1.75v1.4M8 12.85v1.4M3.15 8h-1.4M14.25 8h-1.4M4.56 4.56l-.99-.99M12.43 12.43l-.99-.99M11.44 4.56l.99-.99M3.57 12.43l.99-.99"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.15"
+      />
+    </svg>
+  );
+}
+
+function MoreActionsIcon() {
+  return <span aria-hidden="true" className="project-row-action-dots">...</span>;
+}
+
+const THREAD_PREVIEW_LIMIT = 6;
+
+type ThreadStatusTone = "running" | "approval" | "input";
+
+function resolveThreadStatus(
+  thread: ThreadSummary,
+  runningThreadId: string | null
+): { label: string; tone: ThreadStatusTone } | null {
+  if (thread.hasPendingApproval || thread.state === "approval") {
+    return { label: "Approval", tone: "approval" };
+  }
+
+  if (thread.hasPendingUserInput || thread.state === "input") {
+    return { label: "Input needed", tone: "input" };
+  }
+
+  if (thread.isRunning || runningThreadId === thread.id || thread.state === "running") {
+    return { label: "Running", tone: "running" };
+  }
+
+  return null;
+}
+
+function visibleThreadsForProject(project: WorkspaceState["projects"][number], expanded: boolean) {
+  if (expanded || project.threads.length <= THREAD_PREVIEW_LIMIT) {
+    return project.threads;
+  }
+
+  const previewThreads = project.threads.slice(0, THREAD_PREVIEW_LIMIT);
+  if (
+    !project.currentThreadId ||
+    previewThreads.some((thread) => thread.id === project.currentThreadId)
+  ) {
+    return previewThreads;
+  }
+
+  const currentThread = project.threads.find((thread) => thread.id === project.currentThreadId);
+  if (!currentThread) {
+    return previewThreads;
+  }
+
+  return [
+    currentThread,
+    ...project.threads
+      .filter((thread) => thread.id !== project.currentThreadId)
+      .slice(0, THREAD_PREVIEW_LIMIT - 1)
+  ];
+}
+
 export function LeftRail({
   appInfo,
   sessionState,
@@ -131,17 +187,22 @@ export function LeftRail({
   isOpeningWorkspace,
   isCreatingThread,
   archivingThreadId,
+  removingWorkspaceId,
   runningThreadId,
+  isSettingsView,
   onOpenWorkspace,
-  onOpenCurrentWorkspace,
   onCreateThread,
+  onRemoveWorkspace,
+  onOpenSettings,
   onSelectWorkspace,
   onSelectThread,
   onArchiveThread
 }: LeftRailProps) {
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [expandedThreadLists, setExpandedThreadLists] = useState<Record<string, boolean>>({});
   const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
   const [confirmThreadId, setConfirmThreadId] = useState<string | null>(null);
+  const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
   const sessionText = sessionState?.account?.planType
     ? `${sessionLabel(sessionState)} ${sessionState.account.planType}`
@@ -179,51 +240,68 @@ export function LeftRail({
     }
   }, [confirmThreadId, workspaceState.projects]);
 
+  useEffect(() => {
+    if (!openProjectMenuId) {
+      return;
+    }
+
+    const stillExists = workspaceState.projects.some((project) => project.id === openProjectMenuId);
+
+    if (!stillExists) {
+      setOpenProjectMenuId(null);
+    }
+  }, [openProjectMenuId, workspaceState.projects]);
+
+  useEffect(() => {
+    if (!openProjectMenuId) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || event.target.closest("[data-project-menu-root]")) {
+        return;
+      }
+
+      setOpenProjectMenuId(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openProjectMenuId]);
+
   return (
     <aside
       className="left-rail panel stagger-1"
       title={appInfo ? `${appInfo.name} ${appInfo.version}` : undefined}
     >
-      <div className="rail-header">
-        <div>
-          <h1>Threads</h1>
-        </div>
-        <div className="rail-header-actions">
-          <button
-            type="button"
-            className="rail-icon-button"
-            onClick={() => void onCreateThread()}
-            title="New thread"
-            aria-label="New thread"
-            disabled={!currentProject || isCreatingThread}
-          >
-            <PlusIcon />
-          </button>
-          <button
-            type="button"
-            className="rail-icon-button"
-            onClick={() => void onOpenWorkspace()}
-            title="Open repo"
-            aria-label="Open repo"
-          >
-            <OpenIcon />
-          </button>
-          <button
-            type="button"
-            className="rail-icon-button"
-            onClick={() => void onOpenCurrentWorkspace()}
-            title="Use current repo"
-            aria-label="Use current repo"
-          >
-            <CurrentIcon />
-          </button>
-        </div>
+      <div className="rail-window-strip" aria-hidden="true" />
+
+      <div className="rail-utility-list">
+        <button
+          type="button"
+          className="rail-utility-button"
+          onClick={() => void onOpenWorkspace()}
+          disabled={isOpeningWorkspace}
+          title="Open repo"
+          aria-label="Open repo"
+        >
+          <OpenIcon />
+          <span>{isOpeningWorkspace ? "Opening repo..." : "Open repo"}</span>
+        </button>
       </div>
+
+      <div className="rail-section-label">Threads</div>
 
       <div className="project-tree">
         {workspaceState.projects.map((project) => {
           const expanded = expandedProjects[project.id] ?? false;
           const hasThreads = project.threads.length > 0;
+          const isThreadListExpanded = expandedThreadLists[project.id] ?? false;
+          const hasHiddenThreads = project.threads.length > THREAD_PREVIEW_LIMIT;
+          const visibleThreads = visibleThreadsForProject(project, isThreadListExpanded);
+          const hiddenThreadCount = Math.max(project.threads.length - THREAD_PREVIEW_LIMIT, 0);
+          const projectThreadLabel =
+            project.threads.length === 1 ? "1 thread" : `${project.threads.length} threads`;
 
           return (
             <section
@@ -246,103 +324,188 @@ export function LeftRail({
                   className="project-select-button"
                   onClick={() => {
                     setExpandedProjects((current) => ({ ...current, [project.id]: true }));
+                    setOpenProjectMenuId(null);
                     void onSelectWorkspace(project.id);
                   }}
                   title={project.path}
                 >
                   <FolderIcon />
-                  <span className="project-name">{project.name}</span>
+                  <span className="project-select-button-copy">
+                    <span className="project-name">{project.name}</span>
+                    <span className="project-caption">
+                      {project.isCurrent ? `Current project · ${projectThreadLabel}` : projectThreadLabel}
+                    </span>
+                  </span>
                 </button>
+                <div className="project-row-actions">
+                  <button
+                    type="button"
+                    className="project-row-action-button"
+                    onClick={() => void onCreateThread(project.id)}
+                    disabled={isCreatingThread}
+                    aria-label={`New thread in ${project.name}`}
+                    title={`New thread in ${project.name}`}
+                  >
+                    <PlusIcon />
+                  </button>
+                  <div className="project-row-menu-root" data-project-menu-root>
+                    <button
+                      type="button"
+                      className={
+                        openProjectMenuId === project.id
+                          ? "project-row-action-button project-row-action-button-active"
+                          : "project-row-action-button"
+                      }
+                      onClick={() =>
+                        setOpenProjectMenuId((current) => (current === project.id ? null : project.id))
+                      }
+                      disabled={
+                        removingWorkspaceId !== null || (runningThreadId !== null && project.isCurrent)
+                      }
+                      aria-label={`More actions for ${project.name}`}
+                      title={
+                        runningThreadId !== null && project.isCurrent
+                          ? "Stop active work before removing this project"
+                          : `More actions for ${project.name}`
+                      }
+                    >
+                      <MoreActionsIcon />
+                    </button>
+                    {openProjectMenuId === project.id ? (
+                      <div className="project-row-menu">
+                        <button
+                          type="button"
+                          className="project-row-menu-item project-row-menu-item-danger"
+                          onClick={() => {
+                            setOpenProjectMenuId(null);
+                            void onRemoveWorkspace(project.id);
+                          }}
+                          disabled={
+                            removingWorkspaceId !== null || (runningThreadId !== null && project.isCurrent)
+                          }
+                        >
+                          {removingWorkspaceId === project.id ? "Removing..." : "Remove project"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
 
               {expanded ? (
                 hasThreads ? (
                   <ul className="project-thread-list">
-                    {project.threads.map((thread) => (
-                      <li key={thread.id}>
-                        <div
-                          className={
-                            project.currentThreadId === thread.id
-                              ? `project-thread-row project-thread-button-active ${
-                                  hoveredThreadId === thread.id ? "project-thread-row-hovered" : ""
-                                }`
-                              : `project-thread-row ${
-                                  hoveredThreadId === thread.id ? "project-thread-row-hovered" : ""
-                                }`
-                          }
-                          data-thread-id={thread.id}
-                          onMouseEnter={() => setHoveredThreadId(thread.id)}
-                          onMouseLeave={() =>
-                            setHoveredThreadId((current) =>
-                              current === thread.id ? null : current
-                            )
-                          }
-                        >
-                          <button
-                            type="button"
-                            className="project-thread-button"
-                            onClick={() => {
-                              setConfirmThreadId(null);
-                              void onSelectThread(project.id, thread.id);
-                            }}
-                            title={thread.title}
+                    {visibleThreads.map((thread) => {
+                      const threadStatus = resolveThreadStatus(thread, runningThreadId);
+                      const isActiveThread = project.currentThreadId === thread.id;
+                      const threadRowClassNames = ["project-thread-row"];
+
+                      if (isActiveThread) {
+                        threadRowClassNames.push("project-thread-button-active");
+                      }
+
+                      if (hoveredThreadId === thread.id) {
+                        threadRowClassNames.push("project-thread-row-hovered");
+                      }
+
+                      if (threadStatus) {
+                        threadRowClassNames.push(`project-thread-row-${threadStatus.tone}`);
+                      }
+
+                      return (
+                        <li key={thread.id}>
+                          <div
+                            className={threadRowClassNames.join(" ")}
+                            data-thread-id={thread.id}
+                            onMouseEnter={() => setHoveredThreadId(thread.id)}
+                            onMouseLeave={() =>
+                              setHoveredThreadId((current) =>
+                                current === thread.id ? null : current
+                              )
+                            }
                           >
-                            <span className="project-thread-title">{thread.title}</span>
-                          </button>
-                          <span className="project-thread-meta">
-                            {thread.changeSummary ? (
-                              <span className="project-thread-counts">
-                                {thread.changeSummary.additions > 0 ? (
-                                  <span className="thread-count-add">
-                                    +{thread.changeSummary.additions}
-                                  </span>
-                                ) : null}
-                                {thread.changeSummary.deletions > 0 ? (
-                                  <span className="thread-count-delete">
-                                    -{thread.changeSummary.deletions}
+                            <button
+                              type="button"
+                              className="project-thread-button"
+                              onClick={() => {
+                                setConfirmThreadId(null);
+                                setOpenProjectMenuId(null);
+                                void onSelectThread(project.id, thread.id);
+                              }}
+                              title={thread.title}
+                            >
+                              <span className="project-thread-line">
+                                <span className="project-thread-title">{thread.title}</span>
+                                {threadStatus ? (
+                                  <span
+                                    className={`project-thread-status-pill project-thread-status-pill-${threadStatus.tone}`}
+                                  >
+                                    {threadStatus.label}
                                   </span>
                                 ) : null}
                               </span>
-                            ) : null}
-                            <span className="project-thread-time-slot">
-                              {confirmThreadId === thread.id ? (
-                                <button
-                                  type="button"
-                                  className="project-thread-confirm-button"
-                                  onClick={() => void onArchiveThread(project.id, thread.id)}
-                                  disabled={archivingThreadId === thread.id}
-                                  aria-label={`Confirm archive ${thread.title}`}
-                                >
-                                  {archivingThreadId === thread.id ? "..." : "Confirm"}
-                                </button>
-                              ) : (
-                                <>
-                                  <span className="project-thread-time">{thread.updatedAt}</span>
+                            </button>
+                            <span className="project-thread-meta">
+                              <span className="project-thread-time-slot">
+                                {confirmThreadId === thread.id ? (
                                   <button
                                     type="button"
-                                    className="project-thread-archive-button"
-                                    onClick={() =>
-                                      setConfirmThreadId((current) =>
-                                        current === thread.id ? null : thread.id
-                                      )
-                                    }
-                                    disabled={archivingThreadId !== null || runningThreadId === thread.id}
-                                    aria-label={`Archive ${thread.title}`}
-                                    title={
-                                      runningThreadId === thread.id
-                                        ? "Stop active work before archiving"
-                                        : `Archive ${thread.title}`
-                                    }
+                                    className="project-thread-confirm-button"
+                                    onClick={() => void onArchiveThread(project.id, thread.id)}
+                                    disabled={archivingThreadId === thread.id}
+                                    aria-label={`Confirm archive ${thread.title}`}
                                   >
-                                    <ArchiveIcon />
+                                    {archivingThreadId === thread.id ? "..." : "Confirm"}
                                   </button>
-                                </>
-                              )}
+                                ) : (
+                                  <>
+                                    <span className="project-thread-time">{thread.updatedAt}</span>
+                                    <button
+                                      type="button"
+                                      className="project-thread-archive-button"
+                                      onClick={() =>
+                                        setConfirmThreadId((current) =>
+                                          current === thread.id ? null : thread.id
+                                        )
+                                      }
+                                      disabled={
+                                        archivingThreadId !== null ||
+                                        thread.isRunning ||
+                                        runningThreadId === thread.id
+                                      }
+                                      aria-label={`Archive ${thread.title}`}
+                                      title={
+                                        thread.isRunning || runningThreadId === thread.id
+                                          ? "Stop active work before archiving"
+                                          : `Archive ${thread.title}`
+                                      }
+                                    >
+                                      <ArchiveIcon />
+                                    </button>
+                                  </>
+                                )}
+                              </span>
                             </span>
-                          </span>
-                        </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                    {hasHiddenThreads ? (
+                      <li>
+                        <button
+                          type="button"
+                          className="project-thread-show-more-button"
+                          onClick={() =>
+                            setExpandedThreadLists((current) => ({
+                              ...current,
+                              [project.id]: !isThreadListExpanded
+                            }))
+                          }
+                        >
+                          {isThreadListExpanded ? "Show less" : `Show ${hiddenThreadCount} more`}
+                        </button>
                       </li>
-                    ))}
+                    ) : null}
                   </ul>
                 ) : (
                   <div className="project-empty">No threads</div>
@@ -353,12 +516,25 @@ export function LeftRail({
         })}
       </div>
 
-      <div className="session-inline">
-        <div className="session-inline-main">
-          <span className={`session-inline-dot state-${sessionState?.status ?? "loading"}`} />
-          <span>{sessionText}</span>
+      <div className="rail-footer">
+        <button
+          type="button"
+          className={isSettingsView ? "rail-footer-button rail-footer-button-active" : "rail-footer-button"}
+          onClick={() => void onOpenSettings()}
+          aria-label="Open settings"
+          title="Settings"
+        >
+          <SettingsIcon />
+          <span>Settings</span>
+        </button>
+
+        <div className="session-inline">
+          <div className="session-inline-main">
+            <span className={`session-inline-dot state-${sessionState?.status ?? "loading"}`} />
+            <span>{sessionText}</span>
+          </div>
+          <div className="session-inline-note">{isOpeningWorkspace ? "Opening" : "Voice ready"}</div>
         </div>
-        <div className="session-inline-note">{isOpeningWorkspace ? "Opening" : "Voice ready"}</div>
       </div>
     </aside>
   );

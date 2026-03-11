@@ -1,41 +1,185 @@
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
 import { workspaceService } from "./workspace-service";
 
+const userDataOverride = process.env.CODEX_REALTIME_USER_DATA_DIR;
+
+if (userDataOverride) {
+  app.setPath("userData", userDataOverride);
+}
+
 const installApplicationMenu = () => {
+  const fileMenu: MenuItemConstructorOptions = {
+    label: "File",
+    submenu: [
+      {
+        label: "Open Repository...",
+        accelerator: "CmdOrCtrl+O",
+        click: () => {
+          void workspaceService.openWorkspace();
+        }
+      },
+      {
+        label: "Use Current Repo",
+        accelerator: "CmdOrCtrl+Shift+O",
+        click: () => {
+          void workspaceService.openCurrentWorkspace();
+        }
+      },
+      { type: "separator" },
+      process.platform === "darwin" ? { role: "close" } : { role: "quit" }
+    ]
+  };
+
   const template: MenuItemConstructorOptions[] =
     process.platform === "darwin"
-      ? [
-          { role: "appMenu" },
-          { role: "fileMenu" },
-          { role: "editMenu" },
-          { role: "viewMenu" },
-          { role: "windowMenu" }
-        ]
-      : [{ role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }];
+      ? [{ role: "appMenu" }, fileMenu, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]
+      : [fileMenu, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 };
 
+const getSafeExternalUrl = (rawUrl: string): string | null => {
+  try {
+    const parsedUrl = new URL(rawUrl);
+    if (parsedUrl.protocol === "https:" || parsedUrl.protocol === "http:") {
+      return parsedUrl.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const isAppNavigation = (targetUrl: string, rendererUrl?: string): boolean => {
+  try {
+    const parsedTarget = new URL(targetUrl);
+
+    if (rendererUrl) {
+      return parsedTarget.origin === new URL(rendererUrl).origin;
+    }
+
+    return parsedTarget.protocol === "file:";
+  } catch {
+    return false;
+  }
+};
+
+const buildContextMenuTemplate = (
+  window: BrowserWindow,
+  params: Electron.ContextMenuParams
+): MenuItemConstructorOptions[] => {
+  const template: MenuItemConstructorOptions[] = [];
+
+  if (params.misspelledWord) {
+    for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+      template.push({
+        label: suggestion,
+        click: () => window.webContents.replaceMisspelling(suggestion)
+      });
+    }
+
+    if (params.dictionarySuggestions.length === 0) {
+      template.push({ label: "No suggestions", enabled: false });
+    }
+
+    template.push({ type: "separator" });
+  }
+
+  if (params.linkURL) {
+    template.push({
+      label: "Open Link in Browser",
+      click: () => {
+        const externalUrl = getSafeExternalUrl(params.linkURL);
+        if (externalUrl) {
+          void shell.openExternal(externalUrl);
+        }
+      }
+    });
+    template.push({ type: "separator" });
+  }
+
+  template.push(
+    { role: "cut", enabled: params.editFlags.canCut },
+    { role: "copy", enabled: params.editFlags.canCopy || params.selectionText.length > 0 },
+    { role: "paste", enabled: params.editFlags.canPaste },
+    { role: "selectAll", enabled: params.editFlags.canSelectAll }
+  );
+
+  return template;
+};
+
 const createMainWindow = () => {
+  const isMac = process.platform === "darwin";
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   const window = new BrowserWindow({
     width: 1480,
     height: 960,
     minWidth: 1180,
     minHeight: 760,
-    backgroundColor: "#12100c",
+    show: false,
+    autoHideMenuBar: !isMac,
+    title: app.getName(),
+    backgroundColor: "#faf7f2",
     acceptFirstMouse: true,
+    ...(isMac
+      ? {
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 16, y: 18 }
+        }
+      : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-    },
+    }
   });
 
-  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+  window.webContents.on("context-menu", (event, params) => {
+    event.preventDefault();
+    Menu.buildFromTemplate(buildContextMenuTemplate(window, params)).popup({ window });
+  });
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const externalUrl = getSafeExternalUrl(url);
+    if (externalUrl) {
+      void shell.openExternal(externalUrl);
+    }
+
+    return { action: "deny" };
+  });
+
+  window.webContents.on("will-navigate", (event, targetUrl) => {
+    if (isAppNavigation(targetUrl, rendererUrl)) {
+      return;
+    }
+
+    const externalUrl = getSafeExternalUrl(targetUrl);
+    if (externalUrl) {
+      event.preventDefault();
+      void shell.openExternal(externalUrl);
+      return;
+    }
+
+    event.preventDefault();
+  });
+
+  window.on("page-title-updated", (event) => {
+    event.preventDefault();
+    window.setTitle(app.getName());
+  });
+
+  window.webContents.on("did-finish-load", () => {
+    window.setTitle(app.getName());
+  });
+
+  window.once("ready-to-show", () => {
+    window.show();
+  });
 
   if (rendererUrl) {
     void window.loadURL(rendererUrl);

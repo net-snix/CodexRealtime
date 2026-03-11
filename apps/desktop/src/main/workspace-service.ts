@@ -1,16 +1,20 @@
 import { app, BrowserWindow, dialog } from "electron";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { realpathSync } from "node:fs";
 import type {
+  ArchiveThreadResult,
   ApprovalDecision,
+  PastedImageAttachment,
   ThreadChangeSummary,
   ThreadSummary,
   TimelineState,
   TurnStartRequest,
   WorkerAttachment,
+  WorkerCollaborationModeOption,
   WorkerExecutionSettings,
   WorkerModelOption,
   WorkerSettingsState,
@@ -18,10 +22,14 @@ import type {
   WorkspaceState,
   WorkspaceSummary
 } from "@shared";
+import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
+import { buildAutoThreadName } from "./thread-auto-name";
 import {
+  DEFAULT_WORKER_COLLABORATION_MODES,
   buildWorkerInputs,
   getSelectedWorkerModel,
+  mapWorkerCollaborationMode,
   mapWorkerModel,
   resolveWorkerSettings,
   supportsImageAttachments,
@@ -31,6 +39,7 @@ import {
 import {
   applyBridgeNotification,
   applyBridgeRequest,
+  appendOptimisticUserEvent,
   buildTimelineState,
   cloneTimelineState,
   emptyTimelineState,
@@ -61,6 +70,12 @@ type ConfigReadResult = {
   };
 };
 
+type ConversationSummaryResult = {
+  summary?: {
+    preview?: string | null;
+  };
+};
+
 type ThreadListResult = {
   data?: Array<{
     id?: string;
@@ -82,12 +97,27 @@ type ModelListResult = {
   nextCursor?: string | null;
 };
 
+type CollaborationModeListResult = {
+  data?: unknown[];
+};
+
 const EMPTY_STATE: PersistedState = {
   currentWorkspaceId: null,
   workspaces: {}
 };
 
 const THREAD_CHANGE_SUMMARY_LIMIT = 6;
+const THREAD_CHANGE_CACHE_LIMIT = 128;
+const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/heic": ".heic",
+  "image/heif": ".heif",
+  "image/bmp": ".bmp",
+  "image/tiff": ".tiff"
+};
 
 const now = () => new Date().toISOString();
 
@@ -127,6 +157,14 @@ const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => 
   id: workspace.id,
   name: workspace.name,
   path: workspace.path
+});
+
+const defaultThreadState = () => ({
+  preview: null,
+  state: "idle" as const,
+  isRunning: false,
+  hasPendingApproval: false,
+  hasPendingUserInput: false
 });
 
 const pickNextThreadId = (threads: ThreadSummary[], archivedThreadId: string) =>
@@ -199,7 +237,8 @@ const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null
     (item as { type?: unknown }).type === "fileChange" &&
     "changes" in item;
 
-  for (const turn of [...turns].reverse()) {
+  for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+    const turn = turns[turnIndex];
     let additions = 0;
     let deletions = 0;
     let sawFileChange = false;
@@ -250,25 +289,49 @@ const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
   }
 };
 
-class WorkspaceService {
+const clonePersistedState = (state: PersistedState): PersistedState => ({
+  currentWorkspaceId: state.currentWorkspaceId,
+  workspaces: Object.fromEntries(
+    Object.entries(state.workspaces).map(([workspaceId, workspace]) => [
+      workspaceId,
+      {
+        ...workspace
+      }
+    ])
+  )
+});
+
+export class WorkspaceService extends EventEmitter {
   private liveTimelineState = emptyTimelineState();
   private activeTurnId: string | null = null;
   private readonly threadChangeCache = new Map<string, ThreadChangeSummary | null>();
   private workerModelsCache: WorkerModelOption[] | null = null;
+  private workerCollaborationModesCache: WorkerCollaborationModeOption[] | null = null;
   private readonly workerSettingsByThread = new Map<string, WorkerExecutionSettings>();
   private readonly workerDraftSettingsByWorkspace = new Map<string, WorkerExecutionSettings>();
+  private persistedState: PersistedState | null = null;
+  private bridgeMutationQueue: Promise<void> = Promise.resolve();
 
   constructor() {
+    super();
     codexBridge.on("notification", (payload: NotificationPayload) => {
-      void this.handleBridgeNotification(payload);
+      void this.enqueueBridgeMutation(async () => {
+        await this.handleBridgeNotification(payload);
+      }).catch(() => undefined);
     });
     codexBridge.on("serverRequest", (payload: RequestPayload) => {
-      this.handleBridgeRequest(payload);
+      void this.enqueueBridgeMutation(() => {
+        this.handleBridgeRequest(payload);
+      }).catch(() => undefined);
     });
   }
 
   private get statePath() {
     return join(app.getPath("userData"), "workspace-state.json");
+  }
+
+  private get pastedAttachmentDirectoryPath() {
+    return join(app.getPath("userData"), "worker-attachments", "pasted");
   }
 
   async getWorkspaceState(): Promise<WorkspaceState> {
@@ -297,19 +360,26 @@ class WorkspaceService {
   }
 
   async getWorkerSettingsState(): Promise<WorkerSettingsState> {
-    const models = await this.loadWorkerModels().catch(() => []);
+    const [models, collaborationModes] = await Promise.all([
+      this.loadWorkerModels().catch(() => []),
+      this.loadWorkerCollaborationModes().catch(() => DEFAULT_WORKER_COLLABORATION_MODES)
+    ]);
     const settings = await this.resolveActiveWorkerSettings(models);
 
     return {
       settings,
-      models
+      models,
+      collaborationModes
     };
   }
 
   async updateWorkerSettings(
     patch: Partial<WorkerExecutionSettings>
   ): Promise<WorkerSettingsState> {
-    const models = await this.loadWorkerModels().catch(() => []);
+    const [models, collaborationModes] = await Promise.all([
+      this.loadWorkerModels().catch(() => []),
+      this.loadWorkerCollaborationModes().catch(() => DEFAULT_WORKER_COLLABORATION_MODES)
+    ]);
     const currentSettings = await this.resolveActiveWorkerSettings(models);
     const nextSettings = resolveWorkerSettings(
       {
@@ -331,7 +401,8 @@ class WorkspaceService {
 
     return {
       settings: nextSettings,
-      models
+      models,
+      collaborationModes
     };
   }
 
@@ -355,6 +426,50 @@ class WorkspaceService {
     return picked.filePaths.map(toWorkerAttachment);
   }
 
+  async addWorkerAttachments(paths: string[]): Promise<WorkerAttachment[]> {
+    const attachments = new Map<string, WorkerAttachment>();
+
+    for (const candidatePath of paths) {
+      const normalizedPath = this.normalizeAttachmentPath(candidatePath);
+
+      if (!normalizedPath) {
+        continue;
+      }
+
+      attachments.set(normalizedPath, toWorkerAttachment(normalizedPath));
+    }
+
+    return [...attachments.values()];
+  }
+
+  async addPastedImageAttachments(
+    images: PastedImageAttachment[]
+  ): Promise<WorkerAttachment[]> {
+    if (images.length === 0) {
+      return [];
+    }
+
+    const attachments: WorkerAttachment[] = [];
+    mkdirSync(this.pastedAttachmentDirectoryPath, { recursive: true });
+
+    for (const image of images) {
+      const normalizedImage = this.normalizePastedImageAttachment(image);
+
+      if (!normalizedImage) {
+        continue;
+      }
+
+      const filePath = join(
+        this.pastedAttachmentDirectoryPath,
+        `${randomUUID()}-${normalizedImage.fileName}`
+      );
+      writeFileSync(filePath, Buffer.from(normalizedImage.dataBase64, "base64"));
+      attachments.push(toWorkerAttachment(filePath));
+    }
+
+    return attachments;
+  }
+
   async openWorkspace(): Promise<WorkspaceState> {
     const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
     const picked = await dialog.showOpenDialog({
@@ -372,6 +487,61 @@ class WorkspaceService {
 
   async openCurrentWorkspace(): Promise<WorkspaceState> {
     return this.openWorkspacePath(process.cwd());
+  }
+
+  async clearRecentWorkspaces(): Promise<WorkspaceState> {
+    const persisted = this.readState();
+
+    if (!persisted.currentWorkspaceId) {
+      this.writeState({
+        currentWorkspaceId: null,
+        workspaces: {}
+      });
+      return this.getWorkspaceState();
+    }
+
+    const currentWorkspace = persisted.workspaces[persisted.currentWorkspaceId] ?? null;
+
+    this.writeState({
+      currentWorkspaceId: currentWorkspace?.id ?? null,
+      workspaces: currentWorkspace ? { [currentWorkspace.id]: currentWorkspace } : {}
+    });
+
+    return this.getWorkspaceState();
+  }
+
+  async removeWorkspace(workspaceId: string): Promise<WorkspaceState> {
+    const persisted = this.readState();
+    const workspace = persisted.workspaces[workspaceId];
+
+    if (!workspace) {
+      throw new Error("Workspace not found.");
+    }
+
+    if (persisted.currentWorkspaceId === workspaceId && this.activeTurnId) {
+      throw new Error("Stop active work before removing this project.");
+    }
+
+    delete persisted.workspaces[workspaceId];
+    this.workerDraftSettingsByWorkspace.delete(workspaceId);
+
+    if (workspace.threadId) {
+      this.workerSettingsByThread.delete(workspace.threadId);
+    }
+
+    if (persisted.currentWorkspaceId === workspaceId) {
+      const nextWorkspace = this.listRecentWorkspaces(persisted)[0] ?? null;
+      persisted.currentWorkspaceId = nextWorkspace?.id ?? null;
+      this.activeTurnId = null;
+      if (nextWorkspace?.threadId) {
+        await this.hydrateLiveTimeline(nextWorkspace.threadId, emptyTimelineState(nextWorkspace.threadId));
+      } else {
+        this.setLiveTimelineState(emptyTimelineState());
+      }
+    }
+
+    this.writeState(persisted);
+    return this.getWorkspaceState();
   }
 
   async selectWorkspace(workspaceId: string): Promise<WorkspaceState> {
@@ -414,15 +584,18 @@ class WorkspaceService {
 
     this.activeTurnId = null;
     this.workerDraftSettingsByWorkspace.delete(workspace.id);
-    this.liveTimelineState = {
+    this.setLiveTimelineState({
       ...emptyTimelineState(started.thread.id),
-      statusLabel: "Idle"
-    };
+      runState: {
+        phase: "idle",
+        label: "Idle"
+      }
+    });
 
     return cloneTimelineState(this.liveTimelineState);
   }
 
-  async archiveThread(workspaceId: string, threadId: string): Promise<TimelineState> {
+  async archiveThread(workspaceId: string, threadId: string): Promise<ArchiveThreadResult> {
     const persisted = this.readState();
     const workspace = persisted.workspaces[workspaceId];
 
@@ -438,18 +611,22 @@ class WorkspaceService {
       throw new Error("Stop active work before archiving this thread.");
     }
 
+    const wasSelectedThread = workspace.threadId === threadId;
+
     await codexBridge.archiveThread(threadId);
     this.threadChangeCache.delete(threadId);
 
-    if (workspace.threadId === threadId) {
+    if (wasSelectedThread) {
       workspace.threadId = await this.findNextThreadId(workspace.path, threadId);
       persisted.workspaces[workspace.id] = workspace;
 
       if (persisted.currentWorkspaceId === workspaceId) {
         this.activeTurnId = null;
-        this.liveTimelineState = workspace.threadId
-          ? await this.hydrateLiveTimeline(workspace.threadId, emptyTimelineState(workspace.threadId))
-          : emptyTimelineState();
+        if (workspace.threadId) {
+          await this.hydrateLiveTimeline(workspace.threadId, emptyTimelineState(workspace.threadId));
+        } else {
+          this.setLiveTimelineState(emptyTimelineState());
+        }
       }
     }
 
@@ -457,11 +634,15 @@ class WorkspaceService {
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
 
-    if (persisted.currentWorkspaceId === workspaceId) {
-      return cloneTimelineState(this.liveTimelineState);
-    }
-
-    return this.getTimelineState();
+    return {
+      timelineState:
+        persisted.currentWorkspaceId === workspaceId
+          ? cloneTimelineState(this.liveTimelineState)
+          : await this.getTimelineState(),
+      workspaceId,
+      archivedThreadId: threadId,
+      selectedThreadId: workspace.threadId ?? null
+    };
   }
 
   async unarchiveThread(workspaceId: string, threadId: string): Promise<TimelineState> {
@@ -482,7 +663,7 @@ class WorkspaceService {
     this.writeState(persisted);
 
     this.activeTurnId = null;
-    this.liveTimelineState = await this.hydrateLiveTimeline(threadId, emptyTimelineState(threadId));
+    await this.hydrateLiveTimeline(threadId, emptyTimelineState(threadId));
     return cloneTimelineState(this.liveTimelineState);
   }
 
@@ -500,7 +681,7 @@ class WorkspaceService {
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
 
-    this.liveTimelineState = await this.hydrateLiveTimeline(threadId);
+    await this.hydrateLiveTimeline(threadId);
     return cloneTimelineState(this.liveTimelineState);
   }
 
@@ -566,11 +747,14 @@ class WorkspaceService {
     if (!timeline) {
       return {
         ...emptyTimelineState(workspace.threadId),
-        statusLabel: "History unavailable"
+        runState: {
+          phase: "historyUnavailable",
+          label: "History unavailable"
+        }
       };
     }
 
-    this.liveTimelineState = cloneTimelineState(timeline);
+    this.setLiveTimelineState(timeline);
     return timeline;
   }
 
@@ -603,31 +787,60 @@ class WorkspaceService {
       supportsImageAttachments(selectedModel?.model ?? null, models)
     );
     const threadId = await this.ensureThread(workspace);
+    const previousTimeline = cloneTimelineState(this.liveTimelineState);
+    const isFreshThread =
+      !hadThread || (previousTimeline.threadId === threadId && previousTimeline.entries.length === 0);
     workspace.threadId = threadId;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
-    this.liveTimelineState = hadThread
-      ? await this.hydrateLiveTimeline(threadId)
-      : {
-          ...emptyTimelineState(threadId),
-          statusLabel: "Starting"
-        };
-    const started = (await codexBridge.startTurn(threadId, input, settings)) as {
-      turn?: { id?: string };
-    };
-    if (!hadThread) {
-      this.workerSettingsByThread.set(threadId, settings);
-      this.workerDraftSettingsByWorkspace.delete(workspace.id);
-    }
-    this.activeTurnId = started.turn?.id ?? this.activeTurnId;
-    this.liveTimelineState = {
-      ...this.ensureLiveTimeline(threadId),
-      isRunning: true,
-      statusLabel: started.turn?.id ? "Working" : "Starting"
-    };
+    this.setLiveTimelineState(
+      appendOptimisticUserEvent(
+        hadThread
+          ? await this.hydrateLiveTimeline(threadId)
+          : {
+              ...emptyTimelineState(threadId),
+              runState: {
+                phase: "starting",
+                label: "Starting"
+              }
+            },
+        trimmedPrompt
+      )
+    );
 
-    return cloneTimelineState(this.liveTimelineState);
+    try {
+      const resolvedModel = selectedModel?.model ?? settings.model ?? null;
+      const started = (await codexBridge.startTurn(
+        threadId,
+        input,
+        settings,
+        resolvedModel
+      )) as {
+        turn?: { id?: string };
+      };
+      if (isFreshThread) {
+        this.workerSettingsByThread.set(threadId, settings);
+        this.workerDraftSettingsByWorkspace.delete(workspace.id);
+        if (appSettingsService.getSettings().autoNameNewThreads) {
+          await this.autoNameThread(threadId, trimmedPrompt);
+        }
+      }
+      this.activeTurnId = started.turn?.id ?? this.activeTurnId;
+      this.setLiveTimelineState({
+        ...this.ensureLiveTimeline(threadId),
+        isRunning: true,
+        runState: {
+          phase: started.turn?.id ? "running" : "starting",
+          label: started.turn?.id ? "Working" : "Starting"
+        }
+      });
+
+      return cloneTimelineState(this.liveTimelineState);
+    } catch (error) {
+      this.setLiveTimelineState(previousTimeline);
+      throw error;
+    }
   }
 
   async dispatchVoicePrompt(prompt: string): Promise<TimelineState> {
@@ -666,11 +879,14 @@ class WorkspaceService {
       return this.startTurn({ prompt: trimmedPrompt, attachments: [] });
     }
 
-    this.liveTimelineState = {
+    this.setLiveTimelineState({
       ...this.ensureLiveTimeline(threadId),
       isRunning: true,
-      statusLabel: "Steering"
-    };
+      runState: {
+        phase: "steering",
+        label: "Steering"
+      }
+    });
 
     return cloneTimelineState(this.liveTimelineState);
   }
@@ -689,10 +905,13 @@ class WorkspaceService {
 
     await codexBridge.interruptTurn(threadId, turnId);
     this.activeTurnId = null;
-    this.liveTimelineState = await this.hydrateLiveTimeline(threadId, {
+    await this.hydrateLiveTimeline(threadId, {
       ...this.ensureLiveTimeline(threadId),
       isRunning: false,
-      statusLabel: "Interrupted"
+      runState: {
+        phase: "interrupted",
+        label: "Interrupted"
+      }
     });
 
     return cloneTimelineState(this.liveTimelineState);
@@ -734,13 +953,13 @@ class WorkspaceService {
       throw new Error(`Decision ${decision} is not available for this request.`);
     }
 
-    this.liveTimelineState = markApprovalSubmitting(this.liveTimelineState, requestId, true);
+    this.setLiveTimelineState(markApprovalSubmitting(this.liveTimelineState, requestId, true));
 
     try {
       await codexBridge.respond(requestId, { decision });
       return cloneTimelineState(this.liveTimelineState);
     } catch (error) {
-      this.liveTimelineState = markApprovalSubmitting(this.liveTimelineState, requestId, false);
+      this.setLiveTimelineState(markApprovalSubmitting(this.liveTimelineState, requestId, false));
       throw error;
     }
   }
@@ -770,13 +989,13 @@ class WorkspaceService {
       })
     );
 
-    this.liveTimelineState = markUserInputSubmitting(this.liveTimelineState, requestId, true);
+    this.setLiveTimelineState(markUserInputSubmitting(this.liveTimelineState, requestId, true));
 
     try {
       await codexBridge.respond(requestId, { answers: normalizedAnswers });
       return cloneTimelineState(this.liveTimelineState);
     } catch (error) {
-      this.liveTimelineState = markUserInputSubmitting(this.liveTimelineState, requestId, false);
+      this.setLiveTimelineState(markUserInputSubmitting(this.liveTimelineState, requestId, false));
       throw error;
     }
   }
@@ -820,7 +1039,10 @@ class WorkspaceService {
         this.activeTurnId = null;
         return {
           ...emptyTimelineState(threadId),
-          statusLabel: "Idle"
+          runState: {
+            phase: "idle",
+            label: "Idle"
+          }
         };
       }
 
@@ -832,23 +1054,31 @@ class WorkspaceService {
     return buildTimelineState(threadId, turns);
   }
 
-  private async listThreads(workspacePath: string, archived = false): Promise<ThreadSummary[]> {
+  private async listThreads(
+    workspacePath: string,
+    archived = false,
+    includeChangeSummary = true
+  ): Promise<ThreadSummary[]> {
     try {
       await codexBridge.start();
       const result = (await codexBridge.listThreads(workspacePath, archived)) as ThreadListResult;
 
       const threads: ThreadSummary[] = (result.data ?? []).map((thread) => ({
+        ...defaultThreadState(),
         id: thread.id ?? randomUUID(),
         title: thread.name ?? thread.preview ?? "Untitled thread",
         updatedAt: formatUpdatedAt(thread.updatedAt),
+        preview: typeof thread.preview === "string" ? thread.preview.trim() || null : null,
         changeSummary: null
       }));
 
-      await Promise.all(
-        threads.slice(0, THREAD_CHANGE_SUMMARY_LIMIT).map(async (thread) => {
-          thread.changeSummary = await this.getThreadChangeSummary(thread.id);
-        })
-      );
+      if (includeChangeSummary) {
+        await Promise.all(
+          threads.slice(0, THREAD_CHANGE_SUMMARY_LIMIT).map(async (thread) => {
+            thread.changeSummary = await this.getThreadChangeSummary(thread.id);
+          })
+        );
+      }
 
       return threads;
     } catch {
@@ -856,8 +1086,12 @@ class WorkspaceService {
     }
   }
 
-  private async listThreadsSnapshot(workspacePath: string, archived = false): Promise<ThreadSummary[]> {
-    return withTimeout(this.listThreads(workspacePath, archived), 1500, []);
+  private async listThreadsSnapshot(
+    workspacePath: string,
+    archived = false,
+    includeChangeSummary = true
+  ): Promise<ThreadSummary[]> {
+    return withTimeout(this.listThreads(workspacePath, archived, includeChangeSummary), 1500, []);
   }
 
   private async listWorkspaceProjects(
@@ -873,11 +1107,34 @@ class WorkspaceService {
           !threads.some((thread) => thread.id === workspace.threadId)
         ) {
           threads.unshift({
+            ...defaultThreadState(),
             id: workspace.threadId,
             title: "New thread",
             updatedAt: "now",
+            preview: null,
             changeSummary: null
           });
+        }
+
+        if (
+          workspace.id === state.currentWorkspaceId &&
+          this.liveTimelineState.threadId &&
+          workspace.threadId
+        ) {
+          const activeThread = threads.find((thread) => thread.id === workspace.threadId);
+
+          if (activeThread && this.liveTimelineState.threadId === workspace.threadId) {
+            activeThread.isRunning = this.liveTimelineState.isRunning;
+            activeThread.hasPendingApproval = this.liveTimelineState.approvals.length > 0;
+            activeThread.hasPendingUserInput = this.liveTimelineState.userInputs.length > 0;
+            activeThread.state = activeThread.hasPendingApproval
+              ? "approval"
+              : activeThread.hasPendingUserInput
+                ? "input"
+                : activeThread.isRunning
+                  ? "running"
+                  : "idle";
+          }
         }
 
         return {
@@ -907,19 +1164,21 @@ class WorkspaceService {
   }
 
   private async findNextThreadId(workspacePath: string, archivedThreadId: string) {
-    const threads = await this.listThreadsSnapshot(workspacePath, false);
+    const threads = await this.listThreadsSnapshot(workspacePath, false, false);
     return pickNextThreadId(threads, archivedThreadId);
   }
 
   private async getThreadChangeSummary(threadId: string): Promise<ThreadChangeSummary | null> {
     if (this.threadChangeCache.has(threadId)) {
-      return this.threadChangeCache.get(threadId) ?? null;
+      const summary = this.threadChangeCache.get(threadId) ?? null;
+      this.cacheThreadChangeSummary(threadId, summary);
+      return summary;
     }
 
     const summary = await withTimeout(this.readThreadChangeSummary(threadId), 900, null).catch(
       () => null
     );
-    this.threadChangeCache.set(threadId, summary);
+    this.cacheThreadChangeSummary(threadId, summary);
     return summary;
   }
 
@@ -972,6 +1231,31 @@ class WorkspaceService {
     return models;
   }
 
+  private async loadWorkerCollaborationModes(): Promise<WorkerCollaborationModeOption[]> {
+    if (this.workerCollaborationModesCache) {
+      return this.workerCollaborationModesCache;
+    }
+
+    try {
+      await codexBridge.start();
+      const result = (await codexBridge.listCollaborationModes()) as CollaborationModeListResult;
+      const collaborationModes = (result.data ?? [])
+        .map((entry) =>
+          entry && typeof entry === "object"
+            ? mapWorkerCollaborationMode(entry as Record<string, unknown>)
+            : null
+        )
+        .filter((entry): entry is WorkerCollaborationModeOption => Boolean(entry));
+
+      this.workerCollaborationModesCache =
+        collaborationModes.length > 0 ? collaborationModes : DEFAULT_WORKER_COLLABORATION_MODES;
+    } catch {
+      this.workerCollaborationModesCache = DEFAULT_WORKER_COLLABORATION_MODES;
+    }
+
+    return this.workerCollaborationModesCache;
+  }
+
   private async readConfigWorkerSettings(cwd?: string | null): Promise<WorkerExecutionSettings> {
     try {
       await codexBridge.start();
@@ -996,6 +1280,36 @@ class WorkspaceService {
     return resolveWorkerSettings(threadSettings ?? configSettings, models);
   }
 
+  private async autoNameThread(threadId: string, prompt: string) {
+    const fallbackName = buildAutoThreadName(null, prompt);
+
+    try {
+      const result = (await codexBridge.getConversationSummary(threadId)) as ConversationSummaryResult;
+      const nextName = buildAutoThreadName(result.summary?.preview ?? null, prompt);
+
+      if (!nextName) {
+        return;
+      }
+
+      await codexBridge.setThreadName(threadId, nextName);
+      return;
+    } catch {
+      if (!fallbackName) {
+        return;
+      }
+    }
+
+    if (!fallbackName) {
+      return;
+    }
+
+    try {
+      await codexBridge.setThreadName(threadId, fallbackName);
+    } catch {
+      // Keep the starter title if the bridge refuses the rename.
+    }
+  }
+
   private async resolveActiveWorkerSettings(
     models: WorkerModelOption[]
   ): Promise<WorkerExecutionSettings> {
@@ -1014,25 +1328,51 @@ class WorkspaceService {
   }
 
   private readState(): PersistedState {
+    if (this.persistedState) {
+      return this.persistedState;
+    }
+
     try {
       const raw = readFileSync(this.statePath, "utf8");
       const parsed = JSON.parse(raw) as PersistedState;
 
-      return {
+      this.persistedState = clonePersistedState({
         currentWorkspaceId: parsed.currentWorkspaceId ?? null,
         workspaces: parsed.workspaces ?? {}
-      };
+      });
     } catch {
-      return {
+      this.persistedState = clonePersistedState({
         currentWorkspaceId: EMPTY_STATE.currentWorkspaceId,
         workspaces: {}
-      };
+      });
     }
+
+    return this.persistedState;
   }
 
   private writeState(state: PersistedState) {
+    const nextState = clonePersistedState(state);
+    this.persistedState = nextState;
     mkdirSync(app.getPath("userData"), { recursive: true });
-    writeFileSync(this.statePath, JSON.stringify(state, null, 2));
+    writeFileSync(this.statePath, JSON.stringify(nextState, null, 2));
+  }
+
+  private cacheThreadChangeSummary(threadId: string, summary: ThreadChangeSummary | null) {
+    if (this.threadChangeCache.has(threadId)) {
+      this.threadChangeCache.delete(threadId);
+    }
+
+    this.threadChangeCache.set(threadId, summary);
+
+    if (this.threadChangeCache.size <= THREAD_CHANGE_CACHE_LIMIT) {
+      return;
+    }
+
+    const oldestThreadId = this.threadChangeCache.keys().next().value;
+
+    if (typeof oldestThreadId === "string") {
+      this.threadChangeCache.delete(oldestThreadId);
+    }
   }
 
   private resolveWorkspaceRoot(inputPath: string) {
@@ -1051,23 +1391,84 @@ class WorkspaceService {
     }
   }
 
+  private normalizeAttachmentPath(inputPath: string) {
+    const trimmedPath = inputPath.trim();
+
+    if (!trimmedPath) {
+      return null;
+    }
+
+    try {
+      const resolvedPath = realpathSync(trimmedPath);
+      return statSync(resolvedPath).isFile() ? resolvedPath : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizePastedImageAttachment(image: PastedImageAttachment) {
+    if (
+      !image ||
+      typeof image.name !== "string" ||
+      typeof image.mimeType !== "string" ||
+      typeof image.dataBase64 !== "string"
+    ) {
+      return null;
+    }
+
+    const mimeType = image.mimeType.trim().toLowerCase();
+
+    if (!mimeType.startsWith("image/")) {
+      return null;
+    }
+
+    const dataBase64 = image.dataBase64.trim();
+
+    if (!dataBase64) {
+      return null;
+    }
+
+    const extension = PASTED_IMAGE_EXTENSIONS[mimeType] ?? ".png";
+    const sanitizedBaseName = image.name
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/\.+/g, ".");
+    const baseNameWithoutExtension = sanitizedBaseName.replace(/\.[A-Za-z0-9]+$/, "");
+    const fileNameBase = baseNameWithoutExtension || "pasted-image";
+
+    return {
+      dataBase64,
+      fileName: `${fileNameBase}${extension}`
+    };
+  }
+
   private async handleBridgeNotification(payload: NotificationPayload) {
     this.syncActiveTurnFromNotification(payload);
     this.invalidateThreadCache(payload);
-    this.liveTimelineState = await applyBridgeNotification(
-      this.liveTimelineState,
-      payload,
-      (threadId) => this.isCurrentThread(threadId),
-      (threadId, currentState) => this.hydrateLiveTimeline(threadId, currentState)
+    this.setLiveTimelineState(
+      await applyBridgeNotification(
+        this.liveTimelineState,
+        payload,
+        (threadId) => this.isCurrentThread(threadId),
+        (threadId, currentState) => this.hydrateLiveTimeline(threadId, currentState)
+      )
     );
   }
 
   private handleBridgeRequest(payload: RequestPayload) {
-    this.liveTimelineState = applyBridgeRequest(
-      this.liveTimelineState,
-      payload,
-      (threadId) => this.isCurrentThread(threadId)
+    this.setLiveTimelineState(
+      applyBridgeRequest(this.liveTimelineState, payload, (threadId) => this.isCurrentThread(threadId))
     );
+  }
+
+  private enqueueBridgeMutation(action: () => void | Promise<void>) {
+    this.bridgeMutationQueue = this.bridgeMutationQueue
+      .catch(() => undefined)
+      .then(async () => {
+        await action();
+      });
+    return this.bridgeMutationQueue;
   }
 
   private async hydrateLiveTimeline(
@@ -1077,15 +1478,22 @@ class WorkspaceService {
     const snapshot = await this.readThreadTimeline(threadId);
     const existing = currentState.threadId === threadId ? currentState : null;
 
-    this.liveTimelineState = {
+    this.setLiveTimelineState({
       ...snapshot,
-      planSteps: existing?.planSteps ?? [],
-      diff: existing?.diff ?? "",
       approvals: existing?.approvals ?? [],
-      userInputs: existing?.userInputs ?? []
-    };
+      userInputs: existing?.userInputs ?? [],
+      activePlan: existing?.activePlan ?? snapshot.activePlan,
+      latestProposedPlan: existing?.latestProposedPlan ?? snapshot.latestProposedPlan,
+      turnDiffs: existing?.turnDiffs?.length ? existing.turnDiffs : snapshot.turnDiffs,
+      activeDiffPreview: existing?.activeDiffPreview ?? snapshot.activeDiffPreview
+    });
 
     return cloneTimelineState(this.liveTimelineState);
+  }
+
+  private setLiveTimelineState(nextState: TimelineState) {
+    this.liveTimelineState = cloneTimelineState(nextState);
+    this.emit("timeline", cloneTimelineState(this.liveTimelineState));
   }
 
   private ensureLiveTimeline(threadId: string) {

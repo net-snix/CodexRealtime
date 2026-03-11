@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWorkerInputs,
+  mapWorkerCollaborationMode,
   resolveWorkerSettings,
   supportsImageAttachments,
   workerSettingsFromConfig
@@ -13,7 +14,8 @@ describe("worker-settings", () => {
         model: "gpt-5.1-codex-mini",
         reasoningEffort: "xhigh",
         fastMode: true,
-        approvalPolicy: "on-request"
+        approvalPolicy: "on-request",
+        collaborationMode: "plan"
       },
       [
         {
@@ -32,6 +34,7 @@ describe("worker-settings", () => {
     expect(resolved.reasoningEffort).toBe("medium");
     expect(resolved.fastMode).toBe(true);
     expect(resolved.approvalPolicy).toBe("on-request");
+    expect(resolved.collaborationMode).toBe("plan");
   });
 
   it("converts image attachments only when the model supports image input", () => {
@@ -88,7 +91,25 @@ describe("worker-settings", () => {
       model: "gpt-5.4",
       reasoningEffort: "xhigh",
       approvalPolicy: "never",
-      fastMode: true
+      fastMode: true,
+      collaborationMode: "default"
+    });
+  });
+
+  it("maps collaboration mode presets into worker options", () => {
+    expect(
+      mapWorkerCollaborationMode({
+        name: "Ask",
+        mode: "plan",
+        model: "gpt-5.4",
+        reasoning_effort: "xhigh"
+      })
+    ).toEqual({
+      mode: "plan",
+      label: "Plan",
+      name: "Plan",
+      model: "gpt-5.4",
+      reasoningEffort: "xhigh"
     });
   });
 });

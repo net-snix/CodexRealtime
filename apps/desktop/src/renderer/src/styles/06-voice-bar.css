@@ -2,7 +2,7 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   min-height: 68px;
@@ -12,6 +12,41 @@
   background: rgba(252, 249, 244, 0.94);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+  transition:
+    padding 220ms ease,
+    min-height 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 220ms ease,
+    transform 220ms ease;
+}
+
+.voice-bar-panel-section {
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease,
+    filter 220ms ease;
+}
+
+.voice-bar-collapsed {
+  grid-template-columns: auto;
+  justify-content: end;
+  justify-items: end;
+  min-height: 0;
+  margin-left: auto;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.voice-bar-collapsed .voice-bar-panel-section {
+  opacity: 0;
+  transform: translateY(8px);
+  filter: blur(6px);
+  pointer-events: none;
+  position: absolute;
 }
 
 .voice-cluster,
@@ -23,6 +58,48 @@
 
 .voice-actions {
   justify-content: flex-end;
+}
+
+.voice-bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(24, 23, 20, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.78);
+  color: var(--muted-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 220ms ease;
+}
+
+.voice-bar-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.voice-bar-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(24, 23, 20, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+}
+
+.voice-bar-toggle-collapsed {
+  min-height: 38px;
+  padding: 0 12px;
+  background: rgba(252, 249, 244, 0.96);
+  box-shadow: 0 8px 22px rgba(24, 23, 20, 0.08);
 }
 
 .voice-button {

@@ -15,6 +15,9 @@ const initialRealtimeState: RealtimeState = {
 };
 
 const TRANSCRIPT_LIMIT = 6;
+const MAX_QUEUED_AUDIO_CHUNKS = 4;
+const MAX_DISPATCHED_TRANSCRIPT_IDS = 128;
+const PCM16_BASE64_CHUNK_SIZE = 0x8000;
 
 type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
   shouldDispatchPrompt: boolean;
@@ -50,12 +53,23 @@ const normalizeText = (value: unknown): string[] => {
   ];
 };
 
-const joinText = (...values: unknown[]) =>
-  values
-    .flatMap((value) => normalizeText(value))
-    .filter((text, index, all) => all.indexOf(text) === index)
-    .join("\n")
-    .trim();
+const joinText = (...values: unknown[]) => {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const value of values) {
+    for (const text of normalizeText(value)) {
+      if (seen.has(text)) {
+        continue;
+      }
+
+      seen.add(text);
+      unique.push(text);
+    }
+  }
+
+  return unique.join("\n").trim();
+};
 
 const parseRealtimeItem = (
   item: unknown,
@@ -150,22 +164,43 @@ const upsertTranscriptEntry = (
   return [...entries, nextEntry].slice(-TRANSCRIPT_LIMIT);
 };
 
+const rememberDispatchedTranscriptId = (ids: Set<string>, id: string) => {
+  if (ids.has(id)) {
+    return;
+  }
+
+  ids.add(id);
+
+  if (ids.size <= MAX_DISPATCHED_TRANSCRIPT_IDS) {
+    return;
+  }
+
+  const oldestId = ids.values().next().value;
+  if (typeof oldestId === "string") {
+    ids.delete(oldestId);
+  }
+};
+
 const encodePcm16 = (samples: Float32Array) => {
-  const pcm = new Int16Array(samples.length);
+  const bytes = new Uint8Array(samples.length * 2);
 
   for (let index = 0; index < samples.length; index += 1) {
     const sample = Math.max(-1, Math.min(1, samples[index]));
-    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    const pcmValue = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    const byteOffset = index * 2;
+    bytes[byteOffset] = pcmValue & 0xff;
+    bytes[byteOffset + 1] = (pcmValue >> 8) & 0xff;
   }
 
-  const bytes = new Uint8Array(pcm.buffer);
-  let binary = "";
+  const binaryChunks: string[] = [];
 
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+  for (let index = 0; index < bytes.length; index += PCM16_BASE64_CHUNK_SIZE) {
+    binaryChunks.push(
+      String.fromCharCode(...bytes.subarray(index, index + PCM16_BASE64_CHUNK_SIZE))
+    );
   }
 
-  return btoa(binary);
+  return btoa(binaryChunks.join(""));
 };
 
 const decodePcm16 = (chunk: RealtimeAudioChunk) => {
@@ -256,9 +291,61 @@ export const useRealtimeVoice = ({
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextPlaybackTimeRef = useRef(0);
+  const queuedAudioChunksRef = useRef<RealtimeAudioChunk[]>([]);
+  const isSendingAudioRef = useRef(false);
+  const audioSendGenerationRef = useRef(0);
   const dispatchedTranscriptIdsRef = useRef(new Set<string>());
   const lastDispatchedPromptRef = useRef("");
   const onVoicePromptRef = useRef(onVoicePrompt);
+
+  const flushQueuedAudio = async () => {
+    if (isSendingAudioRef.current) {
+      return;
+    }
+
+    const generation = audioSendGenerationRef.current;
+    isSendingAudioRef.current = true;
+
+    try {
+      while (
+        audioSendGenerationRef.current === generation &&
+        queuedAudioChunksRef.current.length > 0
+      ) {
+        const nextChunk = queuedAudioChunksRef.current.shift();
+
+        if (!nextChunk) {
+          continue;
+        }
+
+        try {
+          await window.appBridge.appendRealtimeAudio(nextChunk);
+        } catch {
+          // Keep capture responsive if a single realtime chunk fails to send.
+        }
+      }
+    } finally {
+      if (audioSendGenerationRef.current !== generation) {
+        return;
+      }
+
+      isSendingAudioRef.current = false;
+
+      if (queuedAudioChunksRef.current.length > 0) {
+        void flushQueuedAudio();
+      }
+    }
+  };
+
+  const queueAudioChunk = (chunk: RealtimeAudioChunk) => {
+    const queuedChunks = queuedAudioChunksRef.current;
+
+    if (queuedChunks.length >= MAX_QUEUED_AUDIO_CHUNKS) {
+      queuedChunks.shift();
+    }
+
+    queuedChunks.push(chunk);
+    void flushQueuedAudio();
+  };
 
   useEffect(() => {
     onVoicePromptRef.current = onVoicePrompt;
@@ -300,6 +387,13 @@ export const useRealtimeVoice = ({
   useEffect(() => {
     let isCancelled = false;
 
+    const applyVoicePreferences = (preferences: Awaited<ReturnType<typeof window.appBridge.getVoicePreferences>>) => {
+      setSelectedInputDeviceId(preferences.selectedInputDeviceId);
+      setSelectedOutputDeviceId(preferences.selectedOutputDeviceId);
+      setIsDeviceHintDismissed(preferences.deviceHintDismissed);
+      setHasCompletedDeviceSetup(preferences.deviceSetupComplete);
+    };
+
     void window.appBridge
       .getVoicePreferences()
       .then((preferences) => {
@@ -307,10 +401,7 @@ export const useRealtimeVoice = ({
           return;
         }
 
-        setSelectedInputDeviceId(preferences.selectedInputDeviceId);
-        setSelectedOutputDeviceId(preferences.selectedOutputDeviceId);
-        setIsDeviceHintDismissed(preferences.deviceHintDismissed);
-        setHasCompletedDeviceSetup(preferences.deviceSetupComplete);
+        applyVoicePreferences(preferences);
       })
       .catch(() => {
         // Default state is fine for prototype mode if persisted prefs are unavailable.
@@ -447,12 +538,18 @@ export const useRealtimeVoice = ({
           if (
             nextEntry.shouldDispatchPrompt &&
             nextEntry.status === "final" &&
-            !dispatchedTranscriptIdsRef.current.has(nextEntry.id) &&
-            normalizePromptKey(nextEntry.text) !== lastDispatchedPromptRef.current
+            !dispatchedTranscriptIdsRef.current.has(nextEntry.id)
           ) {
-            dispatchedTranscriptIdsRef.current.add(nextEntry.id);
-            lastDispatchedPromptRef.current = normalizePromptKey(nextEntry.text);
-            dispatchPrompt = nextEntry.text;
+            const normalizedPrompt = normalizePromptKey(nextEntry.text);
+
+            if (normalizedPrompt !== lastDispatchedPromptRef.current) {
+              rememberDispatchedTranscriptId(
+                dispatchedTranscriptIdsRef.current,
+                nextEntry.id
+              );
+              lastDispatchedPromptRef.current = normalizedPrompt;
+              dispatchPrompt = nextEntry.text;
+            }
           }
 
           return upsertTranscriptEntry(current, nextEntry);
@@ -484,6 +581,9 @@ export const useRealtimeVoice = ({
     }
 
     setVoiceState("thinking");
+    audioSendGenerationRef.current += 1;
+    queuedAudioChunksRef.current = [];
+    isSendingAudioRef.current = false;
     dispatchedTranscriptIdsRef.current.clear();
     lastDispatchedPromptRef.current = "";
     await window.appBridge.startRealtime();
@@ -507,7 +607,7 @@ export const useRealtimeVoice = ({
     processor.onaudioprocess = (event) => {
       const channel = event.inputBuffer.getChannelData(0);
 
-      void window.appBridge.appendRealtimeAudio({
+      queueAudioChunk({
         data: encodePcm16(channel),
         sampleRate: context.sampleRate,
         numChannels: 1,
@@ -537,6 +637,9 @@ export const useRealtimeVoice = ({
     }
 
     streamRef.current = null;
+    audioSendGenerationRef.current += 1;
+    queuedAudioChunksRef.current = [];
+    isSendingAudioRef.current = false;
     await closeAudioContext(captureContextRef.current);
     captureContextRef.current = null;
     playbackElementRef.current?.pause();
@@ -560,6 +663,15 @@ export const useRealtimeVoice = ({
 
   const shouldShowDeviceHint = !isDeviceHintDismissed && !hasCompletedDeviceSetup;
 
+  const resetVoicePreferences = async () => {
+    const nextPreferences = await window.appBridge.resetVoicePreferences();
+    setSelectedInputDeviceId(nextPreferences.selectedInputDeviceId);
+    setSelectedOutputDeviceId(nextPreferences.selectedOutputDeviceId);
+    setIsDeviceHintDismissed(nextPreferences.deviceHintDismissed);
+    setHasCompletedDeviceSetup(nextPreferences.deviceSetupComplete);
+    return nextPreferences;
+  };
+
   return {
     voiceState,
     realtimeState,
@@ -571,6 +683,7 @@ export const useRealtimeVoice = ({
     supportsOutputSelection,
     shouldShowDeviceHint,
     dismissDeviceHint: () => setIsDeviceHintDismissed(true),
+    resetVoicePreferences,
     setSelectedInputDeviceId,
     setSelectedOutputDeviceId,
     isActive,
