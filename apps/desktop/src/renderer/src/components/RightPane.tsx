@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ApprovalDecision, TimelineState } from "@shared";
+import type { ApprovalDecision, TimelineState, WorkspaceState } from "@shared";
 
 const PANELS = {
   plan: {
@@ -21,6 +21,10 @@ const PANELS = {
   errors: {
     title: "Errors",
     eyebrow: "Logs"
+  },
+  settings: {
+    title: "Settings",
+    eyebrow: "Archive"
   }
 } as const;
 
@@ -30,10 +34,16 @@ interface RightPaneProps {
   activePane: PaneKey;
   onSelect: (pane: PaneKey) => void;
   timelineState: TimelineState;
+  workspaceState: WorkspaceState;
+  archivingThreadId: string | null;
+  restoringThreadId: string | null;
+  archiveError: string | null;
   submittingApprovals: Record<string, ApprovalDecision>;
   approvalErrors: Record<string, string>;
   submittingUserInputs: Record<string, boolean>;
   userInputErrors: Record<string, string>;
+  onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
+  onUnarchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
   onApproveRequest: (id: string, decision?: ApprovalDecision) => void | Promise<void>;
   onDenyRequest: (id: string) => void | Promise<void>;
   onSubmitUserInput: (
@@ -69,10 +79,16 @@ export function RightPane({
   activePane,
   onSelect,
   timelineState,
+  workspaceState,
+  archivingThreadId,
+  restoringThreadId,
+  archiveError,
   submittingApprovals,
   approvalErrors,
   submittingUserInputs,
   userInputErrors,
+  onArchiveThread,
+  onUnarchiveThread,
   onApproveRequest,
   onDenyRequest,
   onSubmitUserInput
@@ -83,9 +99,18 @@ export function RightPane({
   const approvals = timelineState.approvals;
   const userInputs = timelineState.userInputs;
   const diff = timelineState.diff;
+  const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
+  const currentThread =
+    currentProject?.threads.find((thread) => thread.id === workspaceState.currentThreadId) ?? null;
+  const archivedProjects = workspaceState.archivedProjects;
+  const archivedThreadCount = archivedProjects.reduce(
+    (count, project) => count + project.threads.length,
+    0
+  );
   const paneBadges: Partial<Record<PaneKey, number>> = {
     plan: planSteps.length,
-    approvals: approvals.length + userInputs.length
+    approvals: approvals.length + userInputs.length,
+    settings: archivedThreadCount
   };
 
   useEffect(() => {
@@ -294,6 +319,76 @@ export function RightPane({
         <div className="pane-empty-state">
           <h3>No blockers</h3>
           <p>Requests will queue here.</p>
+        </div>
+      );
+    }
+
+    if (activePane === "settings") {
+      return (
+        <div className="dossier-stack">
+          <article className="dossier-card">
+            <div className="dossier-row">
+              <span className="dossier-index">Current chat</span>
+              <span className="session-meta">{currentProject?.name ?? "No workspace"}</span>
+            </div>
+            <h3>{currentThread?.title ?? "Nothing selected"}</h3>
+            <p>
+              {currentThread
+                ? "Archive the selected chat. It will leave the active thread list and stay available below."
+                : "Open or create a thread first."}
+            </p>
+            {currentProject && currentThread ? (
+              <div className="approval-actions">
+                <button
+                  type="button"
+                  className="request-action-button request-action-button-primary"
+                  disabled={timelineState.isRunning || archivingThreadId === currentThread.id}
+                  onClick={() => void onArchiveThread(currentProject.id, currentThread.id)}
+                >
+                  {archivingThreadId === currentThread.id ? "Archiving..." : "Archive chat"}
+                </button>
+              </div>
+            ) : null}
+            {timelineState.isRunning && currentThread ? (
+              <p className="request-note">Stop active work before archiving this chat.</p>
+            ) : null}
+          </article>
+
+          {archivedProjects.length > 0 ? (
+            archivedProjects.map((project) => (
+              <article key={project.id} className="dossier-card">
+                <div className="dossier-row">
+                  <h3>{project.name}</h3>
+                  <span className="session-meta">{project.threads.length} archived</span>
+                </div>
+                <div className="archive-thread-list">
+                  {project.threads.map((thread) => (
+                    <div key={thread.id} className="archive-thread-row">
+                      <div className="archive-thread-copy">
+                        <span className="archive-thread-title">{thread.title}</span>
+                        <span className="archive-thread-meta">{thread.updatedAt}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="request-action-button request-action-button-ghost"
+                        disabled={restoringThreadId === thread.id}
+                        onClick={() => void onUnarchiveThread(project.id, thread.id)}
+                      >
+                        {restoringThreadId === thread.id ? "Restoring..." : "Restore"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="pane-empty-state">
+              <h3>No archived chats</h3>
+              <p>Archived threads will show up here.</p>
+            </div>
+          )}
+
+          {archiveError ? <p className="request-error">{archiveError}</p> : null}
         </div>
       );
     }

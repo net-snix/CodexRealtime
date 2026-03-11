@@ -9,6 +9,8 @@ const WORKSPACE_OPEN_CURRENT = "workspace:open-current";
 const WORKSPACE_SELECT = "workspace:select";
 const THREAD_CREATE = "thread:create";
 const THREAD_SELECT = "thread:select";
+const THREAD_ARCHIVE = "thread:archive";
+const THREAD_UNARCHIVE = "thread:unarchive";
 const TIMELINE_GET_STATE = "timeline:get-state";
 const WORKER_SETTINGS_GET = "worker-settings:get";
 const WORKER_SETTINGS_UPDATE = "worker-settings:update";
@@ -36,6 +38,10 @@ const appBridge: AppBridge = {
   selectWorkspace: (workspaceId) => ipcRenderer.invoke(WORKSPACE_SELECT, workspaceId),
   createThread: (workspaceId) => ipcRenderer.invoke(THREAD_CREATE, workspaceId),
   selectThread: (workspaceId, threadId) => ipcRenderer.invoke(THREAD_SELECT, workspaceId, threadId),
+  archiveThread: (workspaceId, threadId) =>
+    ipcRenderer.invoke(THREAD_ARCHIVE, workspaceId, threadId),
+  unarchiveThread: (workspaceId, threadId) =>
+    ipcRenderer.invoke(THREAD_UNARCHIVE, workspaceId, threadId),
   getTimelineState: () => ipcRenderer.invoke(TIMELINE_GET_STATE),
   getWorkerSettingsState: () => ipcRenderer.invoke(WORKER_SETTINGS_GET),
   updateWorkerSettings: (patch) => ipcRenderer.invoke(WORKER_SETTINGS_UPDATE, patch),

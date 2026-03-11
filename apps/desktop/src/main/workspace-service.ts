@@ -129,6 +129,9 @@ const toWorkspaceSummary = (workspace: PersistedWorkspace): WorkspaceSummary => 
   path: workspace.path
 });
 
+const pickNextThreadId = (threads: ThreadSummary[], archivedThreadId: string) =>
+  threads.find((thread) => thread.id !== archivedThreadId)?.id ?? null;
+
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
   let timeoutId: NodeJS.Timeout | null = null;
 
@@ -271,7 +274,10 @@ class WorkspaceService {
   async getWorkspaceState(): Promise<WorkspaceState> {
     const persisted = this.readState();
     const recentWorkspaces = this.listRecentWorkspaces(persisted);
-    const projects = await this.listWorkspaceProjects(recentWorkspaces, persisted);
+    const [projects, archivedProjects] = await Promise.all([
+      this.listWorkspaceProjects(recentWorkspaces, persisted),
+      this.listArchivedProjects(recentWorkspaces, persisted)
+    ]);
     const currentProject = projects.find((project) => project.isCurrent) ?? null;
 
     return {
@@ -285,7 +291,8 @@ class WorkspaceService {
       currentThreadId: currentProject?.currentThreadId ?? null,
       recentWorkspaces: recentWorkspaces.map(toWorkspaceSummary),
       threads: currentProject?.threads ?? [],
-      projects
+      projects,
+      archivedProjects
     };
   }
 
@@ -412,6 +419,70 @@ class WorkspaceService {
       statusLabel: "Idle"
     };
 
+    return cloneTimelineState(this.liveTimelineState);
+  }
+
+  async archiveThread(workspaceId: string, threadId: string): Promise<TimelineState> {
+    const persisted = this.readState();
+    const workspace = persisted.workspaces[workspaceId];
+
+    if (!workspace) {
+      throw new Error("Workspace not found.");
+    }
+
+    if (
+      persisted.currentWorkspaceId === workspaceId &&
+      workspace.threadId === threadId &&
+      this.activeTurnId
+    ) {
+      throw new Error("Stop active work before archiving this thread.");
+    }
+
+    await codexBridge.archiveThread(threadId);
+    this.threadChangeCache.delete(threadId);
+
+    if (workspace.threadId === threadId) {
+      workspace.threadId = await this.findNextThreadId(workspace.path, threadId);
+      persisted.workspaces[workspace.id] = workspace;
+
+      if (persisted.currentWorkspaceId === workspaceId) {
+        this.activeTurnId = null;
+        this.liveTimelineState = workspace.threadId
+          ? await this.hydrateLiveTimeline(workspace.threadId, emptyTimelineState(workspace.threadId))
+          : emptyTimelineState();
+      }
+    }
+
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    if (persisted.currentWorkspaceId === workspaceId) {
+      return cloneTimelineState(this.liveTimelineState);
+    }
+
+    return this.getTimelineState();
+  }
+
+  async unarchiveThread(workspaceId: string, threadId: string): Promise<TimelineState> {
+    const persisted = this.readState();
+    const workspace = persisted.workspaces[workspaceId];
+
+    if (!workspace) {
+      throw new Error("Workspace not found.");
+    }
+
+    await codexBridge.unarchiveThread(threadId);
+    this.threadChangeCache.delete(threadId);
+
+    persisted.currentWorkspaceId = workspaceId;
+    workspace.threadId = threadId;
+    workspace.lastOpenedAt = now();
+    persisted.workspaces[workspace.id] = workspace;
+    this.writeState(persisted);
+
+    this.activeTurnId = null;
+    this.liveTimelineState = await this.hydrateLiveTimeline(threadId, emptyTimelineState(threadId));
     return cloneTimelineState(this.liveTimelineState);
   }
 
@@ -761,10 +832,10 @@ class WorkspaceService {
     return buildTimelineState(threadId, turns);
   }
 
-  private async listThreads(workspacePath: string): Promise<ThreadSummary[]> {
+  private async listThreads(workspacePath: string, archived = false): Promise<ThreadSummary[]> {
     try {
       await codexBridge.start();
-      const result = (await codexBridge.listThreads(workspacePath)) as ThreadListResult;
+      const result = (await codexBridge.listThreads(workspacePath, archived)) as ThreadListResult;
 
       const threads: ThreadSummary[] = (result.data ?? []).map((thread) => ({
         id: thread.id ?? randomUUID(),
@@ -785,8 +856,8 @@ class WorkspaceService {
     }
   }
 
-  private async listThreadsSnapshot(workspacePath: string): Promise<ThreadSummary[]> {
-    return withTimeout(this.listThreads(workspacePath), 1500, []);
+  private async listThreadsSnapshot(workspacePath: string, archived = false): Promise<ThreadSummary[]> {
+    return withTimeout(this.listThreads(workspacePath, archived), 1500, []);
   }
 
   private async listWorkspaceProjects(
@@ -817,6 +888,27 @@ class WorkspaceService {
         };
       })
     );
+  }
+
+  private async listArchivedProjects(
+    workspaces: PersistedWorkspace[],
+    state: PersistedState
+  ): Promise<WorkspaceProject[]> {
+    const projects = await Promise.all(
+      workspaces.map(async (workspace) => ({
+        ...toWorkspaceSummary(workspace),
+        isCurrent: workspace.id === state.currentWorkspaceId,
+        currentThreadId: workspace.threadId,
+        threads: await this.listThreadsSnapshot(workspace.path, true)
+      }))
+    );
+
+    return projects.filter((project) => project.threads.length > 0);
+  }
+
+  private async findNextThreadId(workspacePath: string, archivedThreadId: string) {
+    const threads = await this.listThreadsSnapshot(workspacePath, false);
+    return pickNextThreadId(threads, archivedThreadId);
   }
 
   private async getThreadChangeSummary(threadId: string): Promise<ThreadChangeSummary | null> {
@@ -1045,6 +1137,8 @@ class WorkspaceService {
       payload.method === "turn/started" ||
       payload.method === "turn/completed" ||
       payload.method === "turn/diff/updated" ||
+      payload.method === "thread/archived" ||
+      payload.method === "thread/unarchived" ||
       payload.method === "item/started" ||
       payload.method === "item/completed"
     ) {

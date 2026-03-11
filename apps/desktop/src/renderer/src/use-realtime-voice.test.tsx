@@ -56,6 +56,8 @@ describe("useRealtimeVoice", () => {
         selectWorkspace: vi.fn(),
         createThread: vi.fn(),
         selectThread: vi.fn(),
+        archiveThread: vi.fn(),
+        unarchiveThread: vi.fn(),
         getTimelineState: vi.fn(),
         getWorkerSettingsState: vi.fn(),
         updateWorkerSettings: vi.fn(),

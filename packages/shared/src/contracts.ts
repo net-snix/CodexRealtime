@@ -46,6 +46,8 @@ export interface AppBridge {
   selectWorkspace: (workspaceId: string) => Promise<WorkspaceState>;
   createThread: (workspaceId: string) => Promise<TimelineState>;
   selectThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
+  archiveThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
+  unarchiveThread: (workspaceId: string, threadId: string) => Promise<TimelineState>;
   getTimelineState: () => Promise<TimelineState>;
   getWorkerSettingsState: () => Promise<WorkerSettingsState>;
   updateWorkerSettings: (
@@ -108,6 +110,7 @@ export interface WorkspaceState {
   recentWorkspaces: WorkspaceSummary[];
   threads: ThreadSummary[];
   projects: WorkspaceProject[];
+  archivedProjects: WorkspaceProject[];
 }
 
 export type WorkerReasoningEffort =

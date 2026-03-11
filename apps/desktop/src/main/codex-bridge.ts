@@ -93,13 +93,29 @@ class CodexBridge extends EventEmitter {
     });
   }
 
-  async listThreads(cwd: string) {
+  async listThreads(cwd: string, archived = false) {
     await this.start();
 
     return this.request("thread/list", {
       cwd,
-      archived: false,
+      archived,
       limit: 20
+    });
+  }
+
+  async archiveThread(threadId: string) {
+    await this.start();
+
+    return this.request("thread/archive", {
+      threadId
+    });
+  }
+
+  async unarchiveThread(threadId: string) {
+    await this.start();
+
+    return this.request("thread/unarchive", {
+      threadId
     });
   }
 

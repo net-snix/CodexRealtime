@@ -14,7 +14,7 @@ import { useRealtimeVoice } from "./use-realtime-voice";
 import { useWorkerSettings } from "./use-worker-settings";
 import { VoiceBar } from "./components/VoiceBar";
 
-type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors";
+type PaneKey = "plan" | "diff" | "commands" | "approvals" | "errors" | "settings";
 type VoiceFeedbackTone = "neutral" | "success" | "error";
 type VoiceFeedback = {
   tone: VoiceFeedbackTone;
@@ -56,7 +56,8 @@ export default function App() {
     currentThreadId: null,
     recentWorkspaces: [],
     threads: [],
-    projects: []
+    projects: [],
+    archivedProjects: []
   });
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
   const currentWorkspaceId = currentProject?.id ?? null;
@@ -85,6 +86,9 @@ export default function App() {
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
   const [submittingUserInputs, setSubmittingUserInputs] = useState<Record<string, boolean>>({});
   const [userInputErrors, setUserInputErrors] = useState<Record<string, string>>({});
+  const [archivingThreadId, setArchivingThreadId] = useState<string | null>(null);
+  const [restoringThreadId, setRestoringThreadId] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const realtimeEnabled = Boolean(
     sessionState?.status === "connected" &&
       sessionState.features.realtimeConversation &&
@@ -324,6 +328,49 @@ export default function App() {
     }
   };
 
+  const handleArchiveThread = async (workspaceId: string, threadId: string) => {
+    setArchiveError(null);
+    setArchivingThreadId(threadId);
+
+    try {
+      if (isVoiceActive) {
+        await stopVoice();
+      }
+
+      const nextTimeline = await window.appBridge.archiveThread(workspaceId, threadId);
+      setTimelineState(nextTimeline);
+      const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+      setWorkspaceState(nextWorkspaceState);
+      clearWorkerAttachments();
+      setActivePane("settings");
+    } catch (error) {
+      setArchiveError(toErrorMessage(error, "Archiving thread failed."));
+    } finally {
+      setArchivingThreadId(null);
+    }
+  };
+
+  const handleUnarchiveThread = async (workspaceId: string, threadId: string) => {
+    setArchiveError(null);
+    setRestoringThreadId(threadId);
+
+    try {
+      if (isVoiceActive) {
+        await stopVoice();
+      }
+
+      const nextTimeline = await window.appBridge.unarchiveThread(workspaceId, threadId);
+      setTimelineState(nextTimeline);
+      const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+      setWorkspaceState(nextWorkspaceState);
+      setActivePane("plan");
+    } catch (error) {
+      setArchiveError(toErrorMessage(error, "Restoring archived thread failed."));
+    } finally {
+      setRestoringThreadId(null);
+    }
+  };
+
   const handleStartTurn = async (request: TurnStartRequest) => {
     setIsStartingTurn(true);
 
@@ -479,10 +526,16 @@ export default function App() {
           activePane={activePane}
           onSelect={setActivePane}
           timelineState={timelineState}
+          workspaceState={workspaceState}
+          archivingThreadId={archivingThreadId}
+          restoringThreadId={restoringThreadId}
+          archiveError={archiveError}
           submittingApprovals={submittingApprovals}
           approvalErrors={approvalErrors}
           submittingUserInputs={submittingUserInputs}
           userInputErrors={userInputErrors}
+          onArchiveThread={handleArchiveThread}
+          onUnarchiveThread={handleUnarchiveThread}
           onApproveRequest={handleApproveRequest}
           onDenyRequest={handleDenyRequest}
           onSubmitUserInput={handleSubmitUserInput}
