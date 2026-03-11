@@ -173,14 +173,20 @@ select {
   color: var(--muted-strong);
   font-size: 0.71rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 .status-pill-live {
-  border-color: rgba(33, 53, 61, 0.16);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: #263a67;
+  background: #263a67;
+  color: #fffdfa;
+}
+
+.status-pill-warning {
+  border-color: rgba(156, 113, 54, 0.22);
+  background: rgba(247, 239, 223, 0.96);
+  color: #9c7136;
 }
 
 .session-meta,

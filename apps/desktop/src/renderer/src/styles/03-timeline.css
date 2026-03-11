@@ -19,8 +19,9 @@
 }
 
 .timeline .status-pill {
-  padding: 6px 10px;
-  font-size: 0.67rem;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 0.84rem;
 }
 
 .timeline-composer,
@@ -318,6 +319,15 @@
   gap: 6px;
 }
 
+.timeline-status-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
 .timeline-utility-pill {
   display: inline-flex;
   align-items: center;
@@ -408,6 +418,33 @@
   background: rgba(255, 253, 250, 0.84);
   border-color: rgba(24, 23, 20, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.timeline-thinking {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding-top: 2px;
+}
+
+.timeline-thinking-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: #263a67;
+  color: #fffdfa;
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.timeline-thinking-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 .timeline-message {

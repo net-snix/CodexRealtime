@@ -13,6 +13,11 @@ import type {
 } from "@shared";
 import { shouldSubmitComposerKey } from "../composer-shortcuts";
 import { presentTimelineEvent } from "../timeline-presenter";
+import {
+  getLatestWorkingStatus,
+  getWorkingStatusLabel,
+  useThinkingLabel
+} from "../timeline-working-status";
 
 interface TimelineProps {
   timelineState: TimelineState;
@@ -148,11 +153,6 @@ export function Timeline({
   const [draft, setDraft] = useState("");
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
   const hasWorkspace = Boolean(currentProject);
-  const statusLabel = isResolvingRequests
-    ? "Waiting on your decision"
-    : timelineState.isRunning
-      ? timelineState.statusLabel ?? "turn running"
-      : timelineState.statusLabel ?? (hasWorkspace ? "idle" : "repo required");
   const planCount = timelineState.planSteps?.length ?? 0;
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
@@ -163,6 +163,17 @@ export function Timeline({
   const latestTranscript = visibleTranscript[0] ?? null;
   const orderedEvents = timelineState.events;
   const isWorkingLogMode = timelineState.isRunning || isResolvingRequests;
+  const thinkingLabel = useThinkingLabel(timelineState.isRunning && !isResolvingRequests);
+  const latestWorkingStatus = getLatestWorkingStatus(orderedEvents, isWorkingLogMode);
+  const activeWorkingLabel = getWorkingStatusLabel(
+    orderedEvents,
+    isWorkingLogMode,
+    thinkingLabel,
+    isResolvingRequests
+  );
+  const statusLabel = isWorkingLogMode
+    ? activeWorkingLabel
+    : timelineState.statusLabel ?? (hasWorkspace ? "Idle" : "Repo required");
   const streamRef = useRef<HTMLDivElement | null>(null);
   const defaultModel =
     workerSettingsState.models.find((model) => model.isDefault) ??
@@ -222,14 +233,24 @@ export function Timeline({
         </div>
         <div
           className={`status-pill ${
-            timelineState.isRunning || isResolvingRequests ? "status-pill-live" : ""
+            timelineState.isRunning
+              ? "status-pill-live"
+              : isResolvingRequests
+                ? "status-pill-warning"
+                : ""
           }`}
         >
           {statusLabel}
         </div>
       </header>
 
-      {hasWorkspace && (planCount > 0 || hasDiff || hasPendingHumanGate || hasLiveVoice) ? (
+      {hasWorkspace &&
+      (planCount > 0 ||
+        hasDiff ||
+        hasPendingHumanGate ||
+        hasLiveVoice ||
+        Boolean(latestWorkingStatus) ||
+        isWorkingLogMode) ? (
         <div className="timeline-utility-strip">
           {planCount > 0 ? <span className="timeline-utility-pill">plan {planCount}</span> : null}
           {hasDiff ? (
@@ -248,6 +269,13 @@ export function Timeline({
           {hasLiveVoice ? (
             <span className="timeline-utility-pill timeline-utility-pill-voice">
               {voiceStripLabel(realtimeState, voiceState, isVoiceActive)}
+            </span>
+          ) : null}
+          {isWorkingLogMode ? (
+            <span className="timeline-status-note">
+              {isResolvingRequests
+                ? "Needs your decision to continue"
+                : latestWorkingStatus ?? "Working through the task"}
             </span>
           ) : null}
         </div>
@@ -316,6 +344,21 @@ export function Timeline({
                 </article>
               );
             })}
+
+            {timelineState.isRunning || isResolvingRequests ? (
+              <div className="timeline-thinking">
+                <span className="timeline-thinking-chip">
+                  {activeWorkingLabel}
+                </span>
+                {latestWorkingStatus || isResolvingRequests ? (
+                  <p className="timeline-thinking-note">
+                    {isResolvingRequests
+                      ? "Needs your decision to continue"
+                      : latestWorkingStatus}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="timeline-empty-state">
