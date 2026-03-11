@@ -153,19 +153,33 @@
   list-style: none;
 }
 
-.project-thread-button {
+.project-thread-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   width: 100%;
   padding: 6px 7px;
+  border-radius: 8px;
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.project-thread-button {
+  min-width: 0;
+  padding: 0;
   color: var(--text);
   text-align: left;
 }
 
-.project-thread-button:hover {
+.project-thread-row:hover,
+.project-thread-row-hovered {
   background: rgba(255, 255, 255, 0.5);
+}
+
+.project-thread-button:hover {
+  transform: none;
 }
 
 .project-thread-button-active {
@@ -181,6 +195,7 @@
 }
 
 .project-thread-title {
+  display: block;
   font-size: 0.86rem;
 }
 
@@ -188,6 +203,79 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.project-thread-time-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 52px;
+  min-height: 24px;
+}
+
+.project-thread-archive-button,
+.project-thread-confirm-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border: 1px solid rgba(24, 23, 20, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 253, 250, 0.96);
+  color: var(--muted-strong);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    opacity 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.project-thread-archive-button {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 24px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-thread-archive-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.project-thread-confirm-button {
+  padding: 0 8px;
+}
+
+.project-thread-row:hover .project-thread-archive-button,
+.project-thread-row-hovered .project-thread-archive-button,
+.project-thread-row:focus-within .project-thread-archive-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-thread-row:hover .project-thread-time,
+.project-thread-row-hovered .project-thread-time,
+.project-thread-row:focus-within .project-thread-time {
+  opacity: 0;
+}
+
+.project-thread-archive-button:hover:not(:disabled),
+.project-thread-confirm-button:hover:not(:disabled) {
+  border-color: rgba(24, 23, 20, 0.14);
+  background: rgba(255, 253, 250, 1);
+  color: var(--text);
+}
+
+.project-thread-archive-button:disabled,
+.project-thread-confirm-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 
 .project-thread-counts {

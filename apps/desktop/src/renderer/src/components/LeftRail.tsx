@@ -7,11 +7,14 @@ interface LeftRailProps {
   workspaceState: WorkspaceState;
   isOpeningWorkspace: boolean;
   isCreatingThread: boolean;
+  archivingThreadId: string | null;
+  runningThreadId: string | null;
   onOpenWorkspace: () => void | Promise<void>;
   onOpenCurrentWorkspace: () => void | Promise<void>;
   onCreateThread: () => void | Promise<void>;
   onSelectWorkspace: (workspaceId: string) => void | Promise<void>;
   onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
+  onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
 }
 
 const sessionLabel = (sessionState: SessionState | null) => {
@@ -106,19 +109,39 @@ function CurrentIcon() {
   );
 }
 
+function ArchiveIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
+        d="M3 4.5h10M4.1 4.5h7.8v7.15A1.35 1.35 0 0 1 10.55 13h-5.1A1.35 1.35 0 0 1 4.1 11.65Zm1-1.75h5.8a.95.95 0 0 1 .95.95V4.5H4.15v-.8a.95.95 0 0 1 .95-.95Zm1.35 3.2h5.1"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
 export function LeftRail({
   appInfo,
   sessionState,
   workspaceState,
   isOpeningWorkspace,
   isCreatingThread,
+  archivingThreadId,
+  runningThreadId,
   onOpenWorkspace,
   onOpenCurrentWorkspace,
   onCreateThread,
   onSelectWorkspace,
-  onSelectThread
+  onSelectThread,
+  onArchiveThread
 }: LeftRailProps) {
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
+  const [confirmThreadId, setConfirmThreadId] = useState<string | null>(null);
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
   const sessionText = sessionState?.account?.planType
     ? `${sessionLabel(sessionState)} ${sessionState.account.planType}`
@@ -141,6 +164,20 @@ export function LeftRail({
       [workspaceId]: !current[workspaceId]
     }));
   };
+
+  useEffect(() => {
+    if (!confirmThreadId) {
+      return;
+    }
+
+    const stillExists = workspaceState.projects.some((project) =>
+      project.threads.some((thread) => thread.id === confirmThreadId)
+    );
+
+    if (!stillExists) {
+      setConfirmThreadId(null);
+    }
+  }, [confirmThreadId, workspaceState.projects]);
 
   return (
     <aside
@@ -223,17 +260,35 @@ export function LeftRail({
                   <ul className="project-thread-list">
                     {project.threads.map((thread) => (
                       <li key={thread.id}>
-                        <button
-                          type="button"
+                        <div
                           className={
                             project.currentThreadId === thread.id
-                              ? "project-thread-button project-thread-button-active"
-                              : "project-thread-button"
+                              ? `project-thread-row project-thread-button-active ${
+                                  hoveredThreadId === thread.id ? "project-thread-row-hovered" : ""
+                                }`
+                              : `project-thread-row ${
+                                  hoveredThreadId === thread.id ? "project-thread-row-hovered" : ""
+                                }`
                           }
-                          onClick={() => void onSelectThread(project.id, thread.id)}
-                          title={thread.title}
+                          data-thread-id={thread.id}
+                          onMouseEnter={() => setHoveredThreadId(thread.id)}
+                          onMouseLeave={() =>
+                            setHoveredThreadId((current) =>
+                              current === thread.id ? null : current
+                            )
+                          }
                         >
-                          <span className="project-thread-title">{thread.title}</span>
+                          <button
+                            type="button"
+                            className="project-thread-button"
+                            onClick={() => {
+                              setConfirmThreadId(null);
+                              void onSelectThread(project.id, thread.id);
+                            }}
+                            title={thread.title}
+                          >
+                            <span className="project-thread-title">{thread.title}</span>
+                          </button>
                           <span className="project-thread-meta">
                             {thread.changeSummary ? (
                               <span className="project-thread-counts">
@@ -249,9 +304,43 @@ export function LeftRail({
                                 ) : null}
                               </span>
                             ) : null}
-                            <span className="project-thread-time">{thread.updatedAt}</span>
+                            <span className="project-thread-time-slot">
+                              {confirmThreadId === thread.id ? (
+                                <button
+                                  type="button"
+                                  className="project-thread-confirm-button"
+                                  onClick={() => void onArchiveThread(project.id, thread.id)}
+                                  disabled={archivingThreadId === thread.id}
+                                  aria-label={`Confirm archive ${thread.title}`}
+                                >
+                                  {archivingThreadId === thread.id ? "..." : "Confirm"}
+                                </button>
+                              ) : (
+                                <>
+                                  <span className="project-thread-time">{thread.updatedAt}</span>
+                                  <button
+                                    type="button"
+                                    className="project-thread-archive-button"
+                                    onClick={() =>
+                                      setConfirmThreadId((current) =>
+                                        current === thread.id ? null : thread.id
+                                      )
+                                    }
+                                    disabled={archivingThreadId !== null || runningThreadId === thread.id}
+                                    aria-label={`Archive ${thread.title}`}
+                                    title={
+                                      runningThreadId === thread.id
+                                        ? "Stop active work before archiving"
+                                        : `Archive ${thread.title}`
+                                    }
+                                  >
+                                    <ArchiveIcon />
+                                  </button>
+                                </>
+                              )}
+                            </span>
                           </span>
-                        </button>
+                        </div>
                       </li>
                     ))}
                   </ul>

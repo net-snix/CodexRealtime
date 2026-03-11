@@ -498,11 +498,14 @@ export default function App() {
           workspaceState={workspaceState}
           isOpeningWorkspace={isOpeningWorkspace}
           isCreatingThread={isCreatingThread}
+          archivingThreadId={archivingThreadId}
+          runningThreadId={timelineState.isRunning ? currentThreadId : null}
           onOpenWorkspace={handleOpenWorkspace}
           onOpenCurrentWorkspace={handleOpenCurrentWorkspace}
           onCreateThread={handleCreateThread}
           onSelectWorkspace={handleSelectWorkspace}
           onSelectThread={handleSelectThread}
+          onArchiveThread={handleArchiveThread}
         />
         <Timeline
           timelineState={timelineState}
