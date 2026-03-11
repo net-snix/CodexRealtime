@@ -1,6 +1,6 @@
 .timeline {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 5px;
   padding: 8px;
   overflow: hidden;
@@ -33,9 +33,9 @@
 }
 
 .timeline-composer {
-  grid-row: 5;
   display: grid;
   gap: 5px;
+  align-content: start;
   padding: 5px;
   background: rgba(255, 253, 250, 0.84);
 }
@@ -313,7 +313,6 @@
 }
 
 .timeline-utility-strip {
-  grid-row: 2;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -369,7 +368,6 @@
 }
 
 .timeline-voice-ribbon {
-  grid-row: 3;
   display: grid;
   gap: 4px;
   padding: 1px 2px 0;
@@ -398,8 +396,8 @@
 }
 
 .timeline-stream {
-  grid-row: 4;
   display: grid;
+  flex: 1 1 auto;
   min-height: 0;
   align-content: start;
 }
@@ -586,8 +584,9 @@
 }
 
 .timeline-empty-state {
-  grid-row: 4;
   display: grid;
+  flex: 1 1 auto;
+  align-content: start;
   gap: 5px;
   padding: 8px 10px;
   background: rgba(255, 253, 250, 0.74);
