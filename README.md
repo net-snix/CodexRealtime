@@ -1,8 +1,8 @@
 # CodexRealtime
 
-Voice-native Codex desktop prototype.
+Voice-native Codex desktop.
 
-[![Status](https://img.shields.io/badge/status-prototype-e7a64a)](https://github.com/net-snix/CodexRealtime)
+[![Status](https://img.shields.io/badge/status-local-e7a64a)](https://github.com/net-snix/CodexRealtime)
 [![Platform](https://img.shields.io/badge/platform-macOS-f5f1e8)](https://github.com/net-snix/CodexRealtime)
 [![Electron](https://img.shields.io/badge/electron-40.8.0-9db0b7)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/react-19.2.4-7fa7b5)](https://react.dev/)
@@ -12,7 +12,7 @@ Electron app. React renderer. Local Codex app-server bridge. Realtime voice loop
 
 ## Status
 
-Working local prototype.
+Working local app.
 
 Current surface:
 
