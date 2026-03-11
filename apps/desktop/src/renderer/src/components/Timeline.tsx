@@ -301,14 +301,16 @@ export function Timeline({
 
               return (
                 <article key={event.id} className={`timeline-message timeline-message-${presentation.tone}`}>
-                  <div className="timeline-message-head">
-                    {presentation.badge ? (
-                      <span className="timeline-message-badge">{presentation.badge}</span>
-                    ) : null}
-                    {presentation.metaLabel ? (
-                      <span className="timeline-message-meta">{presentation.metaLabel}</span>
-                    ) : null}
-                  </div>
+                  {presentation.badge || presentation.metaLabel ? (
+                    <div className="timeline-message-head">
+                      {presentation.badge ? (
+                        <span className="timeline-message-badge">{presentation.badge}</span>
+                      ) : null}
+                      {presentation.metaLabel ? (
+                        <span className="timeline-message-meta">{presentation.metaLabel}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <p className="timeline-message-copy">{presentation.title}</p>
                   {presentation.body ? <pre className="timeline-message-output">{presentation.body}</pre> : null}
                 </article>

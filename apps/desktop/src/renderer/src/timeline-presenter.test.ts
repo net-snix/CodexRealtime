@@ -21,7 +21,7 @@ describe("presentTimelineEvent", () => {
       )
     ).toMatchObject({
       variant: "message",
-      badge: "You",
+      badge: null,
       tone: "user"
     });
   });

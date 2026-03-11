@@ -47,11 +47,11 @@ export const presentTimelineEvent = (
   if (event.kind === "user") {
     return {
       variant: "message",
-      badge: "You",
+      badge: null,
       tone: "user",
       title: event.text,
       body: null,
-      metaLabel: fallbackMetaLabel
+      metaLabel: null
     };
   }
 

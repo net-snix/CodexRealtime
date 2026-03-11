@@ -413,6 +413,7 @@
 .timeline-message {
   display: grid;
   gap: 8px;
+  justify-items: start;
 }
 
 .timeline-message-head {
@@ -454,8 +455,17 @@
 }
 
 .timeline-message-user .timeline-message-copy {
+  max-width: min(72%, 720px);
+  padding: 11px 14px;
+  border: 1px solid rgba(33, 53, 61, 0.1);
+  border-radius: 16px 16px 6px 16px;
+  background: rgba(33, 53, 61, 0.08);
   color: var(--accent);
   font-weight: 600;
+}
+
+.timeline-message-user {
+  justify-items: end;
 }
 
 .timeline-message-commentary .timeline-message-copy {
