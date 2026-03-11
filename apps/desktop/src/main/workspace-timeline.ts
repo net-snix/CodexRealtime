@@ -1,133 +1,79 @@
 import { randomUUID } from "node:crypto";
 import type {
-  ApprovalDecision,
   TimelineApproval,
   TimelineChangedFile,
   TimelineDiffEntry,
   TimelineEntry,
   TimelineMessageEntry,
   TimelinePlan,
-  TimelinePlanEntry,
-  TimelinePlanStep,
+  TimelineProposedPlanEntry,
   TimelineRunState,
   TimelineState,
-  TimelineUserInputOption,
+  TimelineTurn,
   TimelineUserInputQuestion,
-  TimelineUserInputRequest,
-  TimelineWorkEntry
+  TimelineUserInputRequest
 } from "@shared";
-import { summarizeActivityText, summarizeCommand } from "./timeline-event-summary";
+import { summarizeActivityText } from "./timeline-event-summary";
+import {
+  normalizeBridgeNotification,
+  normalizeBridgeRequest,
+  projectTurnRecord,
+  type NotificationPayload,
+  type RequestPayload,
+  type TimelineRuntimeMutation,
+  type TurnRecord,
+} from "./timeline-runtime-events";
 
-export type ThreadItem =
-  | {
-      type: "userMessage";
-      id?: string;
-      content?: Array<{ type?: string; text?: string }>;
-    }
-  | {
-      type: "agentMessage";
-      id?: string;
-      text?: string;
-    }
-  | {
-      type: "plan";
-      id?: string;
-      text?: string;
-    }
-  | {
-      type: "reasoning";
-      id?: string;
-      summary?: string[];
-      content?: string[];
-    }
-  | {
-      type: "commandExecution";
-      id?: string;
-      command?: string;
-      aggregatedOutput?: string | null;
-    }
-  | {
-      type: "fileChange";
-      id?: string;
-      changes?: Array<{
-        path?: string;
-        diff?: string;
-        kind?: {
-          type?: "add" | "delete" | "update";
-          move_path?: string | null;
-        };
-      }>;
-    }
-  | {
-      type: string;
-      id?: string;
-    };
+export { isRecord } from "./timeline-runtime-events";
+export type {
+  NotificationPayload,
+  RequestPayload,
+  ThreadItem,
+  TurnRecord,
+  TurnRef
+} from "./timeline-runtime-events";
 
-export type TurnRecord = {
-  id?: string;
-  status?: "completed" | "interrupted" | "failed" | "inProgress";
-  items?: ThreadItem[];
-};
-
-export type TurnRef = {
-  id?: string;
-  status?: "completed" | "interrupted" | "failed" | "inProgress";
-};
-
-export type NotificationPayload = {
-  method: string;
-  params?: unknown;
-};
-
-export type RequestPayload = {
-  id: string;
-  method: string;
-  params?: unknown;
-};
-
-type UserMessageItem = Extract<ThreadItem, { type: "userMessage" }>;
-type AgentMessageItem = Extract<ThreadItem, { type: "agentMessage" }>;
-type PlanItem = Extract<ThreadItem, { type: "plan" }>;
-type ReasoningItem = Extract<ThreadItem, { type: "reasoning" }>;
-type CommandExecutionItem = Extract<ThreadItem, { type: "commandExecution" }>;
-type FileChangeItem = Extract<ThreadItem, { type: "fileChange" }>;
-
-type ProjectedTurn = {
-  entries: TimelineEntry[];
-  latestPlan: TimelinePlan | null;
-  diffEntries: TimelineDiffEntry[];
-};
-
-const isUserMessage = (item: ThreadItem): item is UserMessageItem => item.type === "userMessage";
-const isAgentMessage = (item: ThreadItem): item is AgentMessageItem => item.type === "agentMessage";
-const isPlanItem = (item: ThreadItem): item is PlanItem => item.type === "plan";
-const isReasoningItem = (item: ThreadItem): item is ReasoningItem => item.type === "reasoning";
-const isCommandExecutionItem = (item: ThreadItem): item is CommandExecutionItem =>
-  item.type === "commandExecution";
-const isFileChangeItem = (item: ThreadItem): item is FileChangeItem => item.type === "fileChange";
-
-const MAX_TIMELINE_ENTRIES = 160;
-const MAX_HISTORY_TURNS = 48;
-const MAX_TURN_DIFFS = 32;
+const MAX_TIMELINE_ENTRIES = 240;
+const MAX_HISTORY_TURNS = 64;
+const MAX_TURN_DIFFS = 48;
 const OPTIMISTIC_USER_EVENT_PREFIX = "optimistic-user:";
-const DIFF_METADATA_PREFIXES = [
-  "diff --git",
-  "index ",
-  "@@",
-  "---",
-  "+++",
-  "new file mode",
-  "deleted file mode",
-  "rename from",
-  "rename to",
-  "similarity index"
-];
 
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object";
+const nowIso = () => new Date().toISOString();
 
-const cloneChangedFile = (file: TimelineChangedFile): TimelineChangedFile => ({
-  ...file
+const cloneChangedFile = (file: TimelineChangedFile): TimelineChangedFile => ({ ...file });
+
+const cloneTimelinePlan = (plan: TimelinePlan | null): TimelinePlan | null =>
+  plan
+    ? {
+        ...plan,
+        steps: [...plan.steps]
+      }
+    : null;
+
+const cloneTimelineTurn = (turn: TimelineTurn | null): TimelineTurn | null =>
+  turn
+    ? {
+        ...turn
+      }
+    : null;
+
+const cloneTimelineApproval = (approval: TimelineApproval): TimelineApproval => ({
+  ...approval,
+  availableDecisions: [...approval.availableDecisions]
+});
+
+const cloneTimelineQuestion = (
+  question: TimelineUserInputQuestion
+): TimelineUserInputQuestion => ({
+  ...question,
+  options: [...question.options]
+});
+
+const cloneTimelineUserInput = (
+  request: TimelineUserInputRequest
+): TimelineUserInputRequest => ({
+  ...request,
+  questions: request.questions.map(cloneTimelineQuestion)
 });
 
 const cloneTimelineEntry = (entry: TimelineEntry): TimelineEntry => {
@@ -135,14 +81,14 @@ const cloneTimelineEntry = (entry: TimelineEntry): TimelineEntry => {
     return { ...entry };
   }
 
-  if (entry.kind === "work") {
+  if (entry.kind === "activity") {
     return {
       ...entry,
       changedFiles: entry.changedFiles.map(cloneChangedFile)
     };
   }
 
-  if (entry.kind === "plan") {
+  if (entry.kind === "proposedPlan") {
     return {
       ...entry,
       steps: [...entry.steps]
@@ -155,17 +101,172 @@ const cloneTimelineEntry = (entry: TimelineEntry): TimelineEntry => {
   };
 };
 
-const cloneTimelinePlan = (plan: TimelinePlan | null): TimelinePlan | null =>
-  plan
-    ? {
-        ...plan,
-        steps: [...plan.steps]
-      }
-    : null;
+const trimEntries = (entries: TimelineEntry[]) =>
+  entries.length > MAX_TIMELINE_ENTRIES ? entries.slice(-MAX_TIMELINE_ENTRIES) : entries;
 
-const cloneRunState = (runState: TimelineRunState): TimelineRunState => ({
-  ...runState
-});
+const trimDiffs = (entries: TimelineDiffEntry[]) =>
+  entries.length > MAX_TURN_DIFFS ? entries.slice(-MAX_TURN_DIFFS) : entries;
+
+const findEntryIndex = (entries: TimelineEntry[], entryId: string) =>
+  entries.findIndex((candidate) => candidate.id === entryId);
+
+const findLatestAssistantMessageId = (entries: TimelineEntry[], turnId: string | null) => {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+
+    if (!entry || entry.kind !== "message" || entry.role !== "assistant") {
+      continue;
+    }
+
+    if (turnId && entry.turnId !== turnId) {
+      continue;
+    }
+
+    return entry.id;
+  }
+
+  return null;
+};
+
+const replaceEntry = (entries: TimelineEntry[], nextEntry: TimelineEntry) => {
+  const nextEntries = [...entries];
+  const existingIndex = findEntryIndex(nextEntries, nextEntry.id);
+
+  if (existingIndex >= 0) {
+    nextEntries[existingIndex] = nextEntry;
+  } else {
+    nextEntries.push(nextEntry);
+  }
+
+  return trimEntries(nextEntries);
+};
+
+const isOptimisticUserMessage = (entry: TimelineEntry) =>
+  entry.kind === "message" &&
+  entry.role === "user" &&
+  entry.id.startsWith(OPTIMISTIC_USER_EVENT_PREFIX);
+
+const replaceOptimisticMessage = (
+  entries: TimelineEntry[],
+  entry: TimelineMessageEntry
+) => {
+  const optimisticIndex = entries.findIndex(
+    (candidate) =>
+      isOptimisticUserMessage(candidate) &&
+      candidate.kind === "message" &&
+      candidate.text === entry.text
+  );
+
+  if (optimisticIndex < 0) {
+    return null;
+  }
+
+  const nextEntries = [...entries];
+  nextEntries[optimisticIndex] = entry;
+  return trimEntries(nextEntries);
+};
+
+const attachPendingDiffsToAssistant = (
+  state: TimelineState,
+  assistantMessage: TimelineMessageEntry
+) => {
+  if (assistantMessage.role !== "assistant") {
+    return;
+  }
+
+  const nextTurnDiffs = state.turnDiffs.map((diff) =>
+    diff.turnId === assistantMessage.turnId && diff.assistantMessageId === null
+      ? {
+          ...diff,
+          assistantMessageId: assistantMessage.id
+        }
+      : diff
+  );
+
+  const nextEntries = state.entries.map((entry) =>
+    entry.kind === "diffSummary" &&
+    entry.turnId === assistantMessage.turnId &&
+    entry.assistantMessageId === null
+      ? {
+          ...entry,
+          assistantMessageId: assistantMessage.id
+        }
+      : entry
+  );
+
+  state.turnDiffs = trimDiffs(nextTurnDiffs);
+  state.entries = trimEntries(nextEntries);
+
+  if (
+    state.activeDiffPreview &&
+    state.activeDiffPreview.turnId === assistantMessage.turnId &&
+    state.activeDiffPreview.assistantMessageId === null
+  ) {
+    state.activeDiffPreview = {
+      ...state.activeDiffPreview,
+      assistantMessageId: assistantMessage.id
+    };
+  }
+};
+
+const upsertTimelineEntry = (state: TimelineState, entry: TimelineEntry) => {
+  if (entry.kind === "message" && entry.role === "user") {
+    const replaced = replaceOptimisticMessage(state.entries, entry);
+
+    if (replaced) {
+      state.entries = replaced;
+      return;
+    }
+  }
+
+  state.entries = replaceEntry(state.entries, entry);
+
+  if (entry.kind === "message" && entry.role === "assistant") {
+    attachPendingDiffsToAssistant(state, entry);
+  }
+};
+
+const upsertTurnDiff = (state: TimelineState, entry: TimelineDiffEntry) => {
+  const assistantMessageId =
+    entry.assistantMessageId ?? findLatestAssistantMessageId(state.entries, entry.turnId);
+  const nextEntry =
+    assistantMessageId && assistantMessageId !== entry.assistantMessageId
+      ? {
+          ...entry,
+          assistantMessageId
+        }
+      : entry;
+  const nextDiffs = [...state.turnDiffs];
+  const existingIndex = nextDiffs.findIndex((candidate) => candidate.id === nextEntry.id);
+
+  if (existingIndex >= 0) {
+    nextDiffs[existingIndex] = nextEntry;
+  } else {
+    nextDiffs.push(nextEntry);
+  }
+
+  state.turnDiffs = trimDiffs(nextDiffs);
+  state.activeDiffPreview = nextEntry;
+  state.entries = replaceEntry(state.entries, nextEntry);
+};
+
+const upsertProposedPlan = (state: TimelineState, entry: TimelineProposedPlanEntry) => {
+  state.latestProposedPlan = {
+    id: entry.id,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+    turnId: entry.turnId,
+    title: entry.title,
+    text: entry.text,
+    steps: [...entry.steps]
+  };
+  upsertTimelineEntry(state, entry);
+};
+
+const emptyTimelineRunState: TimelineRunState = {
+  phase: "idle",
+  label: null
+};
 
 export const emptyTimelineState = (threadId: string | null = null): TimelineState => ({
   threadId,
@@ -177,10 +278,9 @@ export const emptyTimelineState = (threadId: string | null = null): TimelineStat
   approvals: [],
   userInputs: [],
   isRunning: false,
-  runState: {
-    phase: "idle",
-    label: null
-  }
+  runState: emptyTimelineRunState,
+  activeWorkStartedAt: null,
+  latestTurn: null
 });
 
 export const cloneTimelineState = (state: TimelineState): TimelineState => ({
@@ -198,22 +298,183 @@ export const cloneTimelineState = (state: TimelineState): TimelineState => ({
         files: state.activeDiffPreview.files.map(cloneChangedFile)
       }
     : null,
-  approvals: state.approvals.map((approval) => ({
-    ...approval,
-    availableDecisions: [...approval.availableDecisions]
-  })),
-  userInputs: state.userInputs.map((request) => ({
-    ...request,
-    questions: request.questions.map((question) => ({
-      ...question,
-      options: [...question.options]
-    }))
-  })),
-  runState: cloneRunState(state.runState)
+  approvals: state.approvals.map(cloneTimelineApproval),
+  userInputs: state.userInputs.map(cloneTimelineUserInput),
+  runState: { ...state.runState },
+  latestTurn: cloneTimelineTurn(state.latestTurn)
 });
 
 const ensureLiveTimeline = (state: TimelineState, threadId: string) =>
   state.threadId === threadId ? cloneTimelineState(state) : emptyTimelineState(threadId);
+
+const resolveRunState = (state: TimelineState): TimelineRunState => {
+  if (
+    state.runState.phase === "historyUnavailable" &&
+    !state.isRunning &&
+    !state.latestTurn &&
+    state.entries.length === 0
+  ) {
+    return state.runState;
+  }
+
+  if (state.approvals.some((approval) => !approval.isSubmitting)) {
+    return { phase: "waitingApproval", label: "Waiting for approval" };
+  }
+
+  if (state.userInputs.some((request) => !request.isSubmitting)) {
+    return { phase: "waitingUserInput", label: "Waiting for input" };
+  }
+
+  if (state.runState.phase === "steering" && state.isRunning) {
+    return state.runState;
+  }
+
+  if (state.isRunning || state.latestTurn?.status === "inProgress") {
+    const hasOptimisticUserMessage = state.entries.some(isOptimisticUserMessage);
+    return {
+      phase: hasOptimisticUserMessage ? "starting" : "running",
+      label: hasOptimisticUserMessage ? "Starting" : "Working"
+    };
+  }
+
+  if (state.latestTurn?.status === "interrupted") {
+    return { phase: "interrupted", label: "Interrupted" };
+  }
+
+  if (state.latestTurn?.status === "failed") {
+    return { phase: "failed", label: "Failed" };
+  }
+
+  return { phase: "idle", label: "Idle" };
+};
+
+const applyRuntimeMutation = (
+  state: TimelineState,
+  mutation: TimelineRuntimeMutation
+) => {
+  switch (mutation.type) {
+    case "upsertEntry": {
+      if (mutation.entry.kind === "proposedPlan") {
+        upsertProposedPlan(state, mutation.entry);
+        return;
+      }
+
+      if (mutation.entry.kind === "diffSummary") {
+        upsertTurnDiff(state, mutation.entry);
+        return;
+      }
+
+      upsertTimelineEntry(state, mutation.entry);
+      return;
+    }
+
+    case "appendAssistantDelta": {
+      const existing = state.entries.find(
+        (entry) => entry.kind === "message" && entry.id === mutation.id
+      );
+      const currentText =
+        existing && existing.kind === "message" ? existing.text : "";
+      const nextMessage: TimelineMessageEntry = {
+        id: mutation.id,
+        kind: "message",
+        role: "assistant",
+        text: `${currentText}${mutation.delta}`,
+        createdAt: existing?.createdAt ?? mutation.createdAt,
+        completedAt: null,
+        turnId: mutation.turnId,
+        summary: summarizeActivityText(`${currentText}${mutation.delta}`),
+        isStreaming: true,
+        providerLabel:
+          existing && existing.kind === "message" ? existing.providerLabel : null
+      };
+
+      upsertTimelineEntry(state, nextMessage);
+      return;
+    }
+
+    case "setActivePlan":
+      state.activePlan = mutation.plan
+        ? {
+            ...mutation.plan,
+            steps: [...mutation.plan.steps]
+          }
+        : null;
+      return;
+
+    case "upsertLatestProposedPlan": {
+      const currentPlan = state.latestProposedPlan;
+      const shouldAppend =
+        mutation.merge === "append" &&
+        currentPlan &&
+        currentPlan.id === mutation.plan.id;
+      const nextText = shouldAppend
+        ? `${currentPlan.text}${mutation.plan.text}`
+        : mutation.plan.text;
+      const nextPlan: TimelineProposedPlanEntry = {
+        ...mutation.plan,
+        kind: "proposedPlan",
+        text: nextText
+      };
+
+      upsertProposedPlan(state, nextPlan);
+      return;
+    }
+
+    case "upsertTurnDiff":
+      upsertTurnDiff(state, mutation.diff);
+      return;
+
+    case "setActiveDiffPreview":
+      if (!mutation.diff) {
+        state.activeDiffPreview = null;
+        return;
+      }
+
+      upsertTurnDiff(state, mutation.diff);
+      return;
+
+    case "upsertApproval": {
+      const nextApprovals = state.approvals.filter(
+        (approval) => approval.id !== mutation.approval.id
+      );
+      nextApprovals.push(cloneTimelineApproval(mutation.approval));
+      state.approvals = nextApprovals;
+      return;
+    }
+
+    case "upsertUserInput": {
+      const nextRequests = state.userInputs.filter(
+        (request) => request.id !== mutation.request.id
+      );
+      nextRequests.push(cloneTimelineUserInput(mutation.request));
+      state.userInputs = nextRequests;
+      return;
+    }
+
+    case "resolveRequest":
+      state.approvals = state.approvals.filter(
+        (approval) => approval.id !== mutation.requestId
+      );
+      state.userInputs = state.userInputs.filter(
+        (request) => request.id !== mutation.requestId
+      );
+      return;
+
+    case "setRunState":
+      state.runState = { ...mutation.runState };
+      state.isRunning = mutation.isRunning;
+      state.latestTurn = cloneTimelineTurn(mutation.latestTurn);
+      state.activeWorkStartedAt = mutation.activeWorkStartedAt;
+      return;
+  }
+};
+
+const finalizeState = (state: TimelineState) => {
+  state.entries = trimEntries(state.entries);
+  state.turnDiffs = trimDiffs(state.turnDiffs);
+  state.runState = resolveRunState(state);
+  return state;
+};
 
 export const markApprovalSubmitting = (
   state: TimelineState,
@@ -224,7 +485,7 @@ export const markApprovalSubmitting = (
   nextState.approvals = nextState.approvals.map((approval) =>
     approval.id === requestId ? { ...approval, isSubmitting } : approval
   );
-  return nextState;
+  return finalizeState(nextState);
 };
 
 export const markUserInputSubmitting = (
@@ -236,303 +497,55 @@ export const markUserInputSubmitting = (
   nextState.userInputs = nextState.userInputs.map((request) =>
     request.id === requestId ? { ...request, isSubmitting } : request
   );
-  return nextState;
+  return finalizeState(nextState);
 };
 
-const basename = (value: string) => value.split("/").filter(Boolean).at(-1) ?? value;
-
-const extractUserMessageText = (item: UserMessageItem) =>
-  (item.content ?? [])
-    .filter((entry): entry is { type: "text"; text: string } =>
-      entry.type === "text" && typeof entry.text === "string"
-    )
-    .map((entry) => entry.text.trim())
-    .filter(Boolean)
-    .join("\n");
-
-const resolvePlanTitle = (text: string) => {
-  const firstLine = text
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean);
-
-  if (!firstLine) {
-    return "Plan";
-  }
-
-  return firstLine.replace(/^#+\s*/, "").slice(0, 72);
-};
-
-const countDiffStats = (diff: string) => {
-  let additions = 0;
-  let deletions = 0;
-
-  for (const line of diff.split("\n")) {
-    if (!line) {
-      continue;
-    }
-
-    if (DIFF_METADATA_PREFIXES.some((prefix) => line.startsWith(prefix))) {
-      continue;
-    }
-
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-
-  return { additions, deletions };
-};
-
-const toChangedFiles = (changes: FileChangeItem["changes"]): TimelineChangedFile[] =>
-  (changes ?? [])
-    .map((change) => {
-      const diff = typeof change.diff === "string" ? change.diff : "";
-      const stats = countDiffStats(diff);
-      const path = typeof change.path === "string" ? change.path : "";
-
-      if (!path) {
-        return null;
-      }
-
-      return {
-        path,
-        additions: stats.additions,
-        deletions: stats.deletions,
-        diff: diff || null
-      } satisfies TimelineChangedFile;
-    })
-    .filter((change): change is TimelineChangedFile => change !== null);
-
-const summarizeChangedFiles = (files: TimelineChangedFile[]) => {
-  if (files.length === 0) {
-    return "Edited files";
-  }
-
-  if (files.length === 1) {
-    return `Edited ${basename(files[0]?.path ?? "file")}`;
-  }
-
-  return `Edited ${files.length} files`;
-};
-
-const buildDiffEntry = (
-  id: string,
-  turnId: string,
-  createdAt: string,
-  files: TimelineChangedFile[]
-): TimelineDiffEntry | null => {
-  if (files.length === 0) {
-    return null;
-  }
-
-  const additions = files.reduce((total, file) => total + file.additions, 0);
-  const deletions = files.reduce((total, file) => total + file.deletions, 0);
-  const diff = files
-    .map((file) => file.diff?.trim())
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n");
-
-  return {
-    id,
-    kind: "diff",
-    createdAt,
-    turnId,
-    title: summarizeChangedFiles(files),
-    diff,
-    files,
-    additions,
-    deletions
-  };
-};
-
-const projectTurn = (turn: TurnRecord, turnIndex: number): ProjectedTurn => {
-  const turnId = turn.id ?? `turn-${turnIndex + 1}`;
-  const createdAt = "Thread history";
-  const entries: TimelineEntry[] = [];
-  const diffEntries: TimelineDiffEntry[] = [];
-  let latestPlan: TimelinePlan | null = null;
-
-  for (const item of turn.items ?? []) {
-    const itemId = item.id ?? `${turnId}-${randomUUID()}`;
-
-    if (isUserMessage(item)) {
-      const text = extractUserMessageText(item);
-
-      if (text) {
-        entries.push({
-          id: itemId,
-          kind: "message",
-          role: "user",
-          text,
-          createdAt,
-          turnId,
-          summary: summarizeActivityText(text),
-          isStreaming: false
-        } satisfies TimelineMessageEntry);
-      }
-
-      continue;
-    }
-
-    if (isAgentMessage(item) && item.text) {
-      entries.push({
-        id: itemId,
-        kind: "message",
-        role: "assistant",
-        text: item.text,
-        createdAt,
-        turnId,
-        summary: summarizeActivityText(item.text),
-        isStreaming: false
-      } satisfies TimelineMessageEntry);
-      continue;
-    }
-
-    if (isPlanItem(item) && item.text) {
-      const plan: TimelinePlanEntry = {
-        id: itemId,
-        kind: "plan",
-        createdAt,
-        turnId,
-        title: resolvePlanTitle(item.text),
-        text: item.text,
-        steps: []
-      };
-      latestPlan = {
-        id: plan.id,
-        createdAt: plan.createdAt,
-        turnId: plan.turnId,
-        title: plan.title,
-        text: plan.text,
-        steps: [...plan.steps]
-      };
-      entries.push(plan);
-      continue;
-    }
-
-    if (isReasoningItem(item)) {
-      const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n");
-
-      if (text) {
-        entries.push({
-          id: itemId,
-          kind: "work",
-          createdAt,
-          turnId,
-          tone: "thinking",
-          label: summarizeActivityText(text) || "Thinking",
-          detail: text,
-          command: null,
-          changedFiles: []
-        } satisfies TimelineWorkEntry);
-      }
-      continue;
-    }
-
-    if (isCommandExecutionItem(item) && item.command) {
-      entries.push({
-        id: itemId,
-        kind: "work",
-        createdAt,
-        turnId,
-        tone: "tool",
-        label: summarizeCommand(item.command),
-        detail: item.aggregatedOutput?.trim() || null,
-        command: item.command,
-        changedFiles: []
-      } satisfies TimelineWorkEntry);
-      continue;
-    }
-
-    if (isFileChangeItem(item)) {
-      const changedFiles = toChangedFiles(item.changes);
-      const diffEntry = buildDiffEntry(itemId, turnId, createdAt, changedFiles);
-
-      if (diffEntry) {
-        diffEntries.push(diffEntry);
-        entries.push(diffEntry);
-      }
-    }
-  }
-
-  return {
-    entries,
-    latestPlan,
-    diffEntries
-  };
-};
-
-const trimTimelineEntries = (entries: TimelineEntry[]) =>
-  entries.length > MAX_TIMELINE_ENTRIES ? entries.slice(-MAX_TIMELINE_ENTRIES) : entries;
-
-const trimTimelineDiffs = (entries: TimelineDiffEntry[]) =>
-  entries.length > MAX_TURN_DIFFS ? entries.slice(-MAX_TURN_DIFFS) : entries;
-
-const runStateForTurnStatus = (
-  status: TurnRecord["status"] | TurnRef["status"] | undefined,
-  isRunning: boolean
-): TimelineRunState => {
-  if (isRunning) {
-    return {
-      phase: "running",
-      label: "Working"
-    };
-  }
-
-  if (status === "interrupted") {
-    return {
-      phase: "interrupted",
-      label: "Interrupted"
-    };
-  }
-
-  if (status === "failed") {
-    return {
-      phase: "idle",
-      label: "Failed"
-    };
-  }
-
-  return {
-    phase: "idle",
-    label: "Idle"
-  };
-};
-
-export const buildTimelineState = (threadId: string, turns: TurnRecord[]): TimelineState => {
+export const buildTimelineState = (
+  threadId: string,
+  turns: TurnRecord[]
+): TimelineState => {
+  const nextState = emptyTimelineState(threadId);
   const relevantTurns = turns.slice(-MAX_HISTORY_TURNS);
-  const projected = relevantTurns.map(projectTurn);
-  const entries = trimTimelineEntries(projected.flatMap((turn) => turn.entries));
-  const turnDiffs = trimTimelineDiffs(projected.flatMap((turn) => turn.diffEntries));
-  const latestPlan =
-    [...projected]
-      .reverse()
-      .map((turn) => turn.latestPlan)
-      .find((plan): plan is TimelinePlan => plan !== null) ?? null;
-  const activeTurn = [...relevantTurns].reverse().find((turn) => turn.status === "inProgress") ?? null;
-  const isRunning = Boolean(activeTurn);
 
-  return {
-    threadId,
-    entries,
-    activePlan: null,
-    latestProposedPlan: latestPlan,
-    turnDiffs,
-    activeDiffPreview: turnDiffs.at(-1) ?? null,
-    approvals: [],
-    userInputs: [],
-    isRunning,
-    runState: runStateForTurnStatus(activeTurn?.status ?? relevantTurns.at(-1)?.status, isRunning)
-  };
+  for (let index = 0; index < relevantTurns.length; index += 1) {
+    const turn = relevantTurns[index] ?? {};
+    const projected = projectTurnRecord(turn, index);
+
+    for (const entry of projected.entries) {
+      applyRuntimeMutation(nextState, { type: "upsertEntry", entry });
+    }
+
+    if (projected.latestProposedPlan) {
+      applyRuntimeMutation(nextState, {
+        type: "upsertLatestProposedPlan",
+        plan: projected.latestProposedPlan,
+        merge: "replace"
+      });
+    }
+
+    for (const diff of projected.diffEntries) {
+      applyRuntimeMutation(nextState, { type: "upsertTurnDiff", diff });
+    }
+
+    nextState.latestTurn = {
+      id: turn.id ?? `turn-${index + 1}`,
+      status: turn.status ?? "completed",
+      startedAt: typeof turn.startedAt === "string" ? turn.startedAt : null,
+      completedAt: typeof turn.completedAt === "string" ? turn.completedAt : null
+    };
+  }
+
+  nextState.isRunning = nextState.latestTurn?.status === "inProgress";
+  nextState.activeWorkStartedAt = nextState.isRunning
+    ? nextState.latestTurn?.startedAt ?? null
+    : null;
+  return finalizeState(nextState);
 };
 
-export const appendOptimisticUserEvent = (state: TimelineState, prompt: string): TimelineState => {
+export const appendOptimisticUserEvent = (
+  state: TimelineState,
+  prompt: string
+): TimelineState => {
   const trimmedPrompt = prompt.trim();
 
   if (!trimmedPrompt) {
@@ -540,176 +553,32 @@ export const appendOptimisticUserEvent = (state: TimelineState, prompt: string):
   }
 
   const nextState = cloneTimelineState(state);
-  nextState.entries.push({
+  const createdAt = nowIso();
+
+  upsertTimelineEntry(nextState, {
     id: `${OPTIMISTIC_USER_EVENT_PREFIX}${randomUUID()}`,
     kind: "message",
     role: "user",
     text: trimmedPrompt,
-    createdAt: "Live update",
+    createdAt,
+    completedAt: createdAt,
     turnId: nextState.threadId,
     summary: summarizeActivityText(trimmedPrompt),
-    isStreaming: false
+    isStreaming: false,
+    providerLabel: null
   });
-  nextState.entries = trimTimelineEntries(nextState.entries);
   nextState.isRunning = true;
-  nextState.runState = {
-    phase: "starting",
-    label: "Starting"
-  };
-  return nextState;
+  nextState.activeWorkStartedAt = createdAt;
+  return finalizeState(nextState);
 };
 
-const upsertTimelineEntry = (state: TimelineState, entry: TimelineEntry) => {
-  if (entry.kind === "message" && entry.role === "user") {
-    const optimisticIndex = state.entries.findIndex(
-      (candidate) =>
-        candidate.kind === "message" &&
-        candidate.role === "user" &&
-        candidate.id.startsWith(OPTIMISTIC_USER_EVENT_PREFIX) &&
-        candidate.text === entry.text
-    );
+const isSettledTurnMethod = (method: string) => {
+  const normalized = method
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[.\-/\s]+/g, "_")
+    .toLowerCase();
 
-    if (optimisticIndex >= 0) {
-      state.entries[optimisticIndex] = entry;
-      state.entries = trimTimelineEntries(state.entries);
-      return;
-    }
-  }
-
-  const existingIndex = state.entries.findIndex((candidate) => candidate.id === entry.id);
-
-  if (existingIndex >= 0) {
-    state.entries[existingIndex] = entry;
-    state.entries = trimTimelineEntries(state.entries);
-    return;
-  }
-
-  state.entries.push(entry);
-  state.entries = trimTimelineEntries(state.entries);
-};
-
-const upsertApproval = (state: TimelineState, approval: TimelineApproval) => {
-  const index = state.approvals.findIndex((entry) => entry.id === approval.id);
-
-  if (index >= 0) {
-    state.approvals[index] = approval;
-    return;
-  }
-
-  state.approvals.push(approval);
-};
-
-const upsertUserInput = (state: TimelineState, request: TimelineUserInputRequest) => {
-  const index = state.userInputs.findIndex((entry) => entry.id === request.id);
-
-  if (index >= 0) {
-    state.userInputs[index] = request;
-    return;
-  }
-
-  state.userInputs.push(request);
-};
-
-const upsertTurnDiff = (state: TimelineState, diffEntry: TimelineDiffEntry) => {
-  const index = state.turnDiffs.findIndex((entry) => entry.id === diffEntry.id);
-
-  if (index >= 0) {
-    state.turnDiffs[index] = diffEntry;
-  } else {
-    state.turnDiffs.push(diffEntry);
-  }
-
-  state.turnDiffs = trimTimelineDiffs(state.turnDiffs);
-  state.activeDiffPreview = diffEntry;
-};
-
-const mapCommandApprovalDecisions = (value: unknown): ApprovalDecision[] => {
-  const supported: ApprovalDecision[] = [];
-
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (
-        entry === "accept" ||
-        entry === "acceptForSession" ||
-        entry === "decline" ||
-        entry === "cancel"
-      ) {
-        supported.push(entry);
-      }
-    }
-  }
-
-  return supported.length > 0 ? supported : ["accept", "decline", "cancel"];
-};
-
-const mapUserInputOptions = (value: unknown): TimelineUserInputOption[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((entry) => {
-      if (!isRecord(entry) || typeof entry.label !== "string") {
-        return null;
-      }
-
-      return {
-        label: entry.label,
-        description: typeof entry.description === "string" ? entry.description : ""
-      } satisfies TimelineUserInputOption;
-    })
-    .filter((entry): entry is TimelineUserInputOption => entry !== null);
-};
-
-const mapUserInputQuestions = (value: unknown): TimelineUserInputQuestion[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((entry) => {
-      if (!isRecord(entry) || typeof entry.id !== "string") {
-        return null;
-      }
-
-      return {
-        id: entry.id,
-        header: typeof entry.header === "string" ? entry.header : "Question",
-        question: typeof entry.question === "string" ? entry.question : "Provide input",
-        isSecret: entry.isSecret === true,
-        options: mapUserInputOptions(entry.options)
-      } satisfies TimelineUserInputQuestion;
-    })
-    .filter((entry): entry is TimelineUserInputQuestion => entry !== null);
-};
-
-const normalizeCreatedAt = (value: unknown, fallback: string) =>
-  typeof value === "string" && value.trim() ? value : fallback;
-
-const projectLiveItem = (
-  item: ThreadItem,
-  turnId: string,
-  createdAt: string
-): ProjectedTurn => {
-  const projected = projectTurn(
-    {
-      id: turnId,
-      status: "inProgress",
-      items: [item]
-    },
-    0
-  );
-
-  return {
-    entries: projected.entries.map((entry) => ({ ...entry, createdAt })),
-    latestPlan: projected.latestPlan
-      ? {
-          ...projected.latestPlan,
-          createdAt
-        }
-      : null,
-    diffEntries: projected.diffEntries.map((entry) => ({ ...entry, createdAt }))
-  };
+  return normalized === "turn_completed" || normalized === "turn_aborted";
 };
 
 export const applyBridgeNotification = async (
@@ -718,191 +587,8 @@ export const applyBridgeNotification = async (
   isCurrentThread: (threadId: string) => boolean,
   hydrateTimeline: (threadId: string, currentState: TimelineState) => Promise<TimelineState>
 ): Promise<TimelineState> => {
-  const params = isRecord(payload.params) ? payload.params : {};
-  const threadId = typeof params.threadId === "string" ? params.threadId : null;
-
-  if (!threadId || !isCurrentThread(threadId)) {
-    return currentState;
-  }
-
-  switch (payload.method) {
-    case "turn/started": {
-      const turn = isRecord(params.turn) ? (params.turn as TurnRef) : null;
-      return {
-        ...ensureLiveTimeline(currentState, threadId),
-        isRunning: true,
-        runState: {
-          phase: "running",
-          label: turn?.id ? "Working" : "Starting"
-        }
-      };
-    }
-
-    case "turn/plan/updated": {
-      const nextState = ensureLiveTimeline(currentState, threadId);
-      const steps = Array.isArray(params.plan)
-        ? params.plan
-            .map((entry) =>
-              isRecord(entry) && typeof entry.step === "string"
-                ? {
-                    step: entry.step,
-                    status:
-                      entry.status === "completed" ||
-                      entry.status === "in_progress" ||
-                      entry.status === "pending"
-                        ? entry.status
-                        : "pending"
-                  }
-                : null
-            )
-            .filter((entry): entry is TimelinePlanStep => entry !== null)
-        : [];
-      const explanation =
-        typeof params.explanation === "string" && params.explanation.trim()
-          ? params.explanation.trim()
-          : null;
-      const turnId = typeof params.turnId === "string" ? params.turnId : null;
-
-      nextState.activePlan = {
-        id: `active-plan-${threadId}`,
-        createdAt: "Live update",
-        turnId,
-        title: explanation ? resolvePlanTitle(explanation) : "Plan",
-        text: explanation ?? "",
-        steps
-      };
-
-      return nextState;
-    }
-
-    case "turn/diff/updated": {
-      const nextState = ensureLiveTimeline(currentState, threadId);
-      const diff = typeof params.diff === "string" ? params.diff : "";
-      const turnId = typeof params.turnId === "string" ? params.turnId : null;
-
-      nextState.activeDiffPreview = {
-        id: `live-diff-${threadId}`,
-        kind: "diff",
-        createdAt: "Live update",
-        turnId,
-        title: "Live diff preview",
-        diff,
-        files: [],
-        additions: 0,
-        deletions: 0
-      };
-
-      return nextState;
-    }
-
-    case "item/started":
-    case "item/completed": {
-      const item = isRecord(params.item) ? (params.item as ThreadItem) : null;
-      const turnId = typeof params.turnId === "string" ? params.turnId : "turn";
-
-      if (!item) {
-        return currentState;
-      }
-
-      const createdAt = normalizeCreatedAt(params.createdAt, payload.method === "item/started" ? "Live start" : "Live update");
-      const projected = projectLiveItem(item, turnId, createdAt);
-
-      if (projected.entries.length === 0 && !projected.latestPlan && projected.diffEntries.length === 0) {
-        return currentState;
-      }
-
-      const nextState = ensureLiveTimeline(currentState, threadId);
-
-      for (const entry of projected.entries) {
-        upsertTimelineEntry(nextState, entry);
-      }
-
-      if (projected.latestPlan) {
-        nextState.latestProposedPlan = projected.latestPlan;
-      }
-
-      for (const diffEntry of projected.diffEntries) {
-        upsertTurnDiff(nextState, diffEntry);
-      }
-
-      return nextState;
-    }
-
-    case "item/agentMessage/delta": {
-      const itemId = typeof params.itemId === "string" ? params.itemId : randomUUID();
-      const delta = typeof params.delta === "string" ? params.delta : "";
-      const turnId = typeof params.turnId === "string" ? params.turnId : null;
-
-      if (!delta) {
-        return currentState;
-      }
-
-      const nextState = ensureLiveTimeline(currentState, threadId);
-      const existingIndex = nextState.entries.findIndex((entry) => entry.id === itemId);
-
-      if (existingIndex >= 0 && nextState.entries[existingIndex]?.kind === "message") {
-        const existing = nextState.entries[existingIndex] as TimelineMessageEntry;
-        nextState.entries[existingIndex] = {
-          ...existing,
-          role: "assistant",
-          text: `${existing.text}${delta}`,
-          summary: summarizeActivityText(`${existing.text}${delta}`),
-          createdAt: "Streaming",
-          turnId,
-          isStreaming: true
-        };
-      } else {
-        nextState.entries.push({
-          id: itemId,
-          kind: "message",
-          role: "assistant",
-          text: delta,
-          createdAt: "Streaming",
-          turnId,
-          summary: summarizeActivityText(delta),
-          isStreaming: true
-        });
-      }
-
-      nextState.entries = trimTimelineEntries(nextState.entries);
-      return nextState;
-    }
-
-    case "serverRequest/resolved": {
-      const requestId = typeof params.requestId === "string" ? params.requestId : null;
-
-      if (!requestId) {
-        return currentState;
-      }
-
-      const nextState = ensureLiveTimeline(currentState, threadId);
-      nextState.approvals = nextState.approvals.filter((approval) => approval.id !== requestId);
-      nextState.userInputs = nextState.userInputs.filter((request) => request.id !== requestId);
-      return nextState;
-    }
-
-    case "turn/completed": {
-      const turn = isRecord(params.turn) ? (params.turn as TurnRef) : null;
-
-      return hydrateTimeline(threadId, {
-        ...ensureLiveTimeline(currentState, threadId),
-        isRunning: false,
-        runState: runStateForTurnStatus(turn?.status, false)
-      });
-    }
-
-    default:
-      return currentState;
-  }
-};
-
-export const applyBridgeRequest = (
-  currentState: TimelineState,
-  payload: RequestPayload,
-  isCurrentThread: (threadId: string) => boolean
-): TimelineState => {
-  const params = isRecord(payload.params) ? payload.params : {};
-  const threadId = typeof params.threadId === "string" ? params.threadId : null;
+  const normalized = normalizeBridgeNotification(payload);
+  const threadId = normalized.threadId;
 
   if (!threadId || !isCurrentThread(threadId)) {
     return currentState;
@@ -910,47 +596,36 @@ export const applyBridgeRequest = (
 
   const nextState = ensureLiveTimeline(currentState, threadId);
 
-  if (payload.method === "item/commandExecution/requestApproval") {
-    const command = typeof params.command === "string" ? params.command.trim() : "";
-    const cwd = typeof params.cwd === "string" ? params.cwd.trim() : "";
-    const reason = typeof params.reason === "string" ? params.reason.trim() : "";
-
-    upsertApproval(nextState, {
-      id: payload.id,
-      kind: "command",
-      title: command ? `Run command: ${command}` : "Run command",
-      detail: [cwd ? `cwd: ${cwd}` : null, reason || null].filter(Boolean).join("\n"),
-      availableDecisions: mapCommandApprovalDecisions(params.availableDecisions),
-      isSubmitting: false
-    });
+  for (const mutation of normalized.mutations) {
+    applyRuntimeMutation(nextState, mutation);
   }
 
-  if (payload.method === "item/fileChange/requestApproval") {
-    const reason = typeof params.reason === "string" ? params.reason.trim() : "";
-    const grantRoot = typeof params.grantRoot === "string" ? params.grantRoot.trim() : "";
+  finalizeState(nextState);
 
-    upsertApproval(nextState, {
-      id: payload.id,
-      kind: "fileChange",
-      title: "Apply file changes",
-      detail: [reason || null, grantRoot ? `grant root: ${grantRoot}` : null]
-        .filter(Boolean)
-        .join("\n"),
-      availableDecisions: grantRoot
-        ? ["accept", "acceptForSession", "decline", "cancel"]
-        : ["accept", "decline", "cancel"],
-      isSubmitting: false
-    });
-  }
-
-  if (payload.method === "item/tool/requestUserInput") {
-    upsertUserInput(nextState, {
-      id: payload.id,
-      title: "Clarification requested",
-      questions: mapUserInputQuestions(params.questions),
-      isSubmitting: false
-    });
+  if (isSettledTurnMethod(payload.method)) {
+    return hydrateTimeline(threadId, nextState);
   }
 
   return nextState;
+};
+
+export const applyBridgeRequest = (
+  currentState: TimelineState,
+  payload: RequestPayload,
+  isCurrentThread: (threadId: string) => boolean
+): TimelineState => {
+  const normalized = normalizeBridgeRequest(payload);
+  const threadId = normalized.threadId;
+
+  if (!threadId || !isCurrentThread(threadId)) {
+    return currentState;
+  }
+
+  const nextState = ensureLiveTimeline(currentState, threadId);
+
+  for (const mutation of normalized.mutations) {
+    applyRuntimeMutation(nextState, mutation);
+  }
+
+  return finalizeState(nextState);
 };

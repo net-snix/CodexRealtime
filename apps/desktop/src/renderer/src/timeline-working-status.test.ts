@@ -4,7 +4,8 @@ import { getLatestWorkingStatus, getWorkingStatusLabel } from "./timeline-workin
 
 const makeEntry = (entry: Partial<TimelineEntry>): TimelineEntry => ({
   id: "entry-1",
-  kind: "work",
+  kind: "activity",
+  activityType: "command_execution",
   createdAt: "Live update",
   turnId: "turn-1",
   tone: "info",
@@ -12,6 +13,9 @@ const makeEntry = (entry: Partial<TimelineEntry>): TimelineEntry => ({
   detail: null,
   command: null,
   changedFiles: [],
+  status: null,
+  toolName: null,
+  agentLabel: null,
   ...entry
 }) as TimelineEntry;
 

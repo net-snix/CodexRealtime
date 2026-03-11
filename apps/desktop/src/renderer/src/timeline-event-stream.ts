@@ -3,8 +3,12 @@ import { presentTimelineEvent, type TimelinePresentation } from "./timeline-pres
 
 const WORKING_LABELS = new Map<string, string>([
   ["Command", "Running"],
-  ["Edit", "Editing"],
-  ["Plan", "Planning"],
+  ["Tool", "Working"],
+  ["Subagent", "Delegating"],
+  ["Search", "Searching"],
+  ["Image", "Inspecting"],
+  ["Plan update", "Planning"],
+  ["Proposed plan", "Planning"],
   ["Think", "Thinking"],
   ["Work", "Working"]
 ]);
@@ -20,13 +24,12 @@ export type PresentedTimelineEntry =
       item: PresentedTimelineEvent;
     }
   | {
-      kind: "commandCluster";
+      kind: "activityCluster";
       id: string;
       items: PresentedTimelineEvent[];
     };
 
-const isCommandActivity = (item: PresentedTimelineEvent) =>
-  item.entry.kind === "work" && Boolean(item.entry.command);
+const isActivityEntry = (item: PresentedTimelineEvent) => item.entry.kind === "activity";
 
 export const buildPresentedTimeline = (
   entries: TimelineEntry[],
@@ -42,7 +45,11 @@ export const buildPresentedTimeline = (
   for (let index = presentedEntries.length - 1; index >= 0; index -= 1) {
     const { entry, presentation } = presentedEntries[index];
 
-    if (entry.createdAt === "Thread history" || presentation.variant === "message") {
+    if (
+      entry.createdAt === "Thread history" ||
+      presentation.variant === "message" ||
+      presentation.variant === "diff"
+    ) {
       continue;
     }
 
@@ -64,7 +71,7 @@ export const buildPresentedTimeline = (
   for (let index = 0; index < presentedEntries.length; index += 1) {
     const current = presentedEntries[index];
 
-    if (!isCommandActivity(current)) {
+    if (!isActivityEntry(current)) {
       groupedEntries.push({
         kind: "entry",
         item: current
@@ -72,14 +79,14 @@ export const buildPresentedTimeline = (
       continue;
     }
 
-    const commandItems = [current];
+    const activityItems = [current];
 
-    while (index + 1 < presentedEntries.length && isCommandActivity(presentedEntries[index + 1])) {
+    while (index + 1 < presentedEntries.length && isActivityEntry(presentedEntries[index + 1])) {
       index += 1;
-      commandItems.push(presentedEntries[index]);
+      activityItems.push(presentedEntries[index]);
     }
 
-    if (commandItems.length === 1) {
+    if (activityItems.length === 1) {
       groupedEntries.push({
         kind: "entry",
         item: current
@@ -88,9 +95,9 @@ export const buildPresentedTimeline = (
     }
 
     groupedEntries.push({
-      kind: "commandCluster",
-      id: `${commandItems[0].entry.id}-cluster-${commandItems.at(-1)?.entry.id ?? "end"}`,
-      items: commandItems
+      kind: "activityCluster",
+      id: `${activityItems[0].entry.id}-cluster-${activityItems.at(-1)?.entry.id ?? "end"}`,
+      items: activityItems
     });
   }
 

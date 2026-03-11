@@ -104,34 +104,6 @@ type PickerMenuKind = "model" | "reasoning" | "approval";
 const PICKER_MENU_WIDTH = 248;
 const PICKER_MENU_GUTTER = 12;
 
-const voiceStripLabel = (
-  realtimeState: RealtimeState,
-  voiceState: VoiceState,
-  isVoiceActive: boolean
-) => {
-  if (realtimeState.error) {
-    return realtimeState.error;
-  }
-
-  if (realtimeState.status === "connecting") {
-    return "Voice connecting";
-  }
-
-  if (realtimeState.status === "live" && voiceState === "working") {
-    return "Assistant speaking";
-  }
-
-  if (realtimeState.status === "live" && isVoiceActive) {
-    return "Listening";
-  }
-
-  if (realtimeState.status === "live") {
-    return "Voice ready";
-  }
-
-  return "Voice idle";
-};
-
 const buildReasoningOptions = (
   selectedEffort: WorkerReasoningEffort,
   supportedEfforts: WorkerReasoningEffort[]
@@ -244,7 +216,6 @@ export function Timeline({
   isRightPaneOpen = true,
   isResolvingRequests,
   realtimeState,
-  voiceState,
   isVoiceActive,
   liveTranscript,
   workerSettingsState,
@@ -277,16 +248,11 @@ export function Timeline({
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
   const hasDiff = Boolean(timelineState.activeDiffPreview) || timelineState.turnDiffs.length > 0;
-  const hasPendingHumanGate = approvalCount > 0 || userInputCount > 0;
-  const hasLiveVoice = isVoiceActive || realtimeState.status !== "idle" || liveTranscript.length > 0;
-  const visibleTranscript = useMemo(() => liveTranscript.slice(-4).reverse(), [liveTranscript]);
-  const latestTranscript = visibleTranscript[0] ?? null;
   const orderedEntries = timelineState.entries;
   const isWorkingLogMode =
     timelineState.isRunning ||
     isResolvingRequests ||
-    timelineState.runState.phase === "starting" ||
-    timelineState.runState.phase === "steering";
+    timelineState.runState.phase === "starting";
   const thinkingLabel = useThinkingLabel(timelineState.isRunning && !isResolvingRequests);
   const { latestWorkingStatus, currentWorkingLabel } = useMemo(
     () => getTimelineWorkingLabels(orderedEntries, isWorkingLogMode),
@@ -295,6 +261,41 @@ export function Timeline({
   const activeWorkingLabel = isResolvingRequests
     ? "Waiting"
     : currentWorkingLabel ?? timelineState.runState.label ?? (thinkingLabel || "Thinking");
+  const statusItems = useMemo(() => {
+    const items: string[] = [];
+
+    if (approvalCount > 0) {
+      items.push(`${approvalCount} approval${approvalCount === 1 ? "" : "s"} pending`);
+    }
+
+    if (userInputCount > 0) {
+      items.push(`${userInputCount} answer${userInputCount === 1 ? "" : "s"} needed`);
+    }
+
+    if (isWorkingLogMode) {
+      items.push(
+        isResolvingRequests ? "Needs your decision to continue" : latestWorkingStatus ?? "Working"
+      );
+    } else if (realtimeState.error) {
+      items.push("Voice unavailable");
+    } else if (realtimeState.status === "connecting") {
+      items.push("Voice connecting");
+    } else if (isVoiceActive || liveTranscript.length > 0) {
+      items.push("Voice live");
+    }
+
+    return items;
+  }, [
+    approvalCount,
+    isResolvingRequests,
+    isVoiceActive,
+    isWorkingLogMode,
+    latestWorkingStatus,
+    liveTranscript.length,
+    realtimeState.error,
+    realtimeState.status,
+    userInputCount
+  ]);
   const inspectorButtons = (
     [
       {
@@ -526,7 +527,7 @@ export function Timeline({
     }
 
     streamRef.current.scrollTop = streamRef.current.scrollHeight;
-  }, [orderedEntries, latestTranscript, timelineState.isRunning, timelineState.threadId]);
+  }, [orderedEntries, timelineState.isRunning, timelineState.threadId]);
 
   const togglePicker = (kind: PickerMenuKind) => {
     setOpenPicker((current) => {
@@ -589,55 +590,8 @@ export function Timeline({
         </div>
       </header>
 
-      {hasWorkspace &&
-      (hasPlan ||
-        hasDiff ||
-        hasPendingHumanGate ||
-        hasLiveVoice ||
-        Boolean(latestWorkingStatus) ||
-        isWorkingLogMode) ? (
-        <div className="timeline-utility-strip">
-          {hasPlan ? (
-            <span className="timeline-utility-pill">
-              {planCount > 0 ? `plan ${planCount}` : "plan ready"}
-            </span>
-          ) : null}
-          {hasDiff ? (
-            <span className="timeline-utility-pill timeline-utility-pill-warm">diff ready</span>
-          ) : null}
-          {approvalCount > 0 ? (
-            <span className="timeline-utility-pill timeline-utility-pill-alert">
-              approvals {approvalCount}
-            </span>
-          ) : null}
-          {userInputCount > 0 ? (
-            <span className="timeline-utility-pill timeline-utility-pill-olive">
-              clarify {userInputCount}
-            </span>
-          ) : null}
-          {hasLiveVoice ? (
-            <span className="timeline-utility-pill timeline-utility-pill-voice">
-              {voiceStripLabel(realtimeState, voiceState, isVoiceActive)}
-            </span>
-          ) : null}
-          {isWorkingLogMode ? (
-            <span className="timeline-status-note">
-              {isResolvingRequests
-                ? "Needs your decision to continue"
-                : latestWorkingStatus ?? "Working through the task"}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-
-      {hasWorkspace && latestTranscript ? (
-        <div className="timeline-voice-ribbon">
-          <span className="timeline-voice-ribbon-badge">
-            {latestTranscript.speaker}
-            {latestTranscript.status === "partial" ? " · live" : ""}
-          </span>
-          <p>{latestTranscript.text}</p>
-        </div>
+      {hasWorkspace && statusItems.length > 0 ? (
+        <p className="timeline-context-line">{statusItems.join(" · ")}</p>
       ) : null}
 
       {hasWorkspace ? (
@@ -649,6 +603,7 @@ export function Timeline({
             isResolvingRequests={isResolvingRequests}
             activeWorkingLabel={activeWorkingLabel}
             latestWorkingStatus={latestWorkingStatus}
+            activeWorkStartedAt={timelineState.activeWorkStartedAt}
             streamRef={streamRef}
           />
         ) : (
@@ -938,7 +893,9 @@ export function Timeline({
                       <ModelSparkIcon />
                       Fast
                     </span>
-                    <span className="timeline-model-fast-note">Prefer faster worker runs</span>
+                    <span className="timeline-model-fast-note">
+                      Prefer faster worker runs. Uses 2x plan usage.
+                    </span>
                   </span>
                   <span className="timeline-worker-switch" aria-hidden="true">
                     <span className="timeline-worker-switch-thumb" />

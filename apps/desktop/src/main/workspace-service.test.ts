@@ -407,10 +407,12 @@ describe("WorkspaceService", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "command-1",
-          kind: "work",
+          kind: "activity",
+          activityType: "command_execution",
           command: "pwd",
           label: "Ran pwd",
-          createdAt: "Live start"
+          createdAt: "Live update",
+          status: "in_progress"
         })
       ])
     );

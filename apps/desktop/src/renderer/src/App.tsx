@@ -49,7 +49,9 @@ const emptyTimelineState: TimelineState = {
     label: null
   },
   approvals: [],
-  userInputs: []
+  userInputs: [],
+  activeWorkStartedAt: null,
+  latestTurn: null
 };
 
 const filterStateMap = <T,>(stateMap: Record<string, T>, activeIds: Set<string>) =>
@@ -790,7 +792,6 @@ export default function App() {
       <main className={workspaceFrameClassName}>
         <LeftRail
           appInfo={appInfo}
-          sessionState={sessionState}
           workspaceState={workspaceState}
           isOpeningWorkspace={isOpeningWorkspace}
           isCreatingThread={isCreatingThread}

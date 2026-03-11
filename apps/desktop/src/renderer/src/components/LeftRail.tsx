@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import type { AppInfo, SessionState, ThreadSummary, WorkspaceState } from "@shared";
+import type { AppInfo, ThreadSummary, WorkspaceState } from "@shared";
 
 interface LeftRailProps {
   appInfo: AppInfo | null;
-  sessionState: SessionState | null;
   workspaceState: WorkspaceState;
   isOpeningWorkspace: boolean;
   isCreatingThread: boolean;
@@ -19,22 +18,6 @@ interface LeftRailProps {
   onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
   onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
 }
-
-const sessionLabel = (sessionState: SessionState | null) => {
-  if (!sessionState) {
-    return "Loading";
-  }
-
-  if (sessionState.status === "connected") {
-    return "Ready";
-  }
-
-  if (sessionState.status === "connecting") {
-    return "Connecting";
-  }
-
-  return "Error";
-};
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -182,7 +165,6 @@ function visibleThreadsForProject(project: WorkspaceState["projects"][number], e
 
 export function LeftRail({
   appInfo,
-  sessionState,
   workspaceState,
   isOpeningWorkspace,
   isCreatingThread,
@@ -204,10 +186,6 @@ export function LeftRail({
   const [confirmThreadId, setConfirmThreadId] = useState<string | null>(null);
   const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
-  const sessionText = sessionState?.account?.planType
-    ? `${sessionLabel(sessionState)} ${sessionState.account.planType}`
-    : sessionLabel(sessionState);
-
   useEffect(() => {
     if (!currentProject) {
       return;
@@ -330,12 +308,10 @@ export function LeftRail({
                   title={project.path}
                 >
                   <FolderIcon />
-                  <span className="project-select-button-copy">
-                    <span className="project-name">{project.name}</span>
-                    <span className="project-caption">
-                      {project.isCurrent ? `Current project · ${projectThreadLabel}` : projectThreadLabel}
+                    <span className="project-select-button-copy">
+                      <span className="project-name">{project.name}</span>
+                      <span className="project-caption">{projectThreadLabel}</span>
                     </span>
-                  </span>
                 </button>
                 <div className="project-row-actions">
                   <button
@@ -527,14 +503,6 @@ export function LeftRail({
           <SettingsIcon />
           <span>Settings</span>
         </button>
-
-        <div className="session-inline">
-          <div className="session-inline-main">
-            <span className={`session-inline-dot state-${sessionState?.status ?? "loading"}`} />
-            <span>{sessionText}</span>
-          </div>
-          <div className="session-inline-note">{isOpeningWorkspace ? "Opening" : "Voice ready"}</div>
-        </div>
       </div>
     </aside>
   );

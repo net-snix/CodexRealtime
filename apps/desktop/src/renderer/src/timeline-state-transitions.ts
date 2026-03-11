@@ -29,16 +29,19 @@ export const applyOptimisticTurnStart = (
         role: "user",
         text: trimmedPrompt,
         createdAt: "Live update",
+        completedAt: null,
         turnId: state.threadId,
         summary: trimmedPrompt,
-        isStreaming: false
+        isStreaming: false,
+        providerLabel: null
       } satisfies TimelineMessageEntry
     ],
     isRunning: true,
     runState: {
       phase: "starting",
       label: "Starting"
-    }
+    },
+    activeWorkStartedAt: "Live update"
   };
 };
 

@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineDiffEntry, TimelinePlan, TimelineState } from "@shared";
+import {
+  buildDiffBrowserScopes,
+  resolveDiffBrowserView,
+  type DiffBrowserViewMode
+} from "../right-pane-diff";
 import { TimelineRichText } from "./TimelineRichText";
+import { RightPaneDiffBrowser } from "./RightPaneDiffBrowser";
 
 const PANELS = {
   plan: {
-    title: "Plan",
-    eyebrow: "Thread state"
+    title: "Plan"
   },
   diff: {
-    title: "Diff",
-    eyebrow: "Changes"
+    title: "Diff"
   }
 } as const;
 
@@ -26,16 +30,6 @@ const PLAN_STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   in_progress: "In progress",
   completed: "Completed"
-};
-
-const truncateDiff = (diff: string) => {
-  const trimmed = diff.trim();
-
-  if (trimmed.length <= 1800) {
-    return trimmed;
-  }
-
-  return `${trimmed.slice(0, 1800)}\n\n...diff preview truncated`;
 };
 
 const downloadTextFile = (filename: string, text: string, mimeType: string) => {
@@ -55,7 +49,8 @@ const safeFileFragment = (value: string) =>
     .replace(/^-+|-+$/g, "") || "export";
 
 const resolvePlanExportName = (plan: TimelinePlan) => `${safeFileFragment(plan.title)}.md`;
-const resolveDiffExportName = (entry: TimelineDiffEntry) => `${safeFileFragment(entry.title)}.diff`;
+const resolveDiffExportName = (entry: TimelineDiffEntry, filePath?: string | null) =>
+  `${safeFileFragment(filePath ?? entry.title)}.diff`;
 
 function ActionDotsIcon() {
   return <span aria-hidden="true" className="pane-icon-dots">...</span>;
@@ -75,34 +70,6 @@ function ClosePaneIcon() {
   );
 }
 
-const renderDiffCard = (entry: TimelineDiffEntry, emphasis = false) => (
-  <article
-    key={entry.id}
-    className={emphasis ? "dossier-card dossier-card-active" : "dossier-card"}
-  >
-    <div className="dossier-row">
-      <span className="dossier-status dossier-status-completed">
-        +{entry.additions} -{entry.deletions}
-      </span>
-      <span className="dossier-index">{entry.files.length} files</span>
-    </div>
-    <h3>{entry.title}</h3>
-    {entry.files.length > 0 ? (
-      <div className="pane-file-list">
-        {entry.files.map((file) => (
-          <div key={`${entry.id}-${file.path}`} className="pane-file-row">
-            <span className="pane-file-path">{file.path}</span>
-            <span className="pane-file-meta">
-              +{file.additions} -{file.deletions}
-            </span>
-          </div>
-        ))}
-      </div>
-    ) : null}
-    {entry.diff.trim() ? <pre className="diff-preview">{truncateDiff(entry.diff)}</pre> : null}
-  </article>
-);
-
 export function RightPane({
   activePane,
   onSelect,
@@ -110,25 +77,50 @@ export function RightPane({
   timelineState
 }: RightPaneProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedDiffId, setSelectedDiffId] = useState<string | null>(null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [diffViewMode, setDiffViewMode] = useState<DiffBrowserViewMode>("files");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const paneKey: PaneKey = activePane === "diff" ? "diff" : "plan";
   const pane = PANELS[paneKey];
   const activePlan = timelineState.activePlan ?? timelineState.latestProposedPlan;
   const diffEntries = timelineState.turnDiffs;
   const activeDiff = timelineState.activeDiffPreview ?? diffEntries.at(-1) ?? null;
+  const diffScopes = useMemo(
+    () => buildDiffBrowserScopes(diffEntries, timelineState.activeDiffPreview),
+    [diffEntries, timelineState.activeDiffPreview]
+  );
+  const selectedDiff = selectedDiffId
+    ? diffScopes.find((entry) => entry.id === selectedDiffId) ?? null
+    : activeDiff;
+  const diffViewer = useMemo(
+    () => resolveDiffBrowserView(selectedDiff, selectedFilePath, diffViewMode),
+    [diffViewMode, selectedDiff, selectedFilePath]
+  );
   const paneTimestamp =
     paneKey === "plan"
       ? activePlan?.createdAt ?? null
-      : activeDiff?.createdAt ?? null;
+      : selectedDiff?.createdAt ?? null;
+  const paneSummary =
+    paneKey === "plan"
+      ? activePlan
+        ? activePlan.steps.length > 0
+          ? `${activePlan.steps.length} steps`
+          : "Draft"
+        : null
+      : diffEntries.length > 0
+        ? `${diffEntries.length} revision${diffEntries.length === 1 ? "" : "s"}`
+        : null;
   const paneBadges: Partial<Record<PaneKey, number>> = {
     plan: activePlan?.steps.length ?? (activePlan ? 1 : 0),
     diff: diffEntries.length
   };
-  const canCopy = paneKey === "plan" ? Boolean(activePlan?.text.trim()) : Boolean(activeDiff?.diff.trim());
+  const canCopy =
+    paneKey === "plan" ? Boolean(activePlan?.text.trim()) : Boolean(diffViewer?.diff.trim());
   const canDownload = canCopy;
 
   const handleCopy = async () => {
-    const text = paneKey === "plan" ? activePlan?.text ?? "" : activeDiff?.diff ?? "";
+    const text = paneKey === "plan" ? activePlan?.text ?? "" : diffViewer?.diff ?? "";
 
     if (!text.trim()) {
       return;
@@ -149,17 +141,49 @@ export function RightPane({
       return;
     }
 
-    if (!activeDiff?.diff.trim()) {
+    if (!selectedDiff || !diffViewer?.diff.trim()) {
       return;
     }
 
-    downloadTextFile(resolveDiffExportName(activeDiff), activeDiff.diff, "text/plain;charset=utf-8");
+    downloadTextFile(
+      resolveDiffExportName(
+        selectedDiff,
+        diffViewMode === "files" ? diffViewer.selectedFile?.path ?? null : null
+      ),
+      diffViewer.diff,
+      "text/plain;charset=utf-8"
+    );
     setMenuOpen(false);
   };
 
   useEffect(() => {
     setMenuOpen(false);
   }, [paneKey]);
+
+  useEffect(() => {
+    if (paneKey !== "diff") {
+      return;
+    }
+
+    if (selectedDiffId && !diffScopes.some((entry) => entry.id === selectedDiffId)) {
+      setSelectedDiffId(null);
+    }
+  }, [diffScopes, paneKey, selectedDiffId]);
+
+  useEffect(() => {
+    if (paneKey !== "diff") {
+      return;
+    }
+
+    if (!selectedDiff || selectedDiff.files.length === 0) {
+      setSelectedFilePath(null);
+      return;
+    }
+
+    if (!selectedFilePath || !selectedDiff.files.some((file) => file.path === selectedFilePath)) {
+      setSelectedFilePath(selectedDiff.files[0]?.path ?? null);
+    }
+  }, [paneKey, selectedDiff, selectedFilePath]);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -181,30 +205,34 @@ export function RightPane({
   const renderPaneBody = () => {
     if (paneKey === "plan") {
       return activePlan ? (
-        <div className="dossier-stack">
-          <article className="dossier-card dossier-card-active">
-            <div className="dossier-row">
-              <span className="dossier-status dossier-status-in_progress">
+        <div className="pane-plan">
+          <section className="pane-plan-summary">
+            <div className="pane-plan-meta">
+              <span className="pane-plan-status">
                 {timelineState.activePlan ? "Live plan" : "Latest plan"}
               </span>
-              <span className="dossier-index">
-                {activePlan.steps.length > 0 ? `${activePlan.steps.length} steps` : "Draft"}
-              </span>
+              {activePlan.createdAt ? (
+                <span className="pane-plan-meta-copy">{activePlan.createdAt}</span>
+              ) : null}
             </div>
             <h3>{activePlan.title}</h3>
             <TimelineRichText className="pane-rich-text" text={activePlan.text} />
-          </article>
-          {activePlan.steps.map((step, index) => (
-            <article key={`${activePlan.id}-${step.step}-${index}`} className="dossier-card">
-              <div className="dossier-row">
-                <span className={`dossier-status dossier-status-${step.status}`}>
-                  {PLAN_STATUS_LABELS[step.status] ?? step.status}
-                </span>
-                <span className="dossier-index">Step {index + 1}</span>
-              </div>
-              <p>{step.step}</p>
-            </article>
-          ))}
+          </section>
+          {activePlan.steps.length > 0 ? (
+            <ol className="pane-plan-steps">
+              {activePlan.steps.map((step, index) => (
+                <li key={`${activePlan.id}-${step.step}-${index}`} className="pane-plan-step">
+                  <span className="pane-plan-step-index">{index + 1}</span>
+                  <div className="pane-plan-step-copy">
+                    <span className="pane-plan-step-text">{step.step}</span>
+                    <span className={`pane-plan-step-status pane-plan-step-status-${step.status}`}>
+                      {PLAN_STATUS_LABELS[step.status] ?? step.status}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : null}
         </div>
       ) : (
         <div className="pane-empty-state">
@@ -215,18 +243,16 @@ export function RightPane({
     }
 
     if (paneKey === "diff") {
-      return activeDiff ? (
-        <div className="dossier-stack">
-          {renderDiffCard(activeDiff, true)}
-          {diffEntries
-            .filter((entry) => entry.id !== activeDiff.id)
-            .map((entry) => renderDiffCard(entry))}
-        </div>
-      ) : (
-        <div className="pane-empty-state">
-          <h3>No diff yet</h3>
-          <p>Changed files and previews will show up here.</p>
-        </div>
+      return (
+        <RightPaneDiffBrowser
+          diffScopes={diffScopes}
+          selectedDiff={selectedDiff}
+          selectedFilePath={selectedFilePath}
+          viewMode={diffViewMode}
+          onSelectDiff={setSelectedDiffId}
+          onSelectFile={setSelectedFilePath}
+          onChangeViewMode={setDiffViewMode}
+        />
       );
     }
 
@@ -239,8 +265,13 @@ export function RightPane({
 
       <div className="pane-header-bar">
         <div className="pane-header-copy">
-          <span className={`pane-header-badge pane-header-badge-${paneKey}`}>{pane.title}</span>
-          {paneTimestamp ? <span className="pane-header-meta">{paneTimestamp}</span> : null}
+          <h2 className="pane-header-title">{pane.title}</h2>
+          {paneSummary || paneTimestamp ? (
+            <div className="pane-header-meta-row">
+              {paneSummary ? <span className="pane-header-meta">{paneSummary}</span> : null}
+              {paneTimestamp ? <span className="pane-header-meta">{paneTimestamp}</span> : null}
+            </div>
+          ) : null}
         </div>
         <div className="pane-header-actions">
           <div ref={menuRef} className="pane-action-menu">
@@ -299,8 +330,6 @@ export function RightPane({
       </div>
 
       <div className="pane-body">
-        <span className="panel-eyebrow">{pane.eyebrow}</span>
-        <h2>{pane.title}</h2>
         {renderPaneBody()}
       </div>
     </aside>

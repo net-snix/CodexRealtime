@@ -128,7 +128,9 @@ const timelineState: TimelineState = {
   runState: {
     phase: "idle",
     label: "Idle"
-  }
+  },
+  activeWorkStartedAt: null,
+  latestTurn: null
 };
 
 const workerSettingsState: WorkerSettingsState = {

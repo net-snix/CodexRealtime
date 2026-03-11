@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInfo, SessionState, ThreadSummary, WorkspaceState } from "@shared";
+import type { AppInfo, ThreadSummary, WorkspaceState } from "@shared";
 import { LeftRail } from "./LeftRail";
 
 type CreateThreadHandler = (workspaceId: string) => void;
@@ -14,22 +14,6 @@ const appInfo: AppInfo = {
   name: "Codex Realtime",
   version: "0.1.0",
   platform: "darwin"
-};
-
-const sessionState: SessionState = {
-  status: "connected",
-  account: {
-    type: "chatgpt",
-    planType: "pro"
-  },
-  features: {
-    defaultModeRequestUserInput: true,
-    realtimeConversation: true,
-    voiceTranscription: true
-  },
-  requiresOpenaiAuth: false,
-  error: null,
-  lastUpdatedAt: "2026-03-11T08:00:00.000Z"
 };
 
 const createThread = (
@@ -122,7 +106,6 @@ describe("LeftRail", () => {
       root?.render(
         <LeftRail
           appInfo={appInfo}
-          sessionState={sessionState}
           workspaceState={workspaceStateOverride}
           isOpeningWorkspace={false}
           isCreatingThread={false}

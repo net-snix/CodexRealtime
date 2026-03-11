@@ -108,6 +108,13 @@ const EMPTY_STATE: PersistedState = {
 
 const THREAD_CHANGE_SUMMARY_LIMIT = 6;
 const THREAD_CHANGE_CACHE_LIMIT = 128;
+
+const normalizeRuntimeMethod = (value: string) =>
+  value
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[.\-/\s]+/g, "_")
+    .replace(/__+/g, "_")
+    .toLowerCase();
 const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -320,6 +327,8 @@ const clonePersistedState = (state: PersistedState): PersistedState => ({
 
 export class WorkspaceService extends EventEmitter {
   private liveTimelineState = emptyTimelineState();
+  private readonly liveTimelineStateByThread = new Map<string, TimelineState>();
+  private readonly liveTimelineSequenceByThread = new Map<string, number>();
   private activeTurnId: string | null = null;
   private readonly threadChangeCache = new Map<string, ThreadChangeSummary | null>();
   private workerModelsCache: WorkerModelOption[] | null = null;
@@ -544,6 +553,7 @@ export class WorkspaceService extends EventEmitter {
 
     if (workspace.threadId) {
       this.workerSettingsByThread.delete(workspace.threadId);
+      this.clearTimelineCache(workspace.threadId);
     }
 
     if (persisted.currentWorkspaceId === workspaceId) {
@@ -601,6 +611,7 @@ export class WorkspaceService extends EventEmitter {
 
     this.activeTurnId = null;
     this.workerDraftSettingsByWorkspace.delete(workspace.id);
+    this.clearTimelineCache(started.thread.id);
     this.setLiveTimelineState({
       ...emptyTimelineState(started.thread.id),
       runState: {
@@ -631,7 +642,7 @@ export class WorkspaceService extends EventEmitter {
     const wasSelectedThread = workspace.threadId === threadId;
 
     await codexBridge.archiveThread(threadId);
-    this.threadChangeCache.delete(threadId);
+    this.clearTimelineCache(threadId);
 
     if (wasSelectedThread) {
       workspace.threadId = await this.findNextThreadId(workspace.path, threadId);
@@ -671,7 +682,7 @@ export class WorkspaceService extends EventEmitter {
     }
 
     await codexBridge.unarchiveThread(threadId);
-    this.threadChangeCache.delete(threadId);
+    this.clearTimelineCache(threadId);
 
     persisted.currentWorkspaceId = workspaceId;
     workspace.threadId = threadId;
@@ -751,8 +762,11 @@ export class WorkspaceService extends EventEmitter {
       return emptyTimelineState();
     }
 
-    if (this.liveTimelineState.threadId === workspace.threadId) {
-      return cloneTimelineState(this.liveTimelineState);
+    const cachedTimeline = this.getCachedTimelineState(workspace.threadId);
+
+    if (cachedTimeline) {
+      this.setLiveTimelineState(cachedTimeline);
+      return cloneTimelineState(cachedTimeline);
     }
 
     const timeline = await withTimeout(
@@ -1479,20 +1493,74 @@ export class WorkspaceService extends EventEmitter {
   private async handleBridgeNotification(payload: NotificationPayload) {
     this.syncActiveTurnFromNotification(payload);
     this.invalidateThreadCache(payload);
+    const threadId = this.getTimelinePayloadThreadId(payload.params);
+
+    if (threadId) {
+      const nextSequence = this.getTimelinePayloadSequence(payload.params);
+      const previousSequence = this.liveTimelineSequenceByThread.get(threadId);
+
+      if (
+        nextSequence !== null &&
+        previousSequence !== undefined &&
+        nextSequence > previousSequence + 1
+      ) {
+        await this.hydrateLiveTimeline(threadId, this.getCachedTimelineState(threadId) ?? emptyTimelineState(threadId));
+        this.liveTimelineSequenceByThread.set(threadId, nextSequence);
+        return;
+      }
+
+      if (nextSequence !== null && previousSequence !== undefined && nextSequence <= previousSequence) {
+        return;
+      }
+
+      const baseState =
+        this.getCachedTimelineState(threadId) ??
+        (this.liveTimelineState.threadId === threadId ? this.liveTimelineState : emptyTimelineState(threadId));
+      const nextState = await applyBridgeNotification(
+        baseState,
+        payload,
+        (candidateThreadId) => candidateThreadId === threadId,
+        (candidateThreadId, currentState) => this.hydrateLiveTimeline(candidateThreadId, currentState)
+      );
+
+      if (nextSequence !== null) {
+        this.liveTimelineSequenceByThread.set(threadId, nextSequence);
+      }
+
+      this.cacheTimelineState(nextState);
+
+      if (this.isCurrentThread(threadId)) {
+        this.setLiveTimelineState(nextState);
+      }
+
+      return;
+    }
+
     this.setLiveTimelineState(
       await applyBridgeNotification(
         this.liveTimelineState,
         payload,
-        (threadId) => this.isCurrentThread(threadId),
-        (threadId, currentState) => this.hydrateLiveTimeline(threadId, currentState)
+        (candidateThreadId) => this.isCurrentThread(candidateThreadId),
+        (candidateThreadId, currentState) => this.hydrateLiveTimeline(candidateThreadId, currentState)
       )
     );
   }
 
   private handleBridgeRequest(payload: RequestPayload) {
-    this.setLiveTimelineState(
-      applyBridgeRequest(this.liveTimelineState, payload, (threadId) => this.isCurrentThread(threadId))
+    const threadId = this.getTimelinePayloadThreadId(payload.params);
+    const baseState =
+      threadId && this.getCachedTimelineState(threadId)
+        ? (this.getCachedTimelineState(threadId) as TimelineState)
+        : this.liveTimelineState;
+    const nextState = applyBridgeRequest(baseState, payload, (candidateThreadId) =>
+      threadId ? candidateThreadId === threadId : this.isCurrentThread(candidateThreadId)
     );
+
+    this.cacheTimelineState(nextState);
+
+    if (!threadId || this.isCurrentThread(threadId)) {
+      this.setLiveTimelineState(nextState);
+    }
   }
 
   private enqueueBridgeMutation(action: () => void | Promise<void>) {
@@ -1509,24 +1577,53 @@ export class WorkspaceService extends EventEmitter {
     currentState: TimelineState = this.liveTimelineState
   ): Promise<TimelineState> {
     const snapshot = await this.readThreadTimeline(threadId);
-    const existing = currentState.threadId === threadId ? currentState : null;
-
-    this.setLiveTimelineState({
+    const existing =
+      currentState.threadId === threadId
+        ? currentState
+        : this.getCachedTimelineState(threadId);
+    const mergedState: TimelineState = {
       ...snapshot,
       approvals: existing?.approvals ?? [],
       userInputs: existing?.userInputs ?? [],
       activePlan: existing?.activePlan ?? snapshot.activePlan,
       latestProposedPlan: existing?.latestProposedPlan ?? snapshot.latestProposedPlan,
       turnDiffs: existing?.turnDiffs?.length ? existing.turnDiffs : snapshot.turnDiffs,
-      activeDiffPreview: existing?.activeDiffPreview ?? snapshot.activeDiffPreview
-    });
+      activeDiffPreview: existing?.activeDiffPreview ?? snapshot.activeDiffPreview,
+      activeWorkStartedAt: existing?.activeWorkStartedAt ?? snapshot.activeWorkStartedAt,
+      latestTurn: existing?.latestTurn ?? snapshot.latestTurn,
+      isRunning: snapshot.isRunning || existing?.isRunning === true,
+      runState:
+        snapshot.isRunning || existing?.isRunning === true
+          ? existing?.runState ?? snapshot.runState
+          : snapshot.runState
+    };
 
-    return cloneTimelineState(this.liveTimelineState);
+    this.cacheTimelineState(mergedState);
+
+    if (this.isCurrentThread(threadId)) {
+      this.setLiveTimelineState(mergedState);
+    }
+
+    return cloneTimelineState(mergedState);
   }
 
   private setLiveTimelineState(nextState: TimelineState) {
     this.liveTimelineState = cloneTimelineState(nextState);
+    this.cacheTimelineState(this.liveTimelineState);
     this.emit("timeline", cloneTimelineState(this.liveTimelineState));
+  }
+
+  private cacheTimelineState(nextState: TimelineState) {
+    if (!nextState.threadId) {
+      return;
+    }
+
+    this.liveTimelineStateByThread.set(nextState.threadId, cloneTimelineState(nextState));
+  }
+
+  private getCachedTimelineState(threadId: string) {
+    const cached = this.liveTimelineStateByThread.get(threadId);
+    return cached ? cloneTimelineState(cached) : null;
   }
 
   private ensureLiveTimeline(threadId: string) {
@@ -1555,36 +1652,72 @@ export class WorkspaceService extends EventEmitter {
       return;
     }
 
-    if (payload.method === "turn/started") {
+    const methodKey = normalizeRuntimeMethod(payload.method);
+
+    if (methodKey === "turn_started") {
       this.activeTurnId =
         params?.turn && typeof params.turn.id === "string" ? params.turn.id : this.activeTurnId;
       return;
     }
 
-    if (payload.method === "turn/completed") {
+    if (methodKey === "turn_completed" || methodKey === "turn_aborted") {
       this.activeTurnId = null;
     }
+  }
+
+  private getTimelinePayloadThreadId(params: unknown) {
+    return params && typeof params === "object" && typeof (params as { threadId?: unknown }).threadId === "string"
+      ? ((params as { threadId: string }).threadId)
+      : null;
+  }
+
+  private getTimelinePayloadSequence(params: unknown) {
+    if (!params || typeof params !== "object") {
+      return null;
+    }
+
+    const sequence = (params as { sequence?: unknown; eventSequence?: unknown }).sequence;
+    const eventSequence = (params as { sequence?: unknown; eventSequence?: unknown }).eventSequence;
+
+    if (typeof sequence === "number" && Number.isFinite(sequence)) {
+      return sequence;
+    }
+
+    if (typeof eventSequence === "number" && Number.isFinite(eventSequence)) {
+      return eventSequence;
+    }
+
+    return null;
   }
 
   private invalidateThreadCache(payload: NotificationPayload) {
     const params = payload.params as { threadId?: unknown } | undefined;
     const threadId = typeof params?.threadId === "string" ? params.threadId : null;
+    const methodKey = normalizeRuntimeMethod(payload.method);
 
     if (!threadId) {
       return;
     }
 
     if (
-      payload.method === "turn/started" ||
-      payload.method === "turn/completed" ||
-      payload.method === "turn/diff/updated" ||
-      payload.method === "thread/archived" ||
-      payload.method === "thread/unarchived" ||
-      payload.method === "item/started" ||
-      payload.method === "item/completed"
+      methodKey === "turn_started" ||
+      methodKey === "turn_completed" ||
+      methodKey === "turn_aborted" ||
+      methodKey === "turn_diff_updated" ||
+      methodKey === "thread_archived" ||
+      methodKey === "thread_unarchived" ||
+      methodKey === "item_started" ||
+      methodKey === "item_updated" ||
+      methodKey === "item_completed"
     ) {
       this.threadChangeCache.delete(threadId);
     }
+  }
+
+  private clearTimelineCache(threadId: string) {
+    this.threadChangeCache.delete(threadId);
+    this.liveTimelineStateByThread.delete(threadId);
+    this.liveTimelineSequenceByThread.delete(threadId);
   }
 }
 

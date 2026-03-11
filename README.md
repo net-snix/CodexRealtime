@@ -17,7 +17,7 @@ Working local prototype.
 Current surface:
 
 - workspace + thread navigation
-- live timeline + worker activity
+- live thread timeline with commands, plans, diffs, approvals, and worker activity
 - inline approvals + clarification
 - voice bar + device selection
 - settings page + archived chats

@@ -1,5 +1,5 @@
-import { useMemo, type MutableRefObject } from "react";
-import type { TimelineEntry } from "@shared";
+import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import type { TimelineDiffEntry, TimelineEntry } from "@shared";
 import type { PresentedTimelineEntry, PresentedTimelineEvent } from "../timeline-event-stream";
 import { buildPresentedTimeline } from "../timeline-event-stream";
 import { TimelineRichText } from "./TimelineRichText";
@@ -11,8 +11,11 @@ type TimelineEventStreamProps = {
   isResolvingRequests: boolean;
   activeWorkingLabel: string;
   latestWorkingStatus: string | null;
+  activeWorkStartedAt: string | null;
   streamRef: MutableRefObject<HTMLDivElement | null>;
 };
+
+const MAX_VISIBLE_CLUSTER_ITEMS = 6;
 
 function ChevronIcon() {
   return (
@@ -28,6 +31,62 @@ function ChevronIcon() {
     </svg>
   );
 }
+
+const formatElapsed = (startedAt: string | null, now: number) => {
+  if (!startedAt) return null;
+  const startedAtMs = Date.parse(startedAt);
+  if (Number.isNaN(startedAtMs)) return null;
+  const elapsedMs = Math.max(0, now - startedAtMs);
+  const seconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds % 60}s`;
+};
+
+const buildDiffMap = (entries: TimelineEntry[]) => {
+  const diffsByMessageId = new Map<string, TimelineDiffEntry>();
+  const detachedDiffIds = new Set<string>();
+
+  for (const entry of entries) {
+    if (entry.kind !== "diffSummary") continue;
+    if (entry.assistantMessageId) {
+      diffsByMessageId.set(entry.assistantMessageId, entry);
+      continue;
+    }
+    detachedDiffIds.add(entry.id);
+  }
+
+  return {
+    diffsByMessageId,
+    detachedDiffIds
+  };
+};
+
+const clusterLabel = (items: PresentedTimelineEvent[]) => {
+  const firstBadge = items[0]?.presentation.badge;
+  const sameBadge = firstBadge
+    ? items.every((item) => item.presentation.badge === firstBadge)
+    : false;
+
+  if (sameBadge && firstBadge === "Command") {
+    return {
+      badge: "Command",
+      title: `${items.length} command${items.length === 1 ? "" : "s"}`
+    };
+  }
+
+  if (sameBadge && firstBadge) {
+    return {
+      badge: firstBadge,
+      title: `${items.length} ${firstBadge.toLowerCase()} event${items.length === 1 ? "" : "s"}`
+    };
+  }
+
+  return {
+    badge: "Work",
+    title: `${items.length} work events`
+  };
+};
 
 function TimelineActivityRow({
   item,
@@ -68,23 +127,30 @@ function TimelineActivityRow({
   );
 }
 
-function TimelineCommandCluster({
+function TimelineActivityCluster({
   id,
   items
-}: Extract<PresentedTimelineEntry, { kind: "commandCluster" }>) {
+}: Extract<PresentedTimelineEntry, { kind: "activityCluster" }>) {
+  const { badge, title } = clusterLabel(items);
+  const hasOverflow = items.length > MAX_VISIBLE_CLUSTER_ITEMS;
+  const visibleItems = hasOverflow ? items.slice(-MAX_VISIBLE_CLUSTER_ITEMS) : items;
+
   return (
     <details className="timeline-command-cluster">
-      <summary className="timeline-command-cluster-summary" aria-label={`Show ${items.length} commands`}>
-        <span className="timeline-activity-badge">Command</span>
+      <summary className="timeline-command-cluster-summary" aria-label={title}>
+        <span className="timeline-activity-badge">{badge}</span>
         <p className="timeline-command-cluster-copy">
-          <span className="timeline-command-cluster-title">{items.length} commands</span>
+          <span className="timeline-command-cluster-title">{title}</span>
         </p>
         <span className="timeline-command-cluster-arrow" aria-hidden="true">
           <ChevronIcon />
         </span>
       </summary>
       <div className="timeline-command-cluster-items">
-        {items.map((item) => (
+        {hasOverflow ? (
+          <p className="timeline-thinking-note">Showing latest {visibleItems.length} items</p>
+        ) : null}
+        {visibleItems.map((item) => (
           <TimelineActivityRow key={`${id}-${item.entry.id}`} item={item} nested />
         ))}
       </div>
@@ -92,15 +158,15 @@ function TimelineCommandCluster({
   );
 }
 
-function TimelineDiffFiles({ items }: { items: NonNullable<PresentedTimelineEvent["presentation"]["files"]> }) {
-  if (items.length === 0) {
+function TimelineDiffFiles({ diff }: { diff: TimelineDiffEntry }) {
+  if (diff.files.length === 0) {
     return null;
   }
 
   return (
     <div className="timeline-diff-files">
-      {items.map((file) => (
-        <div key={file.path} className="timeline-diff-file">
+      {diff.files.map((file) => (
+        <div key={`${diff.id}-${file.path}`} className="timeline-diff-file">
           <span className="timeline-diff-file-path">{file.path}</span>
           <span className="timeline-diff-file-stats">
             +{file.additions} -{file.deletions}
@@ -111,7 +177,13 @@ function TimelineDiffFiles({ items }: { items: NonNullable<PresentedTimelineEven
   );
 }
 
-function TimelineEntryCard({ item }: { item: PresentedTimelineEvent }) {
+function TimelineEntryCard({
+  item,
+  attachedDiff
+}: {
+  item: PresentedTimelineEvent;
+  attachedDiff?: TimelineDiffEntry | null;
+}) {
   const { presentation } = item;
 
   if (presentation.variant === "activity") {
@@ -131,8 +203,48 @@ function TimelineEntryCard({ item }: { item: PresentedTimelineEvent }) {
         </div>
         <div className="timeline-diff-entry-copy">
           <strong>{presentation.title}</strong>
-          <TimelineDiffFiles items={presentation.files ?? []} />
+          <TimelineDiffFiles
+            diff={{
+              id: item.entry.id,
+              kind: "diffSummary",
+              createdAt: item.entry.createdAt,
+              turnId: item.entry.turnId,
+              assistantMessageId: null,
+              title: presentation.title,
+              diff: item.entry.kind === "diffSummary" ? item.entry.diff : "",
+              files: presentation.files ?? [],
+              additions: presentation.additions ?? 0,
+              deletions: presentation.deletions ?? 0
+            }}
+          />
         </div>
+      </article>
+    );
+  }
+
+  if (item.entry.kind === "message" && item.entry.role === "assistant") {
+    return (
+      <article className="timeline-message timeline-message-assistant">
+        <TimelineRichText className="timeline-message-copy" text={item.entry.text} />
+        {attachedDiff ? (
+          <div className="timeline-diff-entry-copy">
+            <div className="timeline-message-head">
+              <span className="timeline-message-badge">Diff</span>
+              <span className="timeline-message-meta">
+                +{attachedDiff.additions} -{attachedDiff.deletions}
+              </span>
+            </div>
+            <TimelineDiffFiles diff={attachedDiff} />
+          </div>
+        ) : null}
+      </article>
+    );
+  }
+
+  if (item.entry.kind === "message" && item.entry.role === "user") {
+    return (
+      <article className="timeline-message timeline-message-user">
+        <TimelineRichText className="timeline-message-copy" text={item.entry.text} />
       </article>
     );
   }
@@ -143,7 +255,7 @@ function TimelineEntryCard({ item }: { item: PresentedTimelineEvent }) {
       : `timeline-message-${presentation.tone}`;
 
   return (
-    <article key={item.entry.id} className={`timeline-message ${messageToneClass}`}>
+    <article className={`timeline-message ${messageToneClass}`}>
       {presentation.badge || presentation.metaLabel ? (
         <div className="timeline-message-head">
           {presentation.badge ? (
@@ -166,12 +278,28 @@ export function TimelineEventStream({
   isResolvingRequests,
   activeWorkingLabel,
   latestWorkingStatus,
+  activeWorkStartedAt,
   streamRef
 }: TimelineEventStreamProps) {
+  const [now, setNow] = useState(() => Date.now());
   const { entries: groupedEntries } = useMemo(
     () => buildPresentedTimeline(entries, isWorkingLogMode),
     [entries, isWorkingLogMode]
   );
+
+  const diffState = useMemo(() => buildDiffMap(entries), [entries]);
+
+  useEffect(() => {
+    if (!isRunning) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isRunning]);
 
   return (
     <div
@@ -180,22 +308,36 @@ export function TimelineEventStream({
         isWorkingLogMode ? "timeline-stream-log-active" : ""
       }`}
     >
-      {groupedEntries.map((entry) =>
-        entry.kind === "commandCluster" ? (
-          <TimelineCommandCluster key={entry.id} {...entry} />
-        ) : (
-          <TimelineEntryCard key={entry.item.entry.id} item={entry.item} />
-        )
-      )}
+      {groupedEntries.map((entry) => {
+        if (entry.kind === "activityCluster") {
+          return <TimelineActivityCluster key={entry.id} {...entry} />;
+        }
+
+        if (
+          entry.item.entry.kind === "diffSummary" &&
+          !diffState.detachedDiffIds.has(entry.item.entry.id)
+        ) {
+          return null;
+        }
+
+        const attachedDiff =
+          entry.item.entry.kind === "message" && entry.item.entry.role === "assistant"
+            ? diffState.diffsByMessageId.get(entry.item.entry.id) ?? null
+            : null;
+
+        return <TimelineEntryCard key={entry.item.entry.id} item={entry.item} attachedDiff={attachedDiff} />;
+      })}
 
       {isRunning || isResolvingRequests ? (
         <div className="timeline-thinking">
           <span className="timeline-thinking-chip">{activeWorkingLabel}</span>
-          {latestWorkingStatus || isResolvingRequests ? (
-            <p className="timeline-thinking-note">
-              {isResolvingRequests ? "Needs your decision to continue" : latestWorkingStatus}
-            </p>
-          ) : null}
+          <p className="timeline-thinking-note">
+            {isResolvingRequests
+              ? "Needs your decision to continue"
+              : activeWorkStartedAt
+                ? `Working for ${formatElapsed(activeWorkStartedAt, now) ?? "0s"}`
+                : latestWorkingStatus ?? "Working"}
+          </p>
         </div>
       ) : null}
     </div>

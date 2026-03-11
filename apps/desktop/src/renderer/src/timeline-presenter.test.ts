@@ -4,7 +4,8 @@ import { presentTimelineEvent } from "./timeline-presenter";
 
 const makeEntry = (entry: Partial<TimelineEntry>): TimelineEntry => ({
   id: "entry-1",
-  kind: "work",
+  kind: "activity",
+  activityType: "command_execution",
   createdAt: "Live update",
   turnId: "turn-1",
   tone: "info",
@@ -12,6 +13,9 @@ const makeEntry = (entry: Partial<TimelineEntry>): TimelineEntry => ({
   detail: null,
   command: null,
   changedFiles: [],
+  status: null,
+  toolName: null,
+  agentLabel: null,
   ...entry
 }) as TimelineEntry;
 
@@ -69,6 +73,7 @@ describe("presentTimelineEvent", () => {
     expect(
       presentTimelineEvent(
         makeEntry({
+          activityType: "reasoning",
           tone: "thinking",
           label: "Explored 3 files",
           detail: "Explored 3 files"
@@ -96,10 +101,11 @@ describe("presentTimelineEvent", () => {
     });
   });
 
-  it("compresses file changes into edit activity rows with diff counts", () => {
+  it("shows changed-file metadata on activity rows", () => {
     expect(
       presentTimelineEvent(
         makeEntry({
+          activityType: "unknown",
           label: "Edited Timeline.tsx",
           changedFiles: [
             {
@@ -113,7 +119,7 @@ describe("presentTimelineEvent", () => {
       )
     ).toMatchObject({
       variant: "activity",
-      badge: "Edit",
+      badge: "Work",
       metaLabel: "+4 -1"
     });
   });

@@ -36,15 +36,18 @@ const makeMessageEntry = (
   role: "assistant",
   text: "Hello",
   createdAt: "now",
+  completedAt: null,
   turnId: "turn-1",
   summary: null,
   isStreaming: false,
+  providerLabel: null,
   ...overrides
 });
 
 const makeWorkEntry = (overrides: Partial<TimelineWorkEntry> = {}): TimelineWorkEntry => ({
   id: "work-1",
-  kind: "work",
+  kind: "activity",
+  activityType: "command_execution",
   createdAt: "now",
   turnId: "turn-1",
   tone: "tool",
@@ -52,6 +55,9 @@ const makeWorkEntry = (overrides: Partial<TimelineWorkEntry> = {}): TimelineWork
   detail: null,
   command: null,
   changedFiles: [],
+  status: null,
+  toolName: null,
+  agentLabel: null,
   ...overrides
 });
 
@@ -92,7 +98,9 @@ const timelineState: TimelineState = {
   runState: {
     phase: "idle",
     label: "Idle"
-  }
+  },
+  activeWorkStartedAt: null,
+  latestTurn: null
 };
 
 const realtimeState: RealtimeState = {
@@ -265,6 +273,7 @@ describe("Timeline", () => {
             latestProposedPlan: {
               id: "plan-1",
               createdAt: "now",
+              updatedAt: "now",
               turnId: "turn-1",
               title: "Plan",
               text: "1. Tighten layout",
@@ -273,9 +282,10 @@ describe("Timeline", () => {
             turnDiffs: [
               {
                 id: "diff-1",
-                kind: "diff",
+                kind: "diffSummary",
                 createdAt: "now",
                 turnId: "turn-1",
+                assistantMessageId: null,
                 title: "Edited 1 file",
                 diff: "@@\n+hello\n-world",
                 files: [
@@ -292,9 +302,10 @@ describe("Timeline", () => {
             ],
             activeDiffPreview: {
               id: "diff-1",
-              kind: "diff",
+              kind: "diffSummary",
               createdAt: "now",
               turnId: "turn-1",
+              assistantMessageId: null,
               title: "Edited 1 file",
               diff: "@@\n+hello\n-world",
               files: [
@@ -1044,5 +1055,17 @@ describe("Timeline", () => {
     });
 
     expect(container?.querySelector(".timeline-model-trigger-icon")).not.toBeNull();
+
+    await act(async () => {
+      modelButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const activeFastToggle = document.body.querySelector(
+      'button[aria-label="Fast mode"]'
+    ) as HTMLButtonElement | null;
+
+    expect(activeFastToggle?.getAttribute("aria-checked")).toBe("true");
+    expect(activeFastToggle?.classList.contains("timeline-model-fast-toggle-active")).toBe(true);
   });
 });

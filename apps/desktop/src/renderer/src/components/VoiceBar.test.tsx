@@ -106,8 +106,7 @@ describe("VoiceBar", () => {
 
     expect(container?.querySelector(".voice-bar-collapsed")).not.toBeNull();
     expect(container?.querySelector(".voice-device-panel")).toBeNull();
-    expect(
-      container?.querySelector('button[aria-label="Show voice bar"]')?.textContent
-    ).toContain("Voice");
+    expect(container?.querySelector(".voice-bar-body")).not.toBeNull();
+    expect(container?.querySelector('button[aria-label="Show voice bar"]')).not.toBeNull();
   });
 });

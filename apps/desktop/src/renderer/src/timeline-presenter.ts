@@ -35,6 +35,41 @@ const getChangedFileLabel = (files: TimelineChangedFile[]) => {
   return additions > 0 || deletions > 0 ? `+${additions} -${deletions}` : null;
 };
 
+const ACTIVITY_BADGES: Record<
+  Extract<TimelineEntry, { kind: "activity" }>["activityType"],
+  TimelinePresentation["badge"]
+> = {
+  reasoning: "Think",
+  command_execution: "Command",
+  mcp_tool_call: "Tool",
+  dynamic_tool_call: "Tool",
+  collab_agent_tool_call: "Subagent",
+  web_search: "Search",
+  image_view: "Image",
+  plan_update: "Plan update",
+  review_entered: "Review",
+  review_exited: "Review",
+  context_compaction: "Compaction",
+  error: "Error",
+  unknown: "Work"
+};
+
+const activityTone = (
+  entry: Extract<TimelineEntry, { kind: "activity" }>
+): TimelinePresentation["tone"] => {
+  if (entry.activityType === "error" || entry.tone === "error") return "warning";
+  if (entry.activityType === "command_execution") return "tool";
+  if (entry.activityType === "mcp_tool_call" || entry.activityType === "dynamic_tool_call") {
+    return "tool";
+  }
+  if (entry.activityType === "collab_agent_tool_call") return "plan";
+  if (entry.activityType === "web_search" || entry.activityType === "image_view") return "system";
+  if (entry.activityType === "reasoning") return "commentary";
+  if (entry.activityType === "plan_update") return "plan";
+  if (entry.changedFiles.length > 0) return "success";
+  return entry.tone === "thinking" ? "commentary" : "system";
+};
+
 export const presentTimelineEvent = (
   entry: TimelineEntry,
   isWorkingLogMode = false
@@ -72,12 +107,12 @@ export const presentTimelineEvent = (
     };
   }
 
-  if (entry.kind === "work") {
+  if (entry.kind === "activity") {
     if (entry.command) {
       return {
         variant: "activity",
-        badge: "Command",
-        tone: "tool",
+        badge: ACTIVITY_BADGES[entry.activityType],
+        tone: activityTone(entry),
         title: entry.label,
         body: entry.detail,
         monospace: true,
@@ -88,35 +123,32 @@ export const presentTimelineEvent = (
     if (entry.changedFiles.length > 0) {
       return {
         variant: "activity",
-        badge: "Edit",
-        tone: "success",
+        badge: ACTIVITY_BADGES[entry.activityType],
+        tone: activityTone(entry),
         title: entry.label,
         body: entry.detail,
         metaLabel: getChangedFileLabel(entry.changedFiles) ?? getMetaLabel(entry.createdAt)
       };
     }
 
-    const tone =
-      entry.tone === "thinking"
-        ? "commentary"
-        : entry.tone === "error"
-          ? "warning"
-          : "system";
-
     return {
       variant: "activity",
-      badge: entry.tone === "thinking" ? "Think" : "Work",
-      tone,
-      title: entry.label,
-      body: entry.detail,
+      badge: ACTIVITY_BADGES[entry.activityType],
+      tone: activityTone(entry),
+      title:
+        entry.agentLabel && entry.activityType === "collab_agent_tool_call"
+          ? `${entry.agentLabel} · ${entry.label}`
+          : entry.label,
+      body:
+        entry.toolName && entry.detail ? `${entry.toolName}\n${entry.detail}` : entry.detail,
       metaLabel: getMetaLabel(entry.createdAt)
     };
   }
 
-  if (entry.kind === "plan") {
+  if (entry.kind === "proposedPlan") {
     return {
       variant: "plan",
-      badge: "Plan",
+      badge: "Proposed plan",
       tone: "plan",
       title: entry.title,
       body: entry.text,

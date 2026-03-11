@@ -1,15 +1,15 @@
 :root {
   color-scheme: light;
-  --bg: #f6f2eb;
-  --bg-deep: #efe9df;
-  --surface: rgba(252, 249, 244, 0.88);
-  --surface-strong: #fffdfa;
-  --surface-soft: #f3eee5;
+  --bg: #f3ede3;
+  --bg-deep: #e9e0d2;
+  --surface: rgba(248, 243, 235, 0.96);
+  --surface-strong: #fcf8f1;
+  --surface-soft: #eee6d9;
   --text: #181714;
   --muted: #6d685f;
   --muted-strong: #49453f;
-  --line: rgba(24, 23, 20, 0.08);
-  --line-strong: rgba(24, 23, 20, 0.14);
+  --line: rgba(24, 23, 20, 0.1);
+  --line-strong: rgba(24, 23, 20, 0.16);
   --accent: #21353d;
   --accent-soft: #e7edf0;
   --success: #476154;
@@ -18,8 +18,8 @@
   --warning-soft: #f4ece7;
   --danger: #8d5750;
   --danger-soft: #f5e9e7;
-  --panel-radius: 14px;
-  --shadow: 0 24px 60px rgba(28, 23, 18, 0.06), 0 2px 10px rgba(28, 23, 18, 0.04);
+  --panel-radius: 12px;
+  --shadow: 0 5px 12px rgba(28, 23, 18, 0.035), 0 1px 2px rgba(28, 23, 18, 0.04);
   font-family: "Avenir Next", "Helvetica Neue", sans-serif;
 }
 
@@ -36,9 +36,7 @@ body,
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(33, 53, 61, 0.06), transparent 28%),
-    linear-gradient(180deg, #faf7f2 0%, var(--bg) 48%, var(--bg-deep) 100%);
+  background: linear-gradient(180deg, #f8f4ec 0%, var(--bg) 54%, var(--bg-deep) 100%);
   color: var(--text);
 }
 
@@ -88,18 +86,18 @@ select {
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 4px;
+  gap: 2px;
   height: 100vh;
-  padding: 2px 6px 6px;
+  padding: 2px 4px 4px;
   overflow: hidden;
 }
 
 .backdrop {
   position: absolute;
-  inset: 1px;
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
+  inset: 2px;
+  border: 1px solid rgba(24, 23, 20, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
   pointer-events: none;
 }
 
@@ -108,7 +106,7 @@ select {
   z-index: 1;
   display: grid;
   grid-template-columns: 246px minmax(0, 1fr) 292px;
-  gap: 6px;
+  gap: 4px;
   min-height: 0;
   -webkit-app-region: no-drag;
 }
@@ -123,7 +121,7 @@ select {
   border-radius: var(--panel-radius);
   background: var(--surface);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
 }
 
 .voice-bar {

@@ -1,91 +1,25 @@
 @media (max-width: 1280px) {
   .workspace-frame {
-    grid-template-columns: minmax(228px, 246px) minmax(0, 1fr) 84px;
+    grid-template-columns: minmax(228px, 246px) minmax(0, 1fr) clamp(248px, 24vw, 272px);
   }
 
   .workspace-frame-right-pane-closed {
     grid-template-columns: minmax(228px, 246px) minmax(0, 1fr);
   }
-
-  .right-pane {
-    justify-self: end;
-    align-self: start;
-    width: 84px;
-    overflow: hidden;
-    transition:
-      width 180ms ease,
-      box-shadow 180ms ease,
-      transform 180ms ease;
-    z-index: 5;
-  }
-
-  .right-pane .pane-tabs {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    padding: 6px;
-  }
-
-  .right-pane .pane-tab {
-    justify-content: center;
-    padding-inline: 8px;
-  }
-
-  .right-pane .pane-tab-badge,
-  .right-pane .pane-body {
-    max-height: 0;
-    opacity: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-
-  .right-pane:hover,
-  .right-pane:focus-within {
-    width: 292px;
-    overflow: auto;
-    box-shadow: 0 20px 40px rgba(24, 23, 20, 0.12);
-  }
-
-  .right-pane:hover .pane-tabs,
-  .right-pane:focus-within .pane-tabs {
-    flex-direction: row;
-    gap: 4px;
-    padding: 3px;
-  }
-
-  .right-pane:hover .pane-tab,
-  .right-pane:focus-within .pane-tab {
-    justify-content: flex-start;
-    padding-inline: 10px;
-  }
-
-  .right-pane:hover .pane-tab-badge,
-  .right-pane:hover .pane-body,
-  .right-pane:focus-within .pane-tab-badge,
-  .right-pane:focus-within .pane-body {
-    max-height: none;
-    opacity: 1;
-    overflow: visible;
-    pointer-events: auto;
-  }
 }
 
 @media (max-width: 960px) {
   .app-shell {
-    padding: 2px 6px 6px;
+    padding: 2px 4px 4px;
   }
 
   .workspace-frame {
-    grid-template-columns: clamp(172px, 28vw, 208px) minmax(0, 1fr) 78px;
+    grid-template-columns: clamp(168px, 24vw, 196px) minmax(0, 1fr) clamp(220px, 30vw, 240px);
     min-height: 0;
   }
 
   .workspace-frame-right-pane-closed {
-    grid-template-columns: clamp(172px, 28vw, 208px) minmax(0, 1fr);
-  }
-
-  .right-pane {
-    width: 78px;
+    grid-template-columns: clamp(168px, 24vw, 196px) minmax(0, 1fr);
   }
 
   .workspace-action-row {
@@ -112,7 +46,7 @@
     width: 100%;
   }
 
-  .voice-bar {
+  .voice-bar-body {
     grid-template-columns: 1fr;
     justify-items: stretch;
   }

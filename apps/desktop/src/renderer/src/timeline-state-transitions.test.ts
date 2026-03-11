@@ -19,7 +19,9 @@ const baseTimelineState: TimelineState = {
   runState: {
     phase: "idle",
     label: "Idle"
-  }
+  },
+  activeWorkStartedAt: null,
+  latestTurn: null
 };
 
 describe("timeline turn transitions", () => {

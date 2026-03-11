@@ -5,8 +5,12 @@ import { presentTimelineEvent } from "./timeline-presenter";
 const THINKING_FRAMES = ["Thinking", "Thinking.", "Thinking..", "Thinking..."];
 const WORKING_LABELS = new Map<string, string>([
   ["Command", "Running"],
-  ["Edit", "Editing"],
-  ["Plan", "Planning"],
+  ["Tool", "Working"],
+  ["Subagent", "Delegating"],
+  ["Search", "Searching"],
+  ["Image", "Inspecting"],
+  ["Plan update", "Planning"],
+  ["Proposed plan", "Planning"],
   ["Think", "Thinking"],
   ["Work", "Working"]
 ]);
@@ -37,7 +41,7 @@ export const getLatestWorkingStatus = (
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
 
-    if (entry.createdAt === "Thread history" || entry.kind === "message") {
+    if (entry.createdAt === "Thread history" || entry.kind === "message" || entry.kind === "diffSummary") {
       continue;
     }
 
@@ -64,7 +68,7 @@ export const getWorkingStatusLabel = (
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
 
-    if (entry.createdAt === "Thread history" || entry.kind === "message") {
+    if (entry.createdAt === "Thread history" || entry.kind === "message" || entry.kind === "diffSummary") {
       continue;
     }
 

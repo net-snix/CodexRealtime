@@ -233,6 +233,8 @@ export interface TimelineState {
   userInputs: TimelineUserInputRequest[];
   isRunning: boolean;
   runState: TimelineRunState;
+  activeWorkStartedAt: string | null;
+  latestTurn: TimelineTurn | null;
 }
 
 export interface TimelineRunState {
@@ -241,16 +243,26 @@ export interface TimelineRunState {
     | "starting"
     | "running"
     | "steering"
+    | "waitingApproval"
+    | "waitingUserInput"
     | "interrupted"
+    | "failed"
     | "historyUnavailable";
   label: string | null;
 }
 
 export type TimelineEntry =
   | TimelineMessageEntry
-  | TimelineWorkEntry
-  | TimelinePlanEntry
+  | TimelineActivityEntry
+  | TimelineProposedPlanEntry
   | TimelineDiffEntry;
+
+export interface TimelineTurn {
+  id: string;
+  status: "completed" | "interrupted" | "failed" | "inProgress";
+  startedAt: string | null;
+  completedAt: string | null;
+}
 
 export interface TimelineMessageEntry {
   id: string;
@@ -258,14 +270,39 @@ export interface TimelineMessageEntry {
   role: "user" | "assistant";
   text: string;
   createdAt: string;
+  completedAt: string | null;
   turnId: string | null;
   summary: string | null;
   isStreaming: boolean;
+  providerLabel: string | null;
 }
 
-export interface TimelineWorkEntry {
+export type TimelineActivityType =
+  | "reasoning"
+  | "command_execution"
+  | "mcp_tool_call"
+  | "dynamic_tool_call"
+  | "collab_agent_tool_call"
+  | "web_search"
+  | "image_view"
+  | "plan_update"
+  | "review_entered"
+  | "review_exited"
+  | "context_compaction"
+  | "error"
+  | "unknown";
+
+export type TimelineActivityStatus =
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "declined"
+  | null;
+
+export interface TimelineActivityEntry {
   id: string;
-  kind: "work";
+  kind: "activity";
+  activityType: TimelineActivityType;
   createdAt: string;
   turnId: string | null;
   tone: "thinking" | "tool" | "info" | "error";
@@ -273,20 +310,26 @@ export interface TimelineWorkEntry {
   detail: string | null;
   command: string | null;
   changedFiles: TimelineChangedFile[];
+  status: TimelineActivityStatus;
+  toolName: string | null;
+  agentLabel: string | null;
 }
 
 export interface TimelinePlan {
   id: string;
   createdAt: string;
+  updatedAt: string | null;
   turnId: string | null;
   title: string;
   text: string;
   steps: TimelinePlanStep[];
 }
 
-export interface TimelinePlanEntry extends TimelinePlan {
-  kind: "plan";
+export interface TimelineProposedPlanEntry extends TimelinePlan {
+  kind: "proposedPlan";
 }
+
+export type TimelinePlanEntry = TimelineProposedPlanEntry;
 
 export interface TimelineChangedFile {
   path: string;
@@ -297,15 +340,18 @@ export interface TimelineChangedFile {
 
 export interface TimelineDiffEntry {
   id: string;
-  kind: "diff";
+  kind: "diffSummary";
   createdAt: string;
   turnId: string | null;
+  assistantMessageId: string | null;
   title: string;
   diff: string;
   files: TimelineChangedFile[];
   additions: number;
   deletions: number;
 }
+
+export type TimelineWorkEntry = TimelineActivityEntry;
 
 export interface ArchiveThreadResult {
   timelineState: TimelineState;

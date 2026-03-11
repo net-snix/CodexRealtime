@@ -128,67 +128,68 @@ export function VoiceBar({
 
   return (
     <footer className={`voice-bar stagger-4${isCollapsed ? " voice-bar-collapsed" : ""}`}>
-      <div className="voice-cluster voice-bar-panel-section">
+      <div className="voice-bar-body">
         <button
           type="button"
-          className="voice-button primary"
-          disabled={disabled || isStopping}
-          onClick={() => void onToggle()}
+          className="voice-bar-edge-toggle"
+          onClick={() => setIsCollapsed((current) => !current)}
+          aria-label={isCollapsed ? "Show voice bar" : "Hide voice bar"}
+          title={isCollapsed ? "Show voice bar" : "Hide voice bar"}
         >
-          {isActive ? "Mic on" : "Start mic"}
+          <VoiceBarChevron collapsed={isCollapsed} />
         </button>
-        <div className="voice-meter" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
+
+        <div className="voice-cluster voice-bar-panel-section">
+          <button
+            type="button"
+            className="voice-button primary"
+            disabled={disabled || isStopping}
+            onClick={() => void onToggle()}
+          >
+            {isActive ? "Mic on" : "Start mic"}
+          </button>
+          <div className="voice-meter" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+
+        <div className="voice-status voice-bar-panel-section">
+          <span className="panel-eyebrow">State</span>
+          <strong>{isStopping ? "stopping" : state}</strong>
+          <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
+          {feedback ? (
+            <p className={`voice-feedback voice-feedback-${feedback.tone}`}>{feedback.text}</p>
+          ) : null}
+          {latestTranscript ? (
+            <p className="voice-caption">
+              <span>{transcriptLabel}</span>
+              {latestTranscript.text}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="voice-actions voice-bar-panel-section">
+          <button
+            type="button"
+            className="voice-button ghost"
+            onClick={() => setIsDevicePickerOpen((current) => !current)}
+          >
+            Devices
+          </button>
+          <button
+            type="button"
+            className="voice-button danger"
+            disabled={!canStop || isStopping}
+            onClick={() => void onStop()}
+          >
+            {isStopping ? "Stopping…" : "Stop"}
+          </button>
         </div>
       </div>
-
-      <div className="voice-status voice-bar-panel-section">
-        <span className="panel-eyebrow">State</span>
-        <strong>{isStopping ? "stopping" : state}</strong>
-        <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
-        {feedback ? (
-          <p className={`voice-feedback voice-feedback-${feedback.tone}`}>{feedback.text}</p>
-        ) : null}
-        {latestTranscript ? (
-          <p className="voice-caption">
-            <span>{transcriptLabel}</span>
-            {latestTranscript.text}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="voice-actions voice-bar-panel-section">
-        <button
-          type="button"
-          className="voice-button ghost"
-          onClick={() => setIsDevicePickerOpen((current) => !current)}
-        >
-          Devices
-        </button>
-        <button
-          type="button"
-          className="voice-button danger"
-          disabled={!canStop || isStopping}
-          onClick={() => void onStop()}
-        >
-          {isStopping ? "Stopping…" : "Stop"}
-        </button>
-      </div>
-
-      <button
-        type="button"
-        className={`voice-bar-toggle${isCollapsed ? " voice-bar-toggle-collapsed" : ""}`}
-        onClick={() => setIsCollapsed((current) => !current)}
-        aria-label={isCollapsed ? "Show voice bar" : "Hide voice bar"}
-        title={isCollapsed ? "Show voice bar" : "Hide voice bar"}
-      >
-        <VoiceBarChevron collapsed={isCollapsed} />
-        <span>{isCollapsed ? "Voice" : "Hide"}</span>
-      </button>
 
       {!isCollapsed && isDevicePickerOpen ? (
         <div className="voice-device-panel">

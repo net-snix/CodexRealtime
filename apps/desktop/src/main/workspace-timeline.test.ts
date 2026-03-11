@@ -24,10 +24,10 @@ describe("buildTimelineState", () => {
     const turns = Array.from({ length: 200 }, (_, index) => makeTurn(index + 1));
     const state = buildTimelineState("thread-1", turns);
 
-    expect(state.entries).toHaveLength(48);
+    expect(state.entries).toHaveLength(64);
     expect(state.entries[0]).toMatchObject({
       kind: "message",
-      text: "message 153"
+      text: "message 137"
     });
     expect(state.entries.at(-1)).toMatchObject({
       kind: "message",

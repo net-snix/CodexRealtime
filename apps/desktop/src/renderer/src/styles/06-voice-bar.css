@@ -1,52 +1,72 @@
 .voice-bar {
   position: relative;
   z-index: 1;
+  min-height: 0;
+  overflow: visible;
+  transition: min-height 180ms ease;
+}
+
+.voice-bar-body {
+  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 68px;
+  max-height: 160px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(252, 249, 244, 0.94);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  overflow: visible;
   transition:
-    padding 220ms ease,
-    min-height 220ms ease,
-    border-color 220ms ease,
-    background 220ms ease,
-    box-shadow 220ms ease,
-    transform 220ms ease;
+    max-height 180ms ease,
+    padding 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    opacity 120ms ease;
+}
+
+.voice-bar-body::before {
+  content: none;
 }
 
 .voice-bar-panel-section {
-  transition:
-    opacity 180ms ease,
-    transform 220ms ease,
-    filter 220ms ease;
+  transition: opacity 120ms ease;
 }
 
-.voice-bar-collapsed {
-  grid-template-columns: auto;
-  justify-content: end;
-  justify-items: end;
+.voice-bar-collapsed .voice-bar-body {
+  max-height: 0;
   min-height: 0;
-  margin-left: auto;
-  padding: 0;
+  padding-top: 0;
+  padding-bottom: 0;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
+  opacity: 1;
+}
+
+.voice-bar-collapsed .voice-bar-body::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 11px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: rgba(252, 249, 244, 0.94);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .voice-bar-collapsed .voice-bar-panel-section {
   opacity: 0;
-  transform: translateY(8px);
-  filter: blur(6px);
   pointer-events: none;
-  position: absolute;
+}
+
+.voice-bar-collapsed {
+  min-height: 11px;
 }
 
 .voice-cluster,
@@ -60,46 +80,64 @@
   justify-content: flex-end;
 }
 
-.voice-bar-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 10px;
+.voice-bar-edge-toggle {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  z-index: 3;
+  display: inline-grid;
+  place-items: center;
+  width: 50px;
+  height: 24px;
   border: 1px solid rgba(24, 23, 20, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 253, 250, 0.78);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: rgba(252, 249, 244, 0.98);
   color: var(--muted-strong);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transform: translateY(calc(-100% + 1px));
   transition:
-    opacity 180ms ease,
-    transform 180ms ease,
     background 180ms ease,
     border-color 180ms ease,
     color 180ms ease,
-    box-shadow 220ms ease;
+    box-shadow 220ms ease,
+    transform 180ms ease;
 }
 
-.voice-bar-toggle svg {
+.voice-bar-edge-toggle::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  height: 2px;
+  background: rgba(252, 249, 244, 0.98);
+}
+
+.voice-bar-edge-toggle svg {
   width: 12px;
   height: 12px;
 }
 
-.voice-bar-toggle:hover {
-  transform: translateY(-1px);
+.voice-bar-edge-toggle:hover {
   border-color: rgba(24, 23, 20, 0.14);
   background: rgba(255, 255, 255, 0.92);
   color: var(--text);
+  transform: translateY(calc(-100% + 1px));
 }
 
-.voice-bar-toggle-collapsed {
-  min-height: 38px;
-  padding: 0 12px;
-  background: rgba(252, 249, 244, 0.96);
-  box-shadow: 0 8px 22px rgba(24, 23, 20, 0.08);
+.voice-bar-edge-toggle:hover::after {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.voice-bar-collapsed .voice-bar-edge-toggle {
+  background: rgba(252, 249, 244, 0.98);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transform: translateY(calc(-100% + 1px));
+}
+
+.voice-bar-collapsed .voice-bar-edge-toggle::after {
+  background: rgba(252, 249, 244, 0.98);
 }
 
 .voice-button {
