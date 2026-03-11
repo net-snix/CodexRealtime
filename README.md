@@ -24,12 +24,6 @@ Current surface:
 - worker model / reasoning / plan / approval controls
 - Electron E2E regression coverage
 
-## Screenshots
-
-| Thread workspace | Settings |
-| --- | --- |
-| ![Thread workspace screenshot](docs/images/thread-view.png) | ![Settings screenshot](docs/images/settings-view.png) |
-
 ## Stack
 
 - Electron
