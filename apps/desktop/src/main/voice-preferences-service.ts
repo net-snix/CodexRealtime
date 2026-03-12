@@ -2,6 +2,7 @@ import { app } from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { VoicePreferences } from "@shared";
+import { readPersistedState } from "./persisted-state";
 
 const DEFAULT_PREFERENCES: VoicePreferences = {
   selectedInputDeviceId: "",
@@ -14,6 +15,13 @@ const clonePreferences = (preferences: VoicePreferences): VoicePreferences => ({
   ...preferences
 });
 
+const VOICE_PREFERENCES_VALIDATORS = {
+  selectedInputDeviceId: (value: unknown): value is string => typeof value === "string",
+  selectedOutputDeviceId: (value: unknown): value is string => typeof value === "string",
+  deviceHintDismissed: (value: unknown): value is boolean => typeof value === "boolean",
+  deviceSetupComplete: (value: unknown): value is boolean => typeof value === "boolean"
+} as const;
+
 export class VoicePreferencesService {
   private cachedPreferences: VoicePreferences | null = null;
 
@@ -24,12 +32,7 @@ export class VoicePreferencesService {
   private loadPreferences(): VoicePreferences {
     try {
       const raw = readFileSync(this.statePath, "utf8");
-      const parsed = JSON.parse(raw) as Partial<VoicePreferences>;
-
-      return {
-        ...DEFAULT_PREFERENCES,
-        ...parsed
-      };
+      return readPersistedState(raw, DEFAULT_PREFERENCES, VOICE_PREFERENCES_VALIDATORS);
     } catch {
       return { ...DEFAULT_PREFERENCES };
     }
