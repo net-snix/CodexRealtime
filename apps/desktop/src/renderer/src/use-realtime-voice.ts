@@ -18,6 +18,11 @@ const TRANSCRIPT_LIMIT = 6;
 const MAX_QUEUED_AUDIO_CHUNKS = 4;
 const MAX_DISPATCHED_TRANSCRIPT_IDS = 128;
 const PCM16_BASE64_CHUNK_SIZE = 0x8000;
+const MIN_AUDIO_SAMPLE_RATE = 8_000;
+const MAX_AUDIO_SAMPLE_RATE = 192_000;
+const MAX_AUDIO_CHANNELS = 8;
+const MAX_PCM16_BYTES_PER_CHUNK = 8 * 1024 * 1024;
+const MAX_SAMPLES_PER_CHANNEL = 262_144;
 
 type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
   shouldDispatchPrompt: boolean;
@@ -204,7 +209,31 @@ const encodePcm16 = (samples: Float32Array) => {
 };
 
 const decodePcm16 = (chunk: RealtimeAudioChunk) => {
+  if (
+    !Number.isFinite(chunk.sampleRate) ||
+    chunk.sampleRate < MIN_AUDIO_SAMPLE_RATE ||
+    chunk.sampleRate > MAX_AUDIO_SAMPLE_RATE
+  ) {
+    throw new Error("Invalid realtime audio sample rate");
+  }
+
+  if (
+    !Number.isInteger(chunk.numChannels) ||
+    chunk.numChannels < 1 ||
+    chunk.numChannels > MAX_AUDIO_CHANNELS
+  ) {
+    throw new Error("Invalid realtime audio channel count");
+  }
+
   const binary = atob(chunk.data);
+  if (
+    binary.length === 0 ||
+    binary.length % 2 !== 0 ||
+    binary.length > MAX_PCM16_BYTES_PER_CHUNK
+  ) {
+    throw new Error("Invalid realtime audio payload");
+  }
+
   const bytes = new Uint8Array(binary.length);
 
   for (let index = 0; index < binary.length; index += 1) {
@@ -212,10 +241,27 @@ const decodePcm16 = (chunk: RealtimeAudioChunk) => {
   }
 
   const pcm = new Int16Array(bytes.buffer);
-  const numChannels = Math.max(1, chunk.numChannels);
-  const samplesPerChannel =
-    chunk.samplesPerChannel ?? Math.floor(pcm.length / numChannels);
-  const channels = Array.from({ length: numChannels }, () => new Float32Array(samplesPerChannel));
+  const numChannels = chunk.numChannels;
+  const availableSamplesPerChannel = Math.floor(pcm.length / numChannels);
+  const requestedSamplesPerChannel =
+    chunk.samplesPerChannel ?? availableSamplesPerChannel;
+
+  if (
+    !Number.isInteger(requestedSamplesPerChannel) ||
+    requestedSamplesPerChannel < 1 ||
+    requestedSamplesPerChannel > MAX_SAMPLES_PER_CHANNEL
+  ) {
+    throw new Error("Invalid realtime samples-per-channel count");
+  }
+
+  const samplesPerChannel = Math.min(
+    requestedSamplesPerChannel,
+    availableSamplesPerChannel
+  );
+  const channels = Array.from(
+    { length: numChannels },
+    () => new Float32Array(samplesPerChannel)
+  );
 
   for (let sampleIndex = 0; sampleIndex < samplesPerChannel; sampleIndex += 1) {
     for (let channelIndex = 0; channelIndex < numChannels; channelIndex += 1) {
@@ -450,8 +496,14 @@ export const useRealtimeVoice = ({
     void playbackElement.setSinkId(selectedOutputDeviceId);
   }, [selectedOutputDeviceId]);
 
-  const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) => {
-    const decoded = decodePcm16(chunk);
+const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) => {
+    let decoded: ReturnType<typeof decodePcm16>;
+    try {
+      decoded = decodePcm16(chunk);
+    } catch {
+      // Realtime audio is untrusted input. Drop malformed chunks without breaking playback.
+      return false;
+    }
     const existingContext = playbackContextRef.current;
     const context = existingContext ?? new AudioContext({ sampleRate: decoded.sampleRate });
 
@@ -493,6 +545,7 @@ export const useRealtimeVoice = ({
     const startAt = Math.max(context.currentTime + 0.02, nextPlaybackTimeRef.current);
     source.start(startAt);
     nextPlaybackTimeRef.current = startAt + audioBuffer.duration;
+    return true;
   });
   const scheduleAudioPlaybackRef = useRef(scheduleAudioPlayback);
 
@@ -518,8 +571,11 @@ export const useRealtimeVoice = ({
       }
 
       if (event.type === "audio") {
-        void scheduleAudioPlaybackRef.current(event.audio);
-        setVoiceState("working");
+        void scheduleAudioPlaybackRef.current(event.audio).then((didPlay) => {
+          if (didPlay) {
+            setVoiceState("working");
+          }
+        });
         return;
       }
 
