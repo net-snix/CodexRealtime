@@ -71,6 +71,27 @@ describe("CodexBridge", () => {
     expect((bridge as unknown as { buffer: string }).buffer).toBe("");
   });
 
+  it("tracks remaining stdout buffer bytes after consuming complete lines", () => {
+    const bridge = new CodexBridge({ maxStdoutBufferBytes: 8 });
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout("{}\n");
+
+    expect((bridge as unknown as { buffer: string }).buffer).toBe("");
+    expect((bridge as unknown as { bufferByteLength: number }).bufferByteLength).toBe(0);
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout("1234");
+    expect((bridge as unknown as { bufferByteLength: number }).bufferByteLength).toBe(4);
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout("5");
+    expect((bridge as unknown as { bufferByteLength: number }).bufferByteLength).toBe(5);
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout("6789");
+
+    expect(bridge.getState().error).toContain("Codex app-server sent oversized stdout payload");
+    expect((bridge as unknown as { buffer: string }).buffer).toBe("");
+    expect((bridge as unknown as { bufferByteLength: number }).bufferByteLength).toBe(0);
+  });
+
   it("times out pending requests", async () => {
     vi.useFakeTimers();
 
@@ -257,5 +278,26 @@ describe("CodexBridge", () => {
         id: "turn-1"
       }
     });
+  });
+
+  it("ignores non-string method values", () => {
+    const bridge = new CodexBridge();
+    const notificationListener = vi.fn();
+    const requestListener = vi.fn();
+
+    bridge.on("notification", notificationListener);
+    bridge.on("serverRequest", requestListener);
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: "req-1",
+        method: { bad: true },
+        params: {}
+      })}\n`
+    );
+
+    expect(notificationListener).not.toHaveBeenCalled();
+    expect(requestListener).not.toHaveBeenCalled();
   });
 });

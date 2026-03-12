@@ -55,10 +55,12 @@ const OVERSIZED_STDOUT_BUFFER_ERROR =
 
 const normalizeError = (error: unknown, fallback: string) =>
   error instanceof Error ? error : new Error(fallback);
+const utf8ByteLength = (value: string) => Buffer.byteLength(value, "utf8");
 
 export class CodexBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
   private buffer = "";
+  private bufferByteLength = 0;
   private readonly pending = new Map<string, PendingRequest>();
   private stdinWriteChain: Promise<void> = Promise.resolve();
   private startPromise: Promise<void> | null = null;
@@ -427,7 +429,7 @@ export class CodexBridge extends EventEmitter {
 
     const child = this.child;
     this.child = null;
-    this.buffer = "";
+    this.clearBuffer();
     this.stdinWriteChain = Promise.resolve();
     this.startPromise = null;
     this.rejectAllPending("Codex app-server stopped before responding");
@@ -445,7 +447,7 @@ export class CodexBridge extends EventEmitter {
       return;
     }
 
-    this.buffer = "";
+    this.clearBuffer();
     this.stdinWriteChain = Promise.resolve();
     this.child = spawn("codex", ["app-server"], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -484,9 +486,9 @@ export class CodexBridge extends EventEmitter {
   }
 
   private handleStdout(chunk: string) {
-    const nextBuffer = this.buffer + chunk;
-    if (Buffer.byteLength(nextBuffer, "utf8") > this.maxStdoutBufferBytes) {
-      this.buffer = "";
+    const chunkByteLength = utf8ByteLength(chunk);
+    if (this.bufferByteLength + chunkByteLength > this.maxStdoutBufferBytes) {
+      this.clearBuffer();
       this.state = {
         ...this.state,
         error: `${OVERSIZED_STDOUT_BUFFER_ERROR}: exceeded ${this.maxStdoutBufferBytes} bytes`,
@@ -496,7 +498,8 @@ export class CodexBridge extends EventEmitter {
       return;
     }
 
-    this.buffer = nextBuffer;
+    this.buffer += chunk;
+    this.bufferByteLength += chunkByteLength;
 
     while (true) {
       const newlineIndex = this.buffer.indexOf("\n");
@@ -504,7 +507,9 @@ export class CodexBridge extends EventEmitter {
         return;
       }
 
-      const line = this.buffer.slice(0, newlineIndex).trim();
+      const consumedChunk = this.buffer.slice(0, newlineIndex + 1);
+      this.bufferByteLength -= utf8ByteLength(consumedChunk);
+      const line = consumedChunk.slice(0, -1).trim();
       this.buffer = this.buffer.slice(newlineIndex + 1);
 
       if (!line) {
@@ -525,28 +530,31 @@ export class CodexBridge extends EventEmitter {
         continue;
       }
 
-      if (message.id && this.pending.has(message.id)) {
+      const messageId = typeof message.id === "string" ? message.id : null;
+      const messageMethod = typeof message.method === "string" ? message.method : null;
+
+      if (messageId && this.pending.has(messageId)) {
         if (message.error) {
-          this.rejectPendingRequest(message.id, message.error.message);
+          this.rejectPendingRequest(messageId, message.error.message);
         } else {
-          this.resolvePendingRequest(message.id, message.result);
+          this.resolvePendingRequest(messageId, message.result);
         }
 
         continue;
       }
 
-      if (message.method && typeof message.id === "string") {
+      if (messageMethod && messageId) {
         this.emit("serverRequest", {
-          id: message.id,
-          method: message.method,
+          id: messageId,
+          method: messageMethod,
           params: message.params
         } satisfies ServerRequestMessage);
         continue;
       }
 
-      if (message.method) {
+      if (messageMethod) {
         this.emit("notification", {
-          method: message.method,
+          method: messageMethod,
           params: message.params
         } satisfies ServerNotificationMessage);
       }
@@ -583,7 +591,7 @@ export class CodexBridge extends EventEmitter {
 
   private handleChildExit() {
     this.child = null;
-    this.buffer = "";
+    this.clearBuffer();
     this.stdinWriteChain = Promise.resolve();
     this.startPromise = null;
     this.rejectAllPending("Codex app-server exited before responding");
@@ -696,6 +704,11 @@ export class CodexBridge extends EventEmitter {
       pending.reject(new Error(`${message}: ${pending.method}`));
       this.pending.delete(id);
     }
+  }
+
+  private clearBuffer() {
+    this.buffer = "";
+    this.bufferByteLength = 0;
   }
 
   private mapAccount(account: unknown): CodexAccountSummary | null {
