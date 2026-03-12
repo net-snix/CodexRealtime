@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   PastedImageAttachment,
   WorkerAttachment,
   WorkerExecutionSettings,
   WorkerSettingsState
 } from "@shared";
+import { ensureNativeApi } from "./native-api";
 
 const defaultSettings: WorkerExecutionSettings = {
   model: null,
@@ -34,6 +35,11 @@ const mergeAttachments = (
 };
 
 export function useWorkerSettings(contextKey: string | null) {
+  const nativeApiRef = useRef<ReturnType<typeof ensureNativeApi> | null>(null);
+  if (!nativeApiRef.current) {
+    nativeApiRef.current = ensureNativeApi();
+  }
+
   const [settingsState, setSettingsState] = useState<WorkerSettingsState>(emptyState);
   const [attachments, setAttachments] = useState<WorkerAttachment[]>([]);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -42,7 +48,7 @@ export function useWorkerSettings(contextKey: string | null) {
   useEffect(() => {
     let cancelled = false;
 
-    void window.appBridge
+    void nativeApiRef.current!
       .getWorkerSettingsState()
       .then((nextState) => {
         if (!cancelled) {
@@ -66,7 +72,7 @@ export function useWorkerSettings(contextKey: string | null) {
     setIsUpdating(true);
 
     try {
-      const nextState = await window.appBridge.updateWorkerSettings(patch);
+      const nextState = await nativeApiRef.current!.updateWorkerSettings(patch);
       setSettingsState(nextState);
       return nextState;
     } finally {
@@ -78,7 +84,7 @@ export function useWorkerSettings(contextKey: string | null) {
     setIsPickingAttachments(true);
 
     try {
-      const picked = await window.appBridge.pickWorkerAttachments();
+      const picked = await nativeApiRef.current!.pickWorkerAttachments();
 
       if (picked.length === 0) {
         return [];
@@ -96,7 +102,7 @@ export function useWorkerSettings(contextKey: string | null) {
       return [];
     }
 
-    const added = await window.appBridge.addWorkerAttachments(paths);
+    const added = await nativeApiRef.current!.addWorkerAttachments(paths);
 
     if (added.length === 0) {
       return [];
@@ -111,7 +117,7 @@ export function useWorkerSettings(contextKey: string | null) {
       return [];
     }
 
-    const added = await window.appBridge.addPastedImageAttachments(images);
+    const added = await nativeApiRef.current!.addPastedImageAttachments(images);
 
     if (added.length === 0) {
       return [];

@@ -1,12 +1,10 @@
-import type { ServerApi } from "./server-api.js";
-import type { ShellApi } from "./shell-api.js";
-
 export * from "./ipc.js";
 export * from "./provider-runtime.js";
+export type { NativeApi } from "./native-api.js";
 export type { ServerApi } from "./server-api.js";
 export type { ShellApi } from "./shell-api.js";
 
-export type AppBridge = ShellApi & ServerApi;
+export type AppBridge = import("./native-api.js").NativeApi;
 
 export interface AppInfo {
   name: string;

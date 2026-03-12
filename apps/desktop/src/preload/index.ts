@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppBridge } from "@codex-realtime/contracts";
+import type { NativeApi } from "@codex-realtime/contracts";
 import { IPC_CHANNELS } from "@codex-realtime/contracts/ipc";
 
-const appBridge: AppBridge = {
+const nativeApi: NativeApi = {
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appGetInfo),
   getAppSettingsState: () => ipcRenderer.invoke(IPC_CHANNELS.appSettingsGet),
   updateAppSettings: (patch) => ipcRenderer.invoke(IPC_CHANNELS.appSettingsUpdate, patch),
@@ -63,4 +63,5 @@ const appBridge: AppBridge = {
   },
 };
 
-contextBridge.exposeInMainWorld("appBridge", appBridge);
+contextBridge.exposeInMainWorld("appBridge", nativeApi);
+contextBridge.exposeInMainWorld("nativeApi", nativeApi);
