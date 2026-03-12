@@ -129,6 +129,59 @@ describe("WorkspaceService", () => {
     expect(threadChangeCache.has("thread-139")).toBe(true);
   });
 
+  it("ignores invalid persisted workspace maps", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        currentWorkspaceId: "workspace-1",
+        workspaces: "nope"
+      })
+    );
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn()
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const readState = (
+      service as unknown as {
+        readState: () => { currentWorkspaceId: string | null; workspaces: Record<string, unknown> };
+      }
+    ).readState.bind(service);
+
+    expect(readState()).toEqual({
+      currentWorkspaceId: "workspace-1",
+      workspaces: {}
+    });
+    expect(readFileSync).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes bridge-driven mutations", async () => {
     vi.doMock("node:fs", () => ({
       mkdirSync: vi.fn(),

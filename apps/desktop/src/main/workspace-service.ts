@@ -24,6 +24,7 @@ import type {
 } from "@shared";
 import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
+import { readPersistedState } from "./persisted-state";
 import { buildAutoThreadName } from "./thread-auto-name";
 import {
   DEFAULT_WORKER_COLLABORATION_MODES,
@@ -105,6 +106,27 @@ const EMPTY_STATE: PersistedState = {
   currentWorkspaceId: null,
   workspaces: {}
 };
+
+const isPersistedWorkspace = (value: unknown): value is PersistedWorkspace =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  typeof (value as PersistedWorkspace).id === "string" &&
+  typeof (value as PersistedWorkspace).name === "string" &&
+  typeof (value as PersistedWorkspace).path === "string" &&
+  typeof (value as PersistedWorkspace).lastOpenedAt === "string" &&
+  (typeof (value as PersistedWorkspace).threadId === "string" ||
+    (value as PersistedWorkspace).threadId === null);
+
+const PERSISTED_STATE_VALIDATORS = {
+  currentWorkspaceId: (value: unknown): value is string | null =>
+    typeof value === "string" || value === null,
+  workspaces: (value: unknown): value is Record<string, PersistedWorkspace> =>
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every((workspace) => isPersistedWorkspace(workspace))
+} as const;
 
 const THREAD_CHANGE_SUMMARY_LIMIT = 6;
 const THREAD_CHANGE_CACHE_LIMIT = 128;
@@ -1367,12 +1389,8 @@ export class WorkspaceService extends EventEmitter {
 
     try {
       const raw = readFileSync(this.statePath, "utf8");
-      const parsed = JSON.parse(raw) as PersistedState;
-
-      this.persistedState = clonePersistedState({
-        currentWorkspaceId: parsed.currentWorkspaceId ?? null,
-        workspaces: parsed.workspaces ?? {}
-      });
+      const parsed = readPersistedState(raw, EMPTY_STATE, PERSISTED_STATE_VALIDATORS);
+      this.persistedState = clonePersistedState(parsed);
     } catch {
       this.persistedState = clonePersistedState({
         currentWorkspaceId: EMPTY_STATE.currentWorkspaceId,
@@ -1554,10 +1572,8 @@ export class WorkspaceService extends EventEmitter {
 
   private handleBridgeRequest(payload: RequestPayload) {
     const threadId = this.getTimelinePayloadThreadId(payload.params);
-    const baseState =
-      threadId && this.getCachedTimelineState(threadId)
-        ? (this.getCachedTimelineState(threadId) as TimelineState)
-        : this.liveTimelineState;
+    const cachedState = threadId ? this.getCachedTimelineState(threadId) : null;
+    const baseState = cachedState ?? this.liveTimelineState;
     const nextState = applyBridgeRequest(baseState, payload, (candidateThreadId) =>
       threadId ? candidateThreadId === threadId : this.isCurrentThread(candidateThreadId)
     );
