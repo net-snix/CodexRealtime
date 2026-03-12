@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeProviderRuntimeNotification,
+  normalizeProviderRuntimeRequest
+} from "@codex-realtime/contracts";
+import {
   normalizeBridgeNotification,
   normalizeBridgeRequest,
   projectTurnRecord
@@ -213,6 +217,65 @@ describe("normalizeBridgeRequest", () => {
           })
         })
       ])
+    );
+  });
+});
+
+describe("provider runtime contracts", () => {
+  it("canonicalizes approval requests with replay metadata", () => {
+    const event = normalizeProviderRuntimeRequest({
+      id: "req-1",
+      method: "item/commandExecution/requestApproval",
+      params: {
+        threadId: "thread-1",
+        commandId: "cmd-1",
+        sourceEventId: "evt-1",
+        sourceSeq: 17,
+        command: "pnpm build",
+        cwd: "/tmp/work"
+      }
+    });
+
+    expect(event).toEqual(
+      expect.objectContaining({
+        kind: "approval.requested",
+        threadId: "thread-1",
+        commandId: "cmd-1",
+        sourceEventId: "evt-1",
+        sourceSeq: 17,
+        requestId: "req-1",
+        requestType: "command_execution_approval",
+        command: "pnpm build",
+        cwd: "/tmp/work"
+      })
+    );
+  });
+
+  it("canonicalizes tool notifications before timeline normalization", () => {
+    const event = normalizeProviderRuntimeNotification({
+      method: "tool.progress",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "tool-1",
+        createdAt: "2026-03-11T10:00:00.000Z",
+        sourceSeq: 23,
+        toolName: "read_file",
+        status: "running",
+        message: "Scanning workspace"
+      }
+    });
+
+    expect(event).toEqual(
+      expect.objectContaining({
+        kind: "tool.call",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "tool-1",
+        toolName: "read_file",
+        status: "in_progress",
+        sourceSeq: 23
+      })
     );
   });
 });

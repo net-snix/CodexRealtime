@@ -14,6 +14,10 @@
       "types": "./dist/ipc.d.ts",
       "import": "./dist/ipc.js"
     },
+    "./provider-runtime": {
+      "types": "./dist/provider-runtime.d.ts",
+      "import": "./dist/provider-runtime.js"
+    },
     "./shell-api": {
       "types": "./dist/shell-api.d.ts",
       "import": "./dist/shell-api.js"

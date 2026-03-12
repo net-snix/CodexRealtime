@@ -2,6 +2,7 @@ import type { ServerApi } from "./server-api";
 import type { ShellApi } from "./shell-api";
 
 export * from "./ipc";
+export * from "./provider-runtime";
 export type { ServerApi } from "./server-api";
 export type { ShellApi } from "./shell-api";
 
