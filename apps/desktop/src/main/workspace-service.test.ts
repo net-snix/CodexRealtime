@@ -323,6 +323,63 @@ describe("WorkspaceService", () => {
     expect(attachments).toEqual([]);
   });
 
+  it("rejects malformed pasted image base64 payloads", async () => {
+    const mkdirSync = vi.fn();
+    const writeFileSync = vi.fn();
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync,
+      readFileSync: vi.fn(() => JSON.stringify({ currentWorkspaceId: null, workspaces: {} })),
+      writeFileSync,
+      statSync: vi.fn(() => ({
+        isFile: () => true
+      })),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("node:crypto", () => ({
+      randomUUID: vi.fn(() => "uuid-123")
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn()
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const attachments = await service.addPastedImageAttachments([
+      {
+        name: "bad.png",
+        mimeType: "image/png",
+        dataBase64: "A===A==="
+      }
+    ]);
+
+    expect(mkdirSync).toHaveBeenCalledWith("/tmp/codex/worker-attachments/pasted", {
+      recursive: true
+    });
+    expect(writeFileSync).not.toHaveBeenCalled();
+    expect(attachments).toEqual([]);
+  });
+
   it("emits timeline updates for live bridge command events", async () => {
     vi.doMock("node:fs", () => ({
       mkdirSync: vi.fn(),
