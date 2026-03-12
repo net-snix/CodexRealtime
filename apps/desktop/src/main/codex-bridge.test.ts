@@ -71,6 +71,21 @@ describe("CodexBridge", () => {
     expect((bridge as unknown as { buffer: string }).buffer).toBe("");
   });
 
+  it("drops oversized stdout lines before JSON parse", () => {
+    const bridge = new CodexBridge({
+      maxStdoutBufferBytes: 64,
+      maxStdoutLineBytes: 10
+    });
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout(
+      `${"x".repeat(11)}\n`
+    );
+
+    expect(bridge.getState().error).toContain("Codex app-server sent oversized stdout line");
+    expect((bridge as unknown as { buffer: string }).buffer).toBe("");
+    expect((bridge as unknown as { bufferByteLength: number }).bufferByteLength).toBe(0);
+  });
+
   it("tracks remaining stdout buffer bytes after consuming complete lines", () => {
     const bridge = new CodexBridge({ maxStdoutBufferBytes: 8 });
 
