@@ -70,4 +70,38 @@ describe("VoicePreferencesService", () => {
       "utf8"
     );
   });
+
+  it("accepts only correctly typed persisted preference fields", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        selectedInputDeviceId: 42,
+        selectedOutputDeviceId: "speaker-1",
+        deviceHintDismissed: "yes",
+        deviceSetupComplete: true
+      })
+    );
+    const writeFileSync = vi.fn();
+    const mkdirSync = vi.fn();
+    const getPath = vi.fn(() => "/tmp/codex");
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync,
+      readFileSync,
+      writeFileSync
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath
+      }
+    }));
+
+    const { VoicePreferencesService } = await import("./voice-preferences-service");
+    const service = new VoicePreferencesService();
+    const preferences = service.getPreferences();
+
+    expect(preferences.selectedInputDeviceId).toBe("");
+    expect(preferences.selectedOutputDeviceId).toBe("speaker-1");
+    expect(preferences.deviceHintDismissed).toBe(false);
+    expect(preferences.deviceSetupComplete).toBe(true);
+  });
 });

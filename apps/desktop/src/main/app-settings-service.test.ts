@@ -96,4 +96,47 @@ describe("AppSettingsService", () => {
       "utf8"
     );
   });
+
+  it("ignores invalid persisted fields and keeps defaults", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        reduceMotion: "true",
+        density: "ultra-compact",
+        notifyOnErrors: false,
+        __proto__: {
+          polluted: true
+        }
+      })
+    );
+    const writeFileSync = vi.fn();
+    const mkdirSync = vi.fn();
+    const getPath = vi.fn(() => "/tmp/codex");
+    const getLoginItemSettings = vi.fn(() => ({ openAtLogin: false }));
+    const setLoginItemSettings = vi.fn();
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync,
+      readFileSync,
+      writeFileSync
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath,
+        getLoginItemSettings,
+        setLoginItemSettings
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+
+    const { AppSettingsService } = await import("./app-settings-service");
+    const service = new AppSettingsService();
+    const state = service.getSettingsState().settings;
+
+    expect(state.reduceMotion).toBe(false);
+    expect(state.density).toBe("comfortable");
+    expect(state.notifyOnErrors).toBe(false);
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
 });
