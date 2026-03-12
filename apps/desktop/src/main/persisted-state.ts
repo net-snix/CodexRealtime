@@ -14,13 +14,24 @@ export const readPersistedState = <T extends object>(
     ...defaults
   };
 
-  const parsed = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return nextState;
+  }
+
   if (!isRecord(parsed)) {
     return nextState;
   }
 
   for (const [key, validator] of Object.entries(validators) as [keyof T, ValidatorMap<T>[keyof T]][]) {
-    const parsedValue = parsed[String(key)];
+    const stringKey = String(key);
+    if (!Object.hasOwn(parsed, stringKey)) {
+      continue;
+    }
+
+    const parsedValue = parsed[stringKey];
     if (!validator || !validator(parsedValue)) {
       continue;
     }
