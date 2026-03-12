@@ -1,11 +1,11 @@
-# Plan: Voice-Agent T3code Redesign
+# Plan: Voice-Agent Redesign
 
 **Generated**: 2026-03-12
 
 ## Overview
-Rebuild CodexRealtime toward the `t3code` shape while keeping voice agent as the product center: thin desktop shell, local server as source of truth, schema-first contracts, durable thread/session state, event/projection core, and a renderer that consumes one transport API instead of talking to Electron internals directly.
+Rebuild CodexRealtime toward a desktop shell + local server shape while keeping voice agent as the product center: thin desktop shell, local server as source of truth, schema-first contracts, durable thread/session state, event/projection core, and a renderer that consumes one transport API instead of talking to Electron internals directly.
 
-Assumption used for this plan: target shape is `desktop shell + local server`, not a pure web app and not the current single-app Electron architecture. This matches the `t3code` baseline best while preserving native mic/audio control as the differentiator.
+Assumption used for this plan: target shape is `desktop shell + local server`, not a pure web app and not the current single-app Electron architecture. This keeps native mic/audio control as the differentiator while moving orchestration and state to the server boundary.
 
 Hard-cut policy for this redesign:
 - Prefer one canonical new path.
@@ -24,10 +24,10 @@ Hard-cut policy for this redesign:
 - Main process owns too much orchestration today: workspace loading, Codex bridge, realtime session flow, approvals, timeline shaping.
 - Renderer voice hook (`use-realtime-voice`) mixes mic control, transport, heuristics, and UI state.
 - Shared contracts exist, but not as a hard runtime-validated boundary.
-- `t3code` already has the split we want: `apps/server`, `apps/web`, `apps/desktop`, `packages/contracts`, `packages/shared`, durable provider sessions, canonical runtime events, and a replayable WS transport.
+- The target split is `apps/server`, `apps/web`, `apps/desktop`, `packages/contracts`, `packages/shared`, durable provider sessions, canonical runtime events, and a replayable WS transport.
 
 ## Prerequisites
-- Create a dedicated branch before starting. Suggested name: `codex/t3code-voice-redesign`.
+- Create a dedicated branch before starting. Suggested name: `codex/voice-agent-redesign`.
 - Keep a short ADR in the repo for the target shape and cutover rules before implementation begins.
 - Decide one canonical persistence root for local server state, thread sessions, and logs.
 - Use runtime-validated contracts for all new cross-process or cross-app boundaries.
@@ -51,11 +51,11 @@ T0 ── T1 ──┬── T2 ──┬── T2.1 ──┐
 ### T0: Create Redesign Branch And ADR
 - **depends_on**: []
 - **location**: `/Users/espenmac/Code/CodexRealtime`, `/Users/espenmac/Code/CodexRealtime/docs` or `/Users/espenmac/Code/CodexRealtime/README.md`
-- **description**: Create a new branch for the redesign, for example `codex/t3code-voice-redesign`. Add a short architecture note that locks the target shape: desktop shell, local server, canonical contracts, hard-cut migration, voice agent first-class. The ADR should also name the persistence root, storage versioning policy, single-writer rule (`apps/server` only), and cutover/delete-old-path rules. This prevents drifting back into incremental patches on the current main/preload/renderer coupling.
+- **description**: Create a new branch for the redesign, for example `codex/voice-agent-redesign`. Add a short architecture note that locks the target shape: desktop shell, local server, canonical contracts, hard-cut migration, voice agent first-class. The ADR should also name the persistence root, storage versioning policy, single-writer rule (`apps/server` only), and cutover/delete-old-path rules. This prevents drifting back into incremental patches on the current main/preload/renderer coupling.
 - **validation**: `git branch --show-current` shows the new branch; ADR or architecture note exists and names the cutover rules, voice-agent scope, persistence root, schema/versioning approach, and single-writer ownership.
 - **status**: Completed
-- **log**: Created branch `codex/t3code-voice-redesign`. Added ADR capturing target architecture, single-writer persistence rule, migration order, and hard-cut deletion policy.
-- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/docs/architecture/voice-agent-t3code-redesign.md`
+- **log**: Created branch `codex/voice-agent-redesign`. Added ADR capturing target architecture, single-writer persistence rule, migration order, and hard-cut deletion policy.
+- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/docs/architecture/voice-agent-redesign.md`
 
 ### T1: Split Shared Boundary Into Real Contracts Package
 - **depends_on**: [T0]
@@ -73,7 +73,7 @@ T0 ── T1 ──┬── T2 ──┬── T2.1 ──┐
 - **validation**: Local server starts independently with a health/readiness handshake; `apps/server` builds and tests independently; desktop launcher/supervisor wiring remains deferred to T2.1.
 - **status**: Completed
 - **log**: Created standalone `@codex-realtime/server` workspace package with an independent entrypoint, health/ready HTTP handshake, and injectable container/logger/session store skeleton. Added RED->GREEN server tests and kept desktop bootstrap changes deferred to T2.1.
-- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/apps/server/package.json`, `/Users/espenmac/Code/CodexRealtime/apps/server/tsconfig.json`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/index.ts`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/server.ts`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/server.test.ts`, `/Users/espenmac/Code/CodexRealtime/voice-agent-t3code-redesign-plan.md`
+- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/apps/server/package.json`, `/Users/espenmac/Code/CodexRealtime/apps/server/tsconfig.json`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/index.ts`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/server.ts`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/server.test.ts`, `/Users/espenmac/Code/CodexRealtime/voice-agent-redesign-plan.md`
 
 ### T2.1: Add Desktop Bootstrap, Packaging, And Server Supervision
 - **depends_on**: [T2]
@@ -132,7 +132,7 @@ T0 ── T1 ──┬── T2 ──┬── T2.1 ──┐
 ### T7: Rebuild Renderer State Around Transported Read Models
 - **depends_on**: [T3, T5, T6, T6.1]
 - **location**: `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/renderer`
-- **description**: Slim the renderer down to route/view/state concerns. Adopt a `t3code`-style store boundary and, if useful, TanStack Router/Query for screen state and async cache management. The renderer should subscribe to projected backend read models for workspace/project/thread/archive/session/account/features state, while consuming shell-owned settings and device state only through `ShellApi`.
+- **description**: Slim the renderer down to route/view/state concerns. Adopt a server-owned store boundary and, if useful, TanStack Router/Query for screen state and async cache management. The renderer should subscribe to projected backend read models for workspace/project/thread/archive/session/account/features state, while consuming shell-owned settings and device state only through `ShellApi`.
 - **validation**: `App.tsx` no longer acts as a god object; thread/session/workspace/archive views load from backend read models; shell-native prefs and device state arrive only through `ShellApi`; renderer reload does not create a new implicit source of truth.
 - **status**: Not Completed
 - **log**:
