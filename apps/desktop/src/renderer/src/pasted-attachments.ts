@@ -20,6 +20,17 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/tiff": ".tiff"
 };
 const CONTROL_PATH_CHARS = /[\u0000-\u001f\u007f]/;
+const MAX_LOCAL_PATH_LENGTH = 4096;
+
+const sanitizeLocalPath = (value: string) => {
+  if (!value || CONTROL_PATH_CHARS.test(value) || value.length > MAX_LOCAL_PATH_LENGTH) {
+    return null;
+  }
+
+  return value;
+};
+
+const isImageMimeType = (mimeType: string) => mimeType.trim().toLowerCase().startsWith("image/");
 
 const normalizeFileUrlPath = (value: string) => {
   try {
@@ -30,7 +41,8 @@ const normalizeFileUrlPath = (value: string) => {
     }
 
     const pathname = decodeURIComponent(url.pathname);
-    return /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname;
+    const normalizedPath = /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname;
+    return sanitizeLocalPath(normalizedPath);
   } catch {
     return null;
   }
@@ -52,7 +64,7 @@ const normalizeLocalPath = (value: string) => {
   }
 
   if (trimmedValue.startsWith("/") || /^[A-Za-z]:[\\/]/.test(trimmedValue)) {
-    return trimmedValue;
+    return sanitizeLocalPath(trimmedValue);
   }
 
   return null;
@@ -106,9 +118,7 @@ const toPastedImageAttachment = async (
   file: File,
   fallbackIndex: number
 ): Promise<PastedImageAttachment | null> => {
-  const mimeType = file.type.trim().toLowerCase();
-
-  if (!mimeType.startsWith("image/")) {
+  if (!isImageMimeType(file.type)) {
     return null;
   }
 
@@ -118,6 +128,7 @@ const toPastedImageAttachment = async (
     return null;
   }
 
+  const mimeType = file.type.trim().toLowerCase();
   const fallbackExtension = IMAGE_EXTENSIONS[mimeType] ?? ".png";
   const name = file.name?.trim() || `pasted-image-${fallbackIndex + 1}${fallbackExtension}`;
 
@@ -176,10 +187,12 @@ export const hasPastedAttachmentCandidates = (clipboardData: DataTransfer | null
     return true;
   }
 
-  const files = getClipboardFiles(clipboardData);
-  return files.some((file) => {
-    const filePath = getClipboardFilePath(file);
-    return Boolean(filePath) || file.type.trim().toLowerCase().startsWith("image/");
+  const fileEntries = getClipboardFiles(clipboardData).map((file) => ({
+    file,
+    filePath: getClipboardFilePath(file)
+  }));
+  return fileEntries.some(({ file, filePath }) => {
+    return Boolean(filePath) || isImageMimeType(file.type);
   });
 };
 
@@ -193,12 +206,13 @@ export const readPastedAttachments = async (
     };
   }
 
-  const files = getClipboardFiles(clipboardData);
+  const fileEntries = getClipboardFiles(clipboardData).map((file) => ({
+    file,
+    filePath: getClipboardFilePath(file)
+  }));
   const paths = new Set<string>();
 
-  for (const file of files) {
-    const filePath = getClipboardFilePath(file);
-
+  for (const { filePath } of fileEntries) {
     if (filePath) {
       paths.add(filePath);
     }
@@ -214,9 +228,9 @@ export const readPastedAttachments = async (
     paths.add(path);
   }
 
-  const imageFiles = files.filter(
-    (file) => !getClipboardFilePath(file) && file.type.trim().toLowerCase().startsWith("image/")
-  );
+  const imageFiles = fileEntries
+    .filter(({ file, filePath }) => !filePath && isImageMimeType(file.type))
+    .map(({ file }) => file);
   const images = (
     await Promise.all(imageFiles.map((file, index) => toPastedImageAttachment(file, index)))
   ).filter((image): image is PastedImageAttachment => Boolean(image));
