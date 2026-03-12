@@ -3,7 +3,8 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NativeApi, RealtimeState, VoicePreferences } from "@shared";
+import type { RealtimeState, VoicePreferences } from "@shared";
+import type { NativeApi } from "./native-api";
 import { useRealtimeVoice } from "./use-realtime-voice";
 
 const realtimeState: RealtimeState = {
