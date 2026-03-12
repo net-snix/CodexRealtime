@@ -72,4 +72,27 @@ describe("pasted attachments", () => {
       images: []
     });
   });
+
+  it("rejects clipboard file paths with control characters", async () => {
+    const clipboardData = createClipboardStub({
+      files: [{ path: "/tmp/evil\u0000name.png", type: "" }]
+    });
+
+    expect(hasPastedAttachmentCandidates(clipboardData)).toBe(false);
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: []
+    });
+  });
+
+  it("normalizes file URL clipboard file paths", async () => {
+    const clipboardData = createClipboardStub({
+      files: [{ path: "file:///tmp/photo.png", type: "" }]
+    });
+
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: ["/tmp/photo.png"],
+      images: []
+    });
+  });
 });
