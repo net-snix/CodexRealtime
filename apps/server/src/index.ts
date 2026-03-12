@@ -1,13 +1,31 @@
+import { createStructuredLogger } from "./logging.js";
 import { createServerApp, createServerContainer } from "./server.js";
 
 interface ProcessLike {
   env?: Record<string, string | undefined>;
   pid?: number;
   exitCode?: number;
+  stderr?: {
+    write(chunk: string): void;
+  };
   on?: (eventName: string, listener: () => void) => void;
 }
 
 const processLike = (globalThis as { process?: ProcessLike }).process;
+const bootstrapId = processLike?.env?.CODEX_REALTIME_BOOTSTRAP_ID ?? null;
+const logFilePath = processLike?.env?.CODEX_REALTIME_SERVER_LOG_PATH ?? null;
+const appVersion = "0.1.0";
+const serverLogger = createStructuredLogger("bootstrap", {
+  bootstrapId,
+  logFilePath,
+  baseFields: {
+    pid: processLike?.pid ?? null,
+    appVersion
+  },
+  writeLine: (line: string) => {
+    processLike?.stderr?.write(`${line}\n`);
+  }
+});
 
 const parsePort = (rawPort: string | undefined) => {
   if (!rawPort) {
@@ -23,7 +41,19 @@ const parsePort = (rawPort: string | undefined) => {
 };
 
 const server = createServerApp({
-  container: createServerContainer(),
+  container: createServerContainer({
+    logger: createStructuredLogger("lifecycle", {
+      bootstrapId,
+      logFilePath,
+      baseFields: {
+        appVersion
+      },
+      writeLine: (line: string) => {
+        processLike?.stderr?.write(`${line}\n`);
+      }
+    }),
+    appVersion
+  }),
   host: processLike?.env?.CODEX_REALTIME_SERVER_HOST ?? "127.0.0.1",
   port: parsePort(processLike?.env?.CODEX_REALTIME_SERVER_PORT)
 });
@@ -38,9 +68,10 @@ const shutdown = async () => {
   shuttingDown = true;
 
   try {
+    serverLogger.info("Local server shutdown requested");
     await server.stop();
   } catch (error) {
-    console.error("Failed to stop local server cleanly", error);
+    serverLogger.error("Failed to stop local server cleanly", { error });
     if (processLike) {
       processLike.exitCode = 1;
     }
@@ -56,7 +87,15 @@ processLike?.on?.("SIGTERM", () => {
 });
 
 try {
+  serverLogger.info("Local server bootstrap starting", {
+    host: processLike?.env?.CODEX_REALTIME_SERVER_HOST ?? "127.0.0.1",
+    port: parsePort(processLike?.env?.CODEX_REALTIME_SERVER_PORT)
+  });
   const handshake = await server.start();
+  serverLogger.info("Local server handshake emitted", {
+    baseUrl: handshake.baseUrl,
+    healthUrl: handshake.healthUrl
+  });
 
   console.log(
     JSON.stringify({
@@ -66,7 +105,7 @@ try {
     })
   );
 } catch (error) {
-  console.error("Failed to start local server", error);
+  serverLogger.error("Failed to start local server", { error });
   if (processLike) {
     processLike.exitCode = 1;
   }

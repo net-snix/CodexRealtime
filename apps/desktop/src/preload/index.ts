@@ -63,5 +63,4 @@ const nativeApi: NativeApi = {
   },
 };
 
-contextBridge.exposeInMainWorld("appBridge", nativeApi);
 contextBridge.exposeInMainWorld("nativeApi", nativeApi);

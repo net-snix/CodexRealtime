@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./structured-log": {
+      "types": "./dist/structured-log.d.ts",
+      "import": "./dist/structured-log.js"
     }
   },
   "scripts": {

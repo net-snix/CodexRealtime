@@ -114,6 +114,49 @@ describe("validateLocalServerHandshake", () => {
 });
 
 describe("LocalServerProcess", () => {
+  it("passes bootstrap diagnostics through the child environment", async () => {
+    const child = new FakeChildProcess();
+    const spawnCalls: Array<{
+      command: string;
+      args: readonly string[];
+      options: Record<string, unknown>;
+    }> = [];
+    const spawnProcess = ((command: string, args?: readonly string[], options?: object) => {
+      spawnCalls.push({
+        command,
+        args: [...(args ?? [])],
+        options: (options ?? {}) as Record<string, unknown>
+      });
+      return asChildProcess(child);
+    }) as LocalServerProcessOptions["spawnProcess"];
+    const process = new LocalServerProcess({
+      entryOverride: "/tmp/server.js",
+      bootstrapId: "boot-123",
+      serverLogFilePath: "/tmp/server-bootstrap.ndjson",
+      expectedVersion: "0.1.0",
+      pathExists: () => true,
+      spawnProcess
+    }, createSilentLogger());
+
+    const startPromise = process.start();
+    child.stdout.write(`${JSON.stringify(createHandshake())}\n`);
+    await expect(startPromise).resolves.toEqual(createHandshake());
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0]).toEqual(
+      expect.objectContaining({
+        command: globalThis.process.execPath,
+        args: ["/tmp/server.js"],
+        options: expect.objectContaining({
+          env: expect.objectContaining({
+            CODEX_REALTIME_BOOTSTRAP_ID: "boot-123",
+            CODEX_REALTIME_SERVER_LOG_PATH: "/tmp/server-bootstrap.ndjson"
+          })
+        })
+      })
+    );
+  });
+
   it("fails when the readiness handshake times out", async () => {
     vi.useFakeTimers();
     const child = new FakeChildProcess();

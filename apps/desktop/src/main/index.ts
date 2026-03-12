@@ -1,5 +1,7 @@
 import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { createStructuredLogger } from "@codex-realtime/shared/structured-log";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
 import { LocalServerProcess } from "./local-server-process";
@@ -10,13 +12,34 @@ const userDataOverride = process.env.CODEX_REALTIME_USER_DATA_DIR;
 const HELPER_CLEANUP_INTERVAL_MS = 45_000;
 const HELPER_CLEANUP_MIN_AGE_SECONDS = 45;
 
+if (userDataOverride) {
+  app.setPath("userData", userDataOverride);
+}
+
 let helperCleanupInterval: NodeJS.Timeout | null = null;
 let isQuitting = false;
+const bootstrapId = randomUUID();
+const logDirectory = join(app.getPath("userData"), "logs");
+const desktopBootstrapLogPath = join(logDirectory, "desktop-bootstrap.ndjson");
+const serverBootstrapLogPath = join(logDirectory, "server-bootstrap.ndjson");
+const bootstrapLogger = createStructuredLogger({
+  source: "desktop",
+  scope: "bootstrap",
+  logFilePath: desktopBootstrapLogPath,
+  baseContext: {
+    correlationId: bootstrapId,
+    appVersion: app.getVersion()
+  }
+});
+const localServerLogger = bootstrapLogger.child("local-server");
+const shutdownLogger = bootstrapLogger.child("shutdown");
 
 const localServerProcess = new LocalServerProcess({
+  bootstrapId,
+  serverLogFilePath: serverBootstrapLogPath,
   expectedVersion: app.getVersion(),
   onUnexpectedExit: ({ code, signal, expectedVersion, handshake }) => {
-    console.error("Local server crashed after startup", {
+    bootstrapLogger.error("Local server crashed after startup", {
       code,
       signal,
       expectedVersion,
@@ -28,11 +51,7 @@ const localServerProcess = new LocalServerProcess({
       app.exit(1);
     }
   }
-});
-
-if (userDataOverride) {
-  app.setPath("userData", userDataOverride);
-}
+}, localServerLogger);
 
 const installApplicationMenu = () => {
   const fileMenu: MenuItemConstructorOptions = {
@@ -215,14 +234,22 @@ const createMainWindow = () => {
 };
 
 const stopBridgeWork = async () => {
+  shutdownLogger.info("Desktop shutdown starting");
+
   try {
     await realtimeService.stop();
   } catch {
     // Ignore shutdown races from idle sessions.
   }
 
-  await localServerProcess.stop();
-  await codexBridge.stop();
+  try {
+    await localServerProcess.stop();
+    await codexBridge.stop();
+    shutdownLogger.info("Desktop shutdown completed");
+  } catch (error) {
+    shutdownLogger.error("Desktop shutdown failed", { error });
+    throw error;
+  }
 };
 
 const maybeCleanupIdleHelpers = async () => {
@@ -248,10 +275,14 @@ const maybeCleanupIdleHelpers = async () => {
 app.whenReady()
   .then(async () => {
     installApplicationMenu();
+    bootstrapLogger.info("Desktop bootstrap starting", {
+      userDataPath: app.getPath("userData")
+    });
     await localServerProcess.start();
     registerIpcHandlers();
     await workspaceService.restoreLastWorkspace();
     createMainWindow();
+    bootstrapLogger.info("Desktop bootstrap completed");
     helperCleanupInterval = setInterval(() => {
       void maybeCleanupIdleHelpers();
     }, HELPER_CLEANUP_INTERVAL_MS);
@@ -263,7 +294,7 @@ app.whenReady()
     });
   })
   .catch((error) => {
-    console.error("Failed to bootstrap desktop services", error);
+    bootstrapLogger.error("Failed to bootstrap desktop services", { error });
     app.exit(1);
   });
 
@@ -281,6 +312,7 @@ app.on("before-quit", (event) => {
   }
 
   isQuitting = true;
+  shutdownLogger.info("Desktop quit requested");
   event.preventDefault();
 
   if (helperCleanupInterval) {

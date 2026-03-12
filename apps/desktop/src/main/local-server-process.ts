@@ -24,11 +24,16 @@ export interface LocalServerProcessOptions {
   spawnProcess?: typeof spawn;
   pathExists?: (path: string) => boolean;
   mainDirectory?: string;
+  bootstrapId?: string;
+  serverLogFilePath?: string;
   expectedVersion?: string;
   onUnexpectedExit?: (event: LocalServerUnexpectedExit) => void;
 }
 
-type Logger = Pick<Console, "info" | "error">;
+type Logger = {
+  info(message: string, fields?: object): void;
+  error(message: string, fields?: object): void;
+};
 type LocalServerChild = ChildProcessByStdio<null, Readable, Readable>;
 
 export interface LocalServerUnexpectedExit {
@@ -137,6 +142,8 @@ export class LocalServerProcess {
   private readonly spawnProcess: typeof spawn;
   private readonly pathExists: (path: string) => boolean;
   private readonly mainDirectory: string | undefined;
+  private readonly bootstrapId: string | undefined;
+  private readonly serverLogFilePath: string | undefined;
   private readonly expectedVersion: string | undefined;
   private readonly onUnexpectedExit: ((event: LocalServerUnexpectedExit) => void) | undefined;
   private readonly logger: Logger;
@@ -150,6 +157,8 @@ export class LocalServerProcess {
     this.spawnProcess = options.spawnProcess ?? spawn;
     this.pathExists = options.pathExists ?? existsSync;
     this.mainDirectory = options.mainDirectory;
+    this.bootstrapId = options.bootstrapId;
+    this.serverLogFilePath = options.serverLogFilePath;
     this.expectedVersion = options.expectedVersion;
     this.onUnexpectedExit = options.onUnexpectedExit;
     this.logger = logger;
@@ -174,11 +183,19 @@ export class LocalServerProcess {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
+        CODEX_REALTIME_BOOTSTRAP_ID: this.bootstrapId,
+        CODEX_REALTIME_SERVER_LOG_PATH: this.serverLogFilePath,
         CODEX_REALTIME_SERVER_HOST: this.host,
         CODEX_REALTIME_SERVER_PORT: String(this.port)
       }
     });
 
+    this.logger.info("Starting local server process", {
+      entryPath,
+      host: this.host,
+      requestedPort: this.port,
+      expectedVersion: this.expectedVersion ?? null
+    });
     this.child = child;
     this.isStopping = false;
     this.attachUnexpectedExitHandler(child, entryPath);
@@ -198,6 +215,7 @@ export class LocalServerProcess {
     this.handshake = handshake;
     this.logger.info("Local server process ready", {
       pid: child.pid ?? null,
+      entryPath,
       baseUrl: handshake.baseUrl,
       healthUrl: handshake.healthUrl
     });
@@ -215,6 +233,10 @@ export class LocalServerProcess {
       this.isStopping = false;
       return;
     }
+
+    this.logger.info("Stopping local server process", {
+      pid: child.pid ?? null
+    });
 
     await new Promise<void>((resolveStop) => {
       const timeoutId = setTimeout(() => {
@@ -264,7 +286,6 @@ export class LocalServerProcess {
       let stdoutBuffer = "";
       let stderrBuffer = "";
       let settled = false;
-      let timeoutId: NodeJS.Timeout;
 
       const handleStdoutData = (chunk: Buffer | string) => {
         stdoutBuffer += chunk.toString();
@@ -287,7 +308,7 @@ export class LocalServerProcess {
       const handleStderrData = (chunk: Buffer | string) => {
         const message = chunk.toString();
         stderrBuffer += message;
-        this.logger.error("Local server stderr", { message });
+        process.stderr.write(message);
       };
 
       const handleError = (error: Error) => {
@@ -324,7 +345,7 @@ export class LocalServerProcess {
         callback();
       };
 
-      timeoutId = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         settle(() => {
           child.kill("SIGKILL");
           rejectHandshake(

@@ -12,6 +12,6 @@
     "src/main",
     "src/preload",
     "e2e",
-    "../../packages/shared/src"
+    "../../packages/shared/src/index.ts"
   ]
 }

@@ -4,8 +4,6 @@ export type { NativeApi } from "./native-api.js";
 export type { ServerApi } from "./server-api.js";
 export type { ShellApi } from "./shell-api.js";
 
-export type AppBridge = import("./native-api.js").NativeApi;
-
 export interface AppInfo {
   name: string;
   version: string;

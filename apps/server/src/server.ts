@@ -1,3 +1,5 @@
+import { createStructuredLogger } from "./logging.js";
+
 export const DEFAULT_SERVER_PROTOCOL = "codex-realtime.local-server.v1";
 export const DEFAULT_SERVER_HOST = "127.0.0.1";
 export const DEFAULT_SERVER_PORT = 0;
@@ -69,24 +71,14 @@ type CreateHttpServer = (
   listener: (request: HttpRequestLike, response: HttpResponseLike) => void
 ) => HttpServerLike;
 
-const defaultLogger: ServerLogger = {
-  info(message, fields) {
-    if (fields) {
-      console.info(message, fields);
-      return;
-    }
-
-    console.info(message);
+const defaultLogger = createStructuredLogger("lifecycle", {
+  baseFields: {
+    appVersion: "0.1.0"
   },
-  error(message, fields) {
-    if (fields) {
-      console.error(message, fields);
-      return;
-    }
-
-    console.error(message);
+  writeLine: (line: string) => {
+    process.stderr.write(`${line}\n`);
   }
-};
+});
 
 const importHttpModule = async () => {
   const moduleId = "node:http";
@@ -200,7 +192,11 @@ export const createServerApp = (options: CreateServerAppOptions = {}): ServerApp
     startedAt = container.clock().toISOString();
 
     const handshake = createHandshake();
-    container.logger.info("Local server ready", handshake);
+    container.logger.info("Local server ready", {
+      host,
+      requestedPort,
+      ...handshake
+    });
     return handshake;
   };
 
@@ -227,7 +223,8 @@ export const createServerApp = (options: CreateServerAppOptions = {}): ServerApp
     startedAt = null;
     container.logger.info("Local server stopped", {
       name: container.appName,
-      version: container.appVersion
+      version: container.appVersion,
+      host
     });
   };
 
