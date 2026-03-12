@@ -6,8 +6,15 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @codex-realtime/contracts build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "pnpm run build && node dist/server.test.js",
     "start": "pnpm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@codex-realtime/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

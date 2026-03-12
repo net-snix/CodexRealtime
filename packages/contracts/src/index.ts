@@ -1,10 +1,10 @@
-import type { ServerApi } from "./server-api";
-import type { ShellApi } from "./shell-api";
+import type { ServerApi } from "./server-api.js";
+import type { ShellApi } from "./shell-api.js";
 
-export * from "./ipc";
-export * from "./provider-runtime";
-export type { ServerApi } from "./server-api";
-export type { ShellApi } from "./shell-api";
+export * from "./ipc.js";
+export * from "./provider-runtime.js";
+export type { ServerApi } from "./server-api.js";
+export type { ShellApi } from "./shell-api.js";
 
 export type AppBridge = ShellApi & ServerApi;
 

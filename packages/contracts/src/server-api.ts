@@ -13,7 +13,7 @@ import type {
   WorkerExecutionSettings,
   WorkerSettingsState,
   WorkspaceState,
-} from "./index";
+} from "./index.js";
 
 export interface ServerApi {
   getSessionState: () => Promise<SessionState>;

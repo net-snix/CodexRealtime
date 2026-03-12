@@ -80,9 +80,9 @@ T0 ── T1 ──┬── T2 ──┬── T2.1 ──┐
 - **location**: `/Users/espenmac/Code/CodexRealtime/apps/desktop`, `/Users/espenmac/Code/CodexRealtime/apps/server`, `/Users/espenmac/Code/CodexRealtime/package.json`
 - **description**: Define how desktop launches, packages, supervises, and reconnects to `apps/server` in both dev and production. Cover path resolution, readiness timeout, crash policy, restart behavior, shutdown ordering, log capture, and version-mismatch handling between shell and server.
 - **validation**: Desktop can launch and stop the local server in dev and packaged builds; readiness timeout and crash policy are tested; shell/server version mismatch behavior is explicit and observable.
-- **status**: Not Completed
-- **log**:
-- **files edited/created**:
+- **status**: Completed
+- **log**: Added desktop local-server bootstrap and shutdown wiring, plus a dedicated `LocalServerProcess` supervisor that resolves the dev vs packaged entry path, waits for the readiness handshake, fails fast on shell/server version mismatch, and surfaces post-ready crashes explicitly instead of letting the shell limp on. Updated root build/dev scripts to compile and bundle `apps/server` into the desktop output, added tests for entry resolution, startup timeout, version mismatch, and unexpected post-ready exit, and normalized contracts ESM export paths so the packaged server process resolves cleanly under NodeNext.
+- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/package.json`, `/Users/espenmac/Code/CodexRealtime/apps/server/package.json`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/index.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/local-server-process.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/local-server-process.test.ts`, `/Users/espenmac/Code/CodexRealtime/scripts/copy-local-server.mjs`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/index.ts`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/server-api.ts`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/shell-api.ts`
 
 ### T3: Define NativeApi And Transport Abstraction
 - **depends_on**: [T1, T2]

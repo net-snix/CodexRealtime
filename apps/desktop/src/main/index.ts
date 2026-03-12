@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from
 import { join } from "node:path";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
+import { LocalServerProcess } from "./local-server-process";
 import { realtimeService } from "./realtime-service";
 import { workspaceService } from "./workspace-service";
 
@@ -11,6 +12,23 @@ const HELPER_CLEANUP_MIN_AGE_SECONDS = 45;
 
 let helperCleanupInterval: NodeJS.Timeout | null = null;
 let isQuitting = false;
+
+const localServerProcess = new LocalServerProcess({
+  expectedVersion: app.getVersion(),
+  onUnexpectedExit: ({ code, signal, expectedVersion, handshake }) => {
+    console.error("Local server crashed after startup", {
+      code,
+      signal,
+      expectedVersion,
+      actualVersion: handshake?.version ?? null,
+      baseUrl: handshake?.baseUrl ?? null
+    });
+
+    if (!isQuitting) {
+      app.exit(1);
+    }
+  }
+});
 
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
@@ -203,6 +221,7 @@ const stopBridgeWork = async () => {
     // Ignore shutdown races from idle sessions.
   }
 
+  await localServerProcess.stop();
   await codexBridge.stop();
 };
 
@@ -226,21 +245,27 @@ const maybeCleanupIdleHelpers = async () => {
   });
 };
 
-app.whenReady().then(async () => {
-  installApplicationMenu();
-  registerIpcHandlers();
-  await workspaceService.restoreLastWorkspace();
-  createMainWindow();
-  helperCleanupInterval = setInterval(() => {
-    void maybeCleanupIdleHelpers();
-  }, HELPER_CLEANUP_INTERVAL_MS);
+app.whenReady()
+  .then(async () => {
+    installApplicationMenu();
+    await localServerProcess.start();
+    registerIpcHandlers();
+    await workspaceService.restoreLastWorkspace();
+    createMainWindow();
+    helperCleanupInterval = setInterval(() => {
+      void maybeCleanupIdleHelpers();
+    }, HELPER_CLEANUP_INTERVAL_MS);
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to bootstrap desktop services", error);
+    app.exit(1);
   });
-});
 
 app.on("window-all-closed", () => {
   void stopBridgeWork();

@@ -6,7 +6,7 @@ import type {
   VoicePreferences,
   WorkerAttachment,
   WorkspaceState,
-} from "./index";
+} from "./index.js";
 
 export interface ShellApi {
   getAppInfo: () => Promise<AppInfo>;
