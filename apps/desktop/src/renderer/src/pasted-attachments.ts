@@ -89,7 +89,11 @@ const collectTextPaths = (value: string) => {
 
 const getClipboardFilePath = (file: File | null) => {
   const path = file && "path" in file ? (file as FileWithPath).path : null;
-  return typeof path === "string" && path.trim() ? path : null;
+  if (typeof path !== "string") {
+    return null;
+  }
+
+  return normalizeLocalPath(path);
 };
 
 const getClipboardFileIdentity = (file: File) => {
@@ -172,6 +176,12 @@ const getClipboardFiles = (clipboardData: DataTransfer) => {
   return files;
 };
 
+const getClipboardFileEntries = (clipboardData: DataTransfer) =>
+  getClipboardFiles(clipboardData).map((file) => ({
+    file,
+    filePath: getClipboardFilePath(file)
+  }));
+
 export const hasPastedAttachmentCandidates = (clipboardData: DataTransfer | null) => {
   if (!clipboardData) {
     return false;
@@ -187,10 +197,7 @@ export const hasPastedAttachmentCandidates = (clipboardData: DataTransfer | null
     return true;
   }
 
-  const fileEntries = getClipboardFiles(clipboardData).map((file) => ({
-    file,
-    filePath: getClipboardFilePath(file)
-  }));
+  const fileEntries = getClipboardFileEntries(clipboardData);
   return fileEntries.some(({ file, filePath }) => {
     return Boolean(filePath) || isImageMimeType(file.type);
   });
@@ -206,10 +213,7 @@ export const readPastedAttachments = async (
     };
   }
 
-  const fileEntries = getClipboardFiles(clipboardData).map((file) => ({
-    file,
-    filePath: getClipboardFilePath(file)
-  }));
+  const fileEntries = getClipboardFileEntries(clipboardData);
   const paths = new Set<string>();
 
   for (const { filePath } of fileEntries) {
