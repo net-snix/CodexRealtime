@@ -55,6 +55,7 @@ describe("useRealtimeVoice", () => {
     onaudioprocess: ((event: MockAudioProcessEvent) => void) | null;
   } | null = null;
   let trackStop: ReturnType<typeof vi.fn>;
+  let createBuffer: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -63,6 +64,13 @@ describe("useRealtimeVoice", () => {
     appendRealtimeAudio = vi
       .fn<(chunk: unknown) => Promise<void>>()
       .mockResolvedValue(undefined);
+    createBuffer = vi.fn(
+      () =>
+        ({
+          copyToChannel: vi.fn(),
+          duration: 0.01
+        }) as unknown as AudioBuffer
+    );
     trackStop = vi.fn();
     getUserMedia = vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
       getTracks: () => [{ stop: trackStop }]
@@ -89,6 +97,7 @@ describe("useRealtimeVoice", () => {
       sampleRate = 24_000;
       state: AudioContextState = "running";
       destination = {} as AudioDestinationNode;
+      currentTime = 0;
 
       createMediaStreamSource() {
         return sourceNode as unknown as MediaStreamAudioSourceNode;
@@ -103,6 +112,24 @@ describe("useRealtimeVoice", () => {
         return lastProcessor as unknown as ScriptProcessorNode;
       }
 
+      createMediaStreamDestination() {
+        return {
+          stream: {} as MediaStream
+        } as MediaStreamAudioDestinationNode;
+      }
+
+      createBuffer = createBuffer;
+
+      createBufferSource() {
+        return {
+          connect: vi.fn(),
+          start: vi.fn(),
+          buffer: null as AudioBuffer | null
+        } as unknown as AudioBufferSourceNode;
+      }
+
+      resume = vi.fn(async () => undefined);
+
       close = vi.fn(async () => {
         this.state = "closed";
       });
@@ -111,6 +138,15 @@ describe("useRealtimeVoice", () => {
     Object.defineProperty(globalThis, "AudioContext", {
       configurable: true,
       value: MockAudioContext
+    });
+    Object.defineProperty(globalThis, "Audio", {
+      configurable: true,
+      value: class MockAudioElement {
+        autoplay = false;
+        srcObject: MediaStream | null = null;
+        play = vi.fn(async () => undefined);
+        pause = vi.fn();
+      }
     });
 
     Object.defineProperty(window, "appBridge", {
@@ -335,5 +371,32 @@ describe("useRealtimeVoice", () => {
         text: "hello\nworld"
       })
     ]);
+  });
+
+  it("ignores malformed realtime audio chunks", async () => {
+    await act(async () => {
+      root?.render(<Harness />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(realtimeEventHandler).not.toBeNull();
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "audio",
+        audio: {
+          data: btoa("\u0001\u0002"),
+          sampleRate: 24_000,
+          numChannels: 99,
+          samplesPerChannel: 1
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(createBuffer).not.toHaveBeenCalled();
+    expect(latestHook?.voiceState).toBe("idle");
   });
 });
