@@ -126,6 +126,8 @@ const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
   "image/tiff": ".tiff"
 };
 const MAX_PASTED_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PASTED_IMAGE_BASE64_LENGTH = Math.ceil(MAX_PASTED_IMAGE_BYTES / 3) * 4;
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 const now = () => new Date().toISOString();
 
@@ -1459,7 +1461,11 @@ export class WorkspaceService extends EventEmitter {
       return null;
     }
 
-    const isBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(dataBase64) && dataBase64.length % 4 === 0;
+    if (dataBase64.length > MAX_PASTED_IMAGE_BASE64_LENGTH || dataBase64.length % 4 !== 0) {
+      return null;
+    }
+
+    const isBase64 = BASE64_PATTERN.test(dataBase64);
 
     if (!isBase64) {
       return null;
