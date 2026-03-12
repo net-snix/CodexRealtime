@@ -1,0 +1,13 @@
+{
+  "name": "@codex-realtime/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "pnpm run build && node dist/server.test.js",
+    "start": "pnpm run build && node dist/index.js"
+  }
+}
