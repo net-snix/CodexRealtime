@@ -302,6 +302,35 @@ describe("desktop electron regressions", () => {
     expect(await window.locator('[data-thread-id="thread-ask-1"]').count()).toBe(1);
   });
 
+  it("collapses the voice bar and returns that space to the workspace frame", async () => {
+    const context = createFixtureContext();
+    tempDirs.push(context.rootDir);
+
+    const { app, window } = await launchFixtureApp(context);
+    openApps.push(app);
+
+    const workspaceFrame = window.locator(".workspace-frame");
+    const voiceBody = window.locator(".voice-bar-body");
+    const beforeHeight = await workspaceFrame.evaluate((element) =>
+      Math.round(element.getBoundingClientRect().height)
+    );
+
+    await window.getByRole("button", { name: "Hide voice bar" }).click();
+    await window.waitForTimeout(250);
+
+    const afterHeight = await workspaceFrame.evaluate((element) =>
+      Math.round(element.getBoundingClientRect().height)
+    );
+
+    expect(afterHeight).toBeGreaterThan(beforeHeight);
+    expect(
+      await voiceBody.evaluate(
+        (element) => element.ownerDocument.defaultView?.getComputedStyle(element).maxHeight ?? ""
+      )
+    ).toBe("0px");
+    await window.getByRole("button", { name: "Show voice bar" }).waitFor();
+  });
+
   it("removes a non-current project from the project menu", async () => {
     const context = createFixtureContext();
     tempDirs.push(context.rootDir);

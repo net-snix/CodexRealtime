@@ -38,22 +38,22 @@
 .settings-page {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 6px;
-  padding: 4px 8px 10px;
+  gap: 4px;
+  padding: 0 8px 10px;
   overflow: hidden;
 }
 
 .settings-page-window-strip {
-  min-height: 12px;
+  min-height: 4px;
   -webkit-app-region: drag;
 }
 
 .settings-page-header {
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 .settings-page-header h2 {
-  margin: 6px 0 0;
+  margin: 2px 0 0;
 }
 
 .settings-page-actions {
@@ -65,7 +65,7 @@
 .settings-page-shell {
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
-  gap: 14px;
+  gap: 10px;
   min-height: 0;
 }
 
@@ -118,6 +118,7 @@
 .settings-nav {
   display: grid;
   gap: 4px;
+  margin-top: 44px;
 }
 
 .settings-nav-button,
@@ -153,6 +154,7 @@
 
 .settings-content {
   display: grid;
+  align-content: start;
   gap: 18px;
   min-height: 0;
   padding-right: 4px;
@@ -161,7 +163,7 @@
 
 .settings-section {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   scroll-margin-top: 18px;
 }
 
@@ -426,7 +428,7 @@
 }
 
 .app-shell-density-compact .settings-page-shell {
-  gap: 10px;
+  gap: 8px;
 }
 
 .app-shell-density-compact .settings-card,
@@ -435,7 +437,11 @@
 }
 
 .app-shell-density-compact .settings-content {
-  gap: 14px;
+  gap: 12px;
+}
+
+.app-shell-density-compact .settings-nav {
+  margin-top: 36px;
 }
 
 @media (max-width: 1180px) {
@@ -449,6 +455,7 @@
 
   .settings-nav {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 0;
   }
 
   .settings-card-grid,

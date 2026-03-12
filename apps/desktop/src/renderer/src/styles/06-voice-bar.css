@@ -83,7 +83,7 @@
 .voice-bar-edge-toggle {
   position: absolute;
   top: 0;
-  left: 12px;
+  right: 12px;
   z-index: 3;
   display: inline-grid;
   place-items: center;

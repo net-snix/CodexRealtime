@@ -2,9 +2,15 @@ import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from
 import { join } from "node:path";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
+import { realtimeService } from "./realtime-service";
 import { workspaceService } from "./workspace-service";
 
 const userDataOverride = process.env.CODEX_REALTIME_USER_DATA_DIR;
+const HELPER_CLEANUP_INTERVAL_MS = 45_000;
+const HELPER_CLEANUP_MIN_AGE_SECONDS = 45;
+
+let helperCleanupInterval: NodeJS.Timeout | null = null;
+let isQuitting = false;
 
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
@@ -190,12 +196,44 @@ const createMainWindow = () => {
   return window;
 };
 
+const stopBridgeWork = async () => {
+  try {
+    await realtimeService.stop();
+  } catch {
+    // Ignore shutdown races from idle sessions.
+  }
+
+  await codexBridge.stop();
+};
+
+const maybeCleanupIdleHelpers = async () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    return;
+  }
+
+  if (workspaceService.hasActiveTurn() || codexBridge.hasPendingRequests()) {
+    return;
+  }
+
+  const realtimeStatus = realtimeService.getState().status;
+
+  if (realtimeStatus === "connecting" || realtimeStatus === "live") {
+    return;
+  }
+
+  await codexBridge.cleanupStaleHelpers({
+    minimumAgeSeconds: HELPER_CLEANUP_MIN_AGE_SECONDS
+  });
+};
+
 app.whenReady().then(async () => {
   installApplicationMenu();
-  void codexBridge.start().then(() => codexBridge.refreshState());
   registerIpcHandlers();
   await workspaceService.restoreLastWorkspace();
   createMainWindow();
+  helperCleanupInterval = setInterval(() => {
+    void maybeCleanupIdleHelpers();
+  }, HELPER_CLEANUP_INTERVAL_MS);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -205,11 +243,27 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  void stopBridgeWork();
+
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-app.on("before-quit", () => {
-  void codexBridge.stop();
+app.on("before-quit", (event) => {
+  if (isQuitting) {
+    return;
+  }
+
+  isQuitting = true;
+  event.preventDefault();
+
+  if (helperCleanupInterval) {
+    clearInterval(helperCleanupInterval);
+    helperCleanupInterval = null;
+  }
+
+  void stopBridgeWork().finally(() => {
+    app.quit();
+  });
 });

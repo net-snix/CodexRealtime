@@ -278,8 +278,6 @@ export function LeftRail({
           const hasHiddenThreads = project.threads.length > THREAD_PREVIEW_LIMIT;
           const visibleThreads = visibleThreadsForProject(project, isThreadListExpanded);
           const hiddenThreadCount = Math.max(project.threads.length - THREAD_PREVIEW_LIMIT, 0);
-          const projectThreadLabel =
-            project.threads.length === 1 ? "1 thread" : `${project.threads.length} threads`;
 
           return (
             <section
@@ -308,10 +306,9 @@ export function LeftRail({
                   title={project.path}
                 >
                   <FolderIcon />
-                    <span className="project-select-button-copy">
-                      <span className="project-name">{project.name}</span>
-                      <span className="project-caption">{projectThreadLabel}</span>
-                    </span>
+                  <span className="project-select-button-copy">
+                    <span className="project-name">{project.name}</span>
+                  </span>
                 </button>
                 <div className="project-row-actions">
                   <button

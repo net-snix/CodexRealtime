@@ -285,13 +285,9 @@ export function SettingsPage({
 
       <header className="settings-page-header pane-header">
         <div>
-          <span className="panel-eyebrow">Settings</span>
           <h2>App preferences</h2>
         </div>
         <div className="settings-page-actions">
-          <span className="status-pill">
-            {sessionState?.account?.planType ? `${sessionState.account.planType}` : "local"}
-          </span>
           <button type="button" className="settings-button" onClick={onClose}>
             Back to thread
           </button>
@@ -300,10 +296,6 @@ export function SettingsPage({
 
       <div className="settings-page-shell">
         <aside className="settings-sidebar">
-          <div className="settings-sidebar-card">
-            <strong>{currentProject?.name ?? "No repo open"}</strong>
-            <span>{currentThread?.title ?? "Select a thread to work here."}</span>
-          </div>
           <nav className="settings-nav" aria-label="Settings sections">
             {SETTINGS_SECTIONS.map((section) => (
               <button
@@ -326,7 +318,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">General</span>
               <h3>App behavior</h3>
             </div>
             <div className="settings-card-grid">
@@ -411,7 +402,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">Voice</span>
               <h3>Devices & captions</h3>
             </div>
             <div className="settings-card-grid">
@@ -493,7 +483,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">Workers</span>
               <h3>Default execution profile</h3>
             </div>
             <div className="settings-card-grid settings-card-grid-wide">
@@ -603,7 +592,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">Notifications</span>
               <h3>Desktop alerts</h3>
             </div>
             <div className="settings-card-grid">
@@ -669,7 +657,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">Threads</span>
               <h3>History & archives</h3>
             </div>
             <div className="settings-card-grid settings-card-grid-wide">
@@ -765,7 +752,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">Privacy</span>
               <h3>Local data & storage</h3>
             </div>
             <div className="settings-card-grid">
@@ -804,7 +790,6 @@ export function SettingsPage({
             className="settings-section"
           >
             <div className="settings-section-head">
-              <span className="panel-eyebrow">Diagnostics</span>
               <h3>Session & features</h3>
             </div>
             <div className="settings-card-grid settings-card-grid-wide">

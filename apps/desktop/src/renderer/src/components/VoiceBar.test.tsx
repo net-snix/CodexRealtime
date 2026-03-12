@@ -90,9 +90,12 @@ describe("VoiceBar", () => {
     const devicesButton = Array.from(container?.querySelectorAll("button") ?? []).find(
       (button) => button.textContent === "Devices"
     );
+    const buttons = Array.from(container?.querySelectorAll("button") ?? []);
     const collapseButton = container?.querySelector(
       'button[aria-label="Hide voice bar"]'
     ) as HTMLButtonElement | null;
+
+    expect(buttons.at(-1)).toBe(collapseButton);
 
     await act(async () => {
       devicesButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

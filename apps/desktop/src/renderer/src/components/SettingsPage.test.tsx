@@ -240,6 +240,8 @@ describe("SettingsPage", () => {
     expect(container?.textContent).toContain("Voice");
     expect(container?.textContent).toContain("Workers");
     expect(container?.textContent).toContain("Archived thread");
+    expect(container?.querySelector(".settings-page-actions .status-pill")).toBeNull();
+    expect(container?.querySelector(".settings-sidebar-card")).toBeNull();
 
     const launchSwitch = container?.querySelector('button[role="switch"]') as HTMLButtonElement | null;
     expect(launchSwitch).not.toBeNull();

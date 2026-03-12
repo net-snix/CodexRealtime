@@ -129,16 +129,6 @@ export function VoiceBar({
   return (
     <footer className={`voice-bar stagger-4${isCollapsed ? " voice-bar-collapsed" : ""}`}>
       <div className="voice-bar-body">
-        <button
-          type="button"
-          className="voice-bar-edge-toggle"
-          onClick={() => setIsCollapsed((current) => !current)}
-          aria-label={isCollapsed ? "Show voice bar" : "Hide voice bar"}
-          title={isCollapsed ? "Show voice bar" : "Hide voice bar"}
-        >
-          <VoiceBarChevron collapsed={isCollapsed} />
-        </button>
-
         <div className="voice-cluster voice-bar-panel-section">
           <button
             type="button"
@@ -189,6 +179,16 @@ export function VoiceBar({
             {isStopping ? "Stopping…" : "Stop"}
           </button>
         </div>
+
+        <button
+          type="button"
+          className="voice-bar-edge-toggle"
+          onClick={() => setIsCollapsed((current) => !current)}
+          aria-label={isCollapsed ? "Show voice bar" : "Hide voice bar"}
+          title={isCollapsed ? "Show voice bar" : "Hide voice bar"}
+        >
+          <VoiceBarChevron collapsed={isCollapsed} />
+        </button>
       </div>
 
       {!isCollapsed && isDevicePickerOpen ? (

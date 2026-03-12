@@ -144,6 +144,7 @@ describe("LeftRail", () => {
     expect(openRepoButton?.textContent).toContain("Open repo");
     expect(container?.textContent).toContain("Threads");
     expect(container?.textContent).not.toContain("Projects");
+    expect(container?.textContent).not.toContain("1 thread");
     expect(container?.querySelector('button[aria-label="New thread"]')).toBeNull();
 
     await act(async () => {

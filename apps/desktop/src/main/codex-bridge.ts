@@ -9,6 +9,7 @@ import type {
   WorkerExecutionSettings
 } from "@shared";
 import { CodexBridgeFixture } from "./codex-bridge-fixture";
+import { cleanupStaleHelperProcesses, terminateProcessTree } from "./codex-helper-processes";
 
 type JsonRpcMessage = {
   jsonrpc?: string;
@@ -109,6 +110,21 @@ export class CodexBridge extends EventEmitter {
 
   getState(): SessionState {
     return this.state;
+  }
+
+  hasPendingRequests() {
+    return this.pending.size > 0;
+  }
+
+  async cleanupStaleHelpers(options?: { minimumAgeSeconds?: number; retainPerKind?: number }) {
+    if (this.fixture || !this.child?.pid) {
+      return {
+        found: 0,
+        killed: 0
+      };
+    }
+
+    return cleanupStaleHelperProcesses(this.child.pid, options);
   }
 
   async startThread(cwd: string) {
@@ -444,7 +460,16 @@ export class CodexBridge extends EventEmitter {
     this.stdinWriteChain = Promise.resolve();
     this.startPromise = null;
     this.rejectAllPending("Codex app-server stopped before responding");
-    child.kill("SIGTERM");
+    if (child.pid) {
+      await terminateProcessTree(child.pid);
+      return;
+    }
+
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // Ignore shutdown races; child may already be gone.
+    }
   }
 
   private async startInternal() {
