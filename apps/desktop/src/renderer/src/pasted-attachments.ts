@@ -19,6 +19,7 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/bmp": ".bmp",
   "image/tiff": ".tiff"
 };
+const CONTROL_PATH_CHARS = /[\u0000-\u001f\u007f]/;
 
 const normalizeFileUrlPath = (value: string) => {
   try {
@@ -39,6 +40,10 @@ const normalizeLocalPath = (value: string) => {
   const trimmedValue = value.trim();
 
   if (!trimmedValue || trimmedValue.startsWith("#")) {
+    return null;
+  }
+
+  if (CONTROL_PATH_CHARS.test(trimmedValue)) {
     return null;
   }
 
@@ -161,15 +166,18 @@ export const hasPastedAttachmentCandidates = (clipboardData: DataTransfer | null
     return false;
   }
 
-  if (collectTextPaths(clipboardData.getData("text/uri-list")).length > 0) {
+  const uriListPaths = collectTextPaths(clipboardData.getData("text/uri-list"));
+  if (uriListPaths.length > 0) {
     return true;
   }
 
-  if (collectTextPaths(clipboardData.getData("text/plain")).length > 0) {
+  const plainTextPaths = collectTextPaths(clipboardData.getData("text/plain"));
+  if (plainTextPaths.length > 0) {
     return true;
   }
 
-  return getClipboardFiles(clipboardData).some((file) => {
+  const files = getClipboardFiles(clipboardData);
+  return files.some((file) => {
     const filePath = getClipboardFilePath(file);
     return Boolean(filePath) || file.type.trim().toLowerCase().startsWith("image/");
   });
@@ -185,9 +193,10 @@ export const readPastedAttachments = async (
     };
   }
 
+  const files = getClipboardFiles(clipboardData);
   const paths = new Set<string>();
 
-  for (const file of getClipboardFiles(clipboardData)) {
+  for (const file of files) {
     const filePath = getClipboardFilePath(file);
 
     if (filePath) {
@@ -195,15 +204,17 @@ export const readPastedAttachments = async (
     }
   }
 
-  for (const path of collectTextPaths(clipboardData.getData("text/uri-list"))) {
+  const uriListPaths = collectTextPaths(clipboardData.getData("text/uri-list"));
+  for (const path of uriListPaths) {
     paths.add(path);
   }
 
-  for (const path of collectTextPaths(clipboardData.getData("text/plain"))) {
+  const plainTextPaths = collectTextPaths(clipboardData.getData("text/plain"));
+  for (const path of plainTextPaths) {
     paths.add(path);
   }
 
-  const imageFiles = getClipboardFiles(clipboardData).filter(
+  const imageFiles = files.filter(
     (file) => !getClipboardFilePath(file) && file.type.trim().toLowerCase().startsWith("image/")
   );
   const images = (
