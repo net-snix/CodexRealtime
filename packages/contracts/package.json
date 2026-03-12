@@ -1,5 +1,5 @@
 {
-  "name": "@codex-realtime/shared",
+  "name": "@codex-realtime/contracts",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,20 +9,27 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./ipc": {
+      "types": "./dist/ipc.d.ts",
+      "import": "./dist/ipc.js"
+    },
+    "./shell-api": {
+      "types": "./dist/shell-api.d.ts",
+      "import": "./dist/shell-api.js"
+    },
+    "./server-api": {
+      "types": "./dist/server-api.d.ts",
+      "import": "./dist/server-api.js"
     }
   },
   "scripts": {
-    "pretypecheck": "pnpm --filter @codex-realtime/contracts build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": {
-    "@codex-realtime/contracts": "workspace:*"
-  },
   "devDependencies": {
-    "@types/node": "^24.3.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

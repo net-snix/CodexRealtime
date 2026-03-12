@@ -6,6 +6,8 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
+      "@codex-realtime/contracts": ["packages/contracts/dist/index.d.ts"],
+      "@codex-realtime/contracts/*": ["packages/contracts/dist/*"],
       "@shared": ["packages/shared/src/index.ts"],
       "@shared/*": ["packages/shared/src/*"],
       "@renderer/*": ["apps/desktop/src/renderer/src/*"]
