@@ -49,9 +49,11 @@ const emptyFeatures = (): CodexFeatureFlags => ({
 const now = () => new Date().toISOString();
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_STDOUT_BUFFER_BYTES = 1_048_576;
+const DEFAULT_MAX_STDOUT_LINE_BYTES = 262_144;
 const MALFORMED_MESSAGE_ERROR = "Codex app-server sent malformed JSON";
 const OVERSIZED_STDOUT_BUFFER_ERROR =
   "Codex app-server sent oversized stdout payload without newline";
+const OVERSIZED_STDOUT_LINE_ERROR = "Codex app-server sent oversized stdout line";
 
 const normalizeError = (error: unknown, fallback: string) =>
   error instanceof Error ? error : new Error(fallback);
@@ -69,6 +71,7 @@ export class CodexBridge extends EventEmitter {
     : null;
   private readonly requestTimeoutMs: number;
   private readonly maxStdoutBufferBytes: number;
+  private readonly maxStdoutLineBytes: number;
   private state: SessionState = {
     status: "connecting",
     account: null,
@@ -78,10 +81,18 @@ export class CodexBridge extends EventEmitter {
     lastUpdatedAt: null
   };
 
-  constructor(options?: { requestTimeoutMs?: number; maxStdoutBufferBytes?: number }) {
+  constructor(options?: {
+    requestTimeoutMs?: number;
+    maxStdoutBufferBytes?: number;
+    maxStdoutLineBytes?: number;
+  }) {
     super();
     this.requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.maxStdoutBufferBytes = options?.maxStdoutBufferBytes ?? DEFAULT_MAX_STDOUT_BUFFER_BYTES;
+    this.maxStdoutLineBytes = Math.min(
+      options?.maxStdoutLineBytes ?? DEFAULT_MAX_STDOUT_LINE_BYTES,
+      this.maxStdoutBufferBytes
+    );
   }
 
   async start() {
@@ -509,7 +520,19 @@ export class CodexBridge extends EventEmitter {
 
       const consumedChunk = this.buffer.slice(0, newlineIndex + 1);
       this.bufferByteLength -= utf8ByteLength(consumedChunk);
-      const line = consumedChunk.slice(0, -1).trim();
+      const rawLine = consumedChunk.slice(0, -1);
+      if (utf8ByteLength(rawLine) > this.maxStdoutLineBytes) {
+        this.state = {
+          ...this.state,
+          error: `${OVERSIZED_STDOUT_LINE_ERROR}: exceeded ${this.maxStdoutLineBytes} bytes`,
+          lastUpdatedAt: now()
+        };
+        this.emit("stateChanged", this.state);
+        this.buffer = this.buffer.slice(newlineIndex + 1);
+        continue;
+      }
+
+      const line = rawLine.trim();
       this.buffer = this.buffer.slice(newlineIndex + 1);
 
       if (!line) {
