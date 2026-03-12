@@ -48,6 +48,9 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 0;
 const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
 const HANDSHAKE_PREFIX = "{\"type\":\"server-handshake\"";
+const MAX_HANDSHAKE_LINE_LENGTH = 8 * 1024;
+const MAX_STDOUT_BUFFER_LENGTH = 64 * 1024;
+const MAX_STDERR_BUFFER_LENGTH = 8 * 1024;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
@@ -55,7 +58,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const parseServerHandshakeLine = (line: string): LocalServerHandshake | null => {
   const trimmed = line.trim();
 
-  if (!trimmed.startsWith(HANDSHAKE_PREFIX)) {
+  if (!trimmed.startsWith(HANDSHAKE_PREFIX) || trimmed.length > MAX_HANDSHAKE_LINE_LENGTH) {
     return null;
   }
 
@@ -290,6 +293,18 @@ export class LocalServerProcess {
       const handleStdoutData = (chunk: Buffer | string) => {
         stdoutBuffer += chunk.toString();
 
+        if (stdoutBuffer.length > MAX_STDOUT_BUFFER_LENGTH) {
+          settle(() => {
+            child.kill("SIGKILL");
+            rejectHandshake(
+              new Error(
+                `Local server stdout buffer exceeded ${MAX_STDOUT_BUFFER_LENGTH} bytes before handshake from ${entryPath}`
+              )
+            );
+          });
+          return;
+        }
+
         while (stdoutBuffer.includes("\n")) {
           const newlineIndex = stdoutBuffer.indexOf("\n");
           const line = stdoutBuffer.slice(0, newlineIndex);
@@ -307,7 +322,7 @@ export class LocalServerProcess {
 
       const handleStderrData = (chunk: Buffer | string) => {
         const message = chunk.toString();
-        stderrBuffer += message;
+        stderrBuffer = `${stderrBuffer}${message}`.slice(-MAX_STDERR_BUFFER_LENGTH);
         process.stderr.write(message);
       };
 
