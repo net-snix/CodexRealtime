@@ -48,7 +48,10 @@ const emptyFeatures = (): CodexFeatureFlags => ({
 
 const now = () => new Date().toISOString();
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_STDOUT_BUFFER_BYTES = 1_048_576;
 const MALFORMED_MESSAGE_ERROR = "Codex app-server sent malformed JSON";
+const OVERSIZED_STDOUT_BUFFER_ERROR =
+  "Codex app-server sent oversized stdout payload without newline";
 
 const normalizeError = (error: unknown, fallback: string) =>
   error instanceof Error ? error : new Error(fallback);
@@ -63,6 +66,7 @@ export class CodexBridge extends EventEmitter {
     ? new CodexBridgeFixture(process.env.CODEX_REALTIME_E2E_FIXTURE_PATH)
     : null;
   private readonly requestTimeoutMs: number;
+  private readonly maxStdoutBufferBytes: number;
   private state: SessionState = {
     status: "connecting",
     account: null,
@@ -72,9 +76,10 @@ export class CodexBridge extends EventEmitter {
     lastUpdatedAt: null
   };
 
-  constructor(options?: { requestTimeoutMs?: number }) {
+  constructor(options?: { requestTimeoutMs?: number; maxStdoutBufferBytes?: number }) {
     super();
     this.requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.maxStdoutBufferBytes = options?.maxStdoutBufferBytes ?? DEFAULT_MAX_STDOUT_BUFFER_BYTES;
   }
 
   async start() {
@@ -479,7 +484,19 @@ export class CodexBridge extends EventEmitter {
   }
 
   private handleStdout(chunk: string) {
-    this.buffer += chunk;
+    const nextBuffer = this.buffer + chunk;
+    if (Buffer.byteLength(nextBuffer, "utf8") > this.maxStdoutBufferBytes) {
+      this.buffer = "";
+      this.state = {
+        ...this.state,
+        error: `${OVERSIZED_STDOUT_BUFFER_ERROR}: exceeded ${this.maxStdoutBufferBytes} bytes`,
+        lastUpdatedAt: now()
+      };
+      this.emit("stateChanged", this.state);
+      return;
+    }
+
+    this.buffer = nextBuffer;
 
     while (true) {
       const newlineIndex = this.buffer.indexOf("\n");

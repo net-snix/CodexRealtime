@@ -62,6 +62,15 @@ describe("CodexBridge", () => {
     expect(bridge.getState().error).toContain("Codex app-server sent malformed JSON");
   });
 
+  it("drops oversized stdout payloads without newline", () => {
+    const bridge = new CodexBridge({ maxStdoutBufferBytes: 16 });
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout("x".repeat(17));
+
+    expect(bridge.getState().error).toContain("Codex app-server sent oversized stdout payload");
+    expect((bridge as unknown as { buffer: string }).buffer).toBe("");
+  });
+
   it("times out pending requests", async () => {
     vi.useFakeTimers();
 
