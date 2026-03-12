@@ -1,4 +1,4 @@
-import { createStructuredLogger } from "./logging.js";
+import { createStructuredLogger } from "@codex-realtime/shared/structured-log";
 
 export const DEFAULT_SERVER_PROTOCOL = "codex-realtime.local-server.v1";
 export const DEFAULT_SERVER_HOST = "127.0.0.1";
@@ -71,8 +71,10 @@ type CreateHttpServer = (
   listener: (request: HttpRequestLike, response: HttpResponseLike) => void
 ) => HttpServerLike;
 
-const defaultLogger = createStructuredLogger("lifecycle", {
-  baseFields: {
+const defaultLogger = createStructuredLogger({
+  source: "server",
+  scope: "lifecycle",
+  baseContext: {
     appVersion: "0.1.0"
   },
   writeLine: (line: string) => {

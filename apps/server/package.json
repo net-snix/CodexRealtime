@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "pretypecheck": "pnpm --filter @codex-realtime/contracts build && pnpm --filter @codex-realtime/shared build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "pnpm run build && node dist/server.test.js && node dist/logging.test.js",
+    "test": "pnpm run build && node dist/server.test.js",
     "start": "pnpm run build && node dist/index.js"
   },
   "dependencies": {

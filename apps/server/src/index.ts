@@ -1,4 +1,4 @@
-import { createStructuredLogger } from "./logging.js";
+import { createStructuredLogger } from "@codex-realtime/shared/structured-log";
 import { createServerApp, createServerContainer } from "./server.js";
 
 interface ProcessLike {
@@ -15,10 +15,12 @@ const processLike = (globalThis as { process?: ProcessLike }).process;
 const bootstrapId = processLike?.env?.CODEX_REALTIME_BOOTSTRAP_ID ?? null;
 const logFilePath = processLike?.env?.CODEX_REALTIME_SERVER_LOG_PATH ?? null;
 const appVersion = "0.1.0";
-const serverLogger = createStructuredLogger("bootstrap", {
-  bootstrapId,
+const serverLogger = createStructuredLogger({
+  source: "server",
+  scope: "bootstrap",
   logFilePath,
-  baseFields: {
+  baseContext: {
+    correlationId: bootstrapId,
     pid: processLike?.pid ?? null,
     appVersion
   },
@@ -42,16 +44,7 @@ const parsePort = (rawPort: string | undefined) => {
 
 const server = createServerApp({
   container: createServerContainer({
-    logger: createStructuredLogger("lifecycle", {
-      bootstrapId,
-      logFilePath,
-      baseFields: {
-        appVersion
-      },
-      writeLine: (line: string) => {
-        processLike?.stderr?.write(`${line}\n`);
-      }
-    }),
+    logger: serverLogger.child("lifecycle"),
     appVersion
   }),
   host: processLike?.env?.CODEX_REALTIME_SERVER_HOST ?? "127.0.0.1",
