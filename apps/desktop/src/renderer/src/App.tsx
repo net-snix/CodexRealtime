@@ -849,9 +849,11 @@ export default function App() {
               timelineState={timelineState}
               workspaceState={workspaceState}
               isStartingTurn={isStartingTurn}
+              isOpeningWorkspace={isOpeningWorkspace}
               activePane={activePane}
               isRightPaneOpen={isRightPaneOpen}
               onStartTurn={handleStartTurn}
+              onOpenWorkspace={handleOpenWorkspace}
               onToggleRightPane={() => setIsRightPaneOpen((current) => !current)}
               onOpenPane={(pane) => {
                 setActivePane(pane);

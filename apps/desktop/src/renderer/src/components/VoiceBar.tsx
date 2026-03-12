@@ -148,7 +148,6 @@ export function VoiceBar({
         </div>
 
         <div className="voice-status voice-bar-panel-section">
-          <span className="panel-eyebrow">State</span>
           <strong>{isStopping ? "stopping" : state}</strong>
           <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
           {feedback ? (
