@@ -107,9 +107,9 @@ T0 ── T1 ──┬── T2 ──┬── T2.1 ──┐
 - **location**: `/Users/espenmac/Code/CodexRealtime/packages/contracts`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/provider`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/timeline-runtime-events.ts`
 - **description**: Convert raw Codex/OpenAI runtime messages into a canonical event schema before UI or projections touch them. Cover session lifecycle, thread/turn/item changes, tool calls, approvals, audio input/output deltas, interruptions, errors, and usage. Remove `unknown`-heavy normalization from renderer and desktop main.
 - **validation**: Raw provider payloads map to typed runtime events in one place; renderer no longer parses provider-specific JSON shapes; audio and tool/task events are first-class variants in the contract; command idempotency and source ordering fields such as `commandId`, `sourceEventId`, and `sourceSeq` are defined for replay and dedupe.
-- **status**: Not Completed
-- **log**:
-- **files edited/created**:
+- **status**: Completed
+- **log**: Added canonical provider runtime request/notification + item schemas in `packages/contracts`, including replay metadata (`commandId`, `sourceEventId`, `sourceSeq`) and first-class session/thread/turn/tool/audio/error/usage variants. Switched desktop timeline request/notification normalization to consume canonical runtime events at the boundary, kept historical turn projection behavior intact, and added RED->GREEN coverage in the existing timeline runtime test. Added `apps/server/src/provider/runtime-events.ts` as the server-side re-export entry point for future ingestion work.
+- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/packages/contracts/package.json`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/index.ts`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/provider-runtime.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/timeline-runtime-events.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/timeline-runtime-events.test.ts`, `/Users/espenmac/Code/CodexRealtime/apps/server/src/provider/runtime-events.ts`
 
 ### T6: Introduce Orchestration Event Store And Projections
 - **depends_on**: [T3, T4, T5]
