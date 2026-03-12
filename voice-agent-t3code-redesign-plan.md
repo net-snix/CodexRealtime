@@ -90,8 +90,8 @@ T0 ── T1 ──┬── T2 ──┬── T2.1 ──┐
 - **description**: Define one app-facing API that the renderer consumes regardless of whether the backend is local Electron or future web. Model request/response methods, push subscriptions, reconnect behavior, sequence numbers, replay-latest semantics, and auth/bootstrap. This is the seam that lets renderer reloads survive without losing the active session model.
 - **validation**: Renderer accesses backend through one `NativeApi`-style surface; reconnect and snapshot-resync behavior are specified and testable; direct renderer knowledge of Electron IPC details is removed.
 - **status**: Not Completed
-- **log**:
-- **files edited/created**:
+- **log**: T3-A complete: added `packages/contracts/src/native-api.ts`, exported `NativeApi` from contracts, and exposed `window.nativeApi` from preload/global typing as the canonical renderer-facing seam while keeping the current desktop IPC implementation behind preload. T3 overall stays open for the broader transport/reconnect/resync work and final renderer cutover.
+- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/index.ts`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/native-api.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/preload/index.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/preload/global.d.ts`
 
 ### T4: Build Durable Provider Session Directory
 - **depends_on**: [T3]
