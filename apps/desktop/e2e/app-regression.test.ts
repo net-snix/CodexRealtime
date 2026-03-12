@@ -175,11 +175,11 @@ const getWorkspaceState = (page: Page): Promise<WorkspaceState> =>
     async () =>
       (await (
         globalThis as unknown as {
-          appBridge: {
+          nativeApi: {
             getWorkspaceState: () => Promise<WorkspaceState>;
           };
         }
-      ).appBridge.getWorkspaceState()) as WorkspaceState
+      ).nativeApi.getWorkspaceState()) as WorkspaceState
   );
 
 const getTimelineState = (page: Page): Promise<TimelineState> =>
@@ -187,11 +187,11 @@ const getTimelineState = (page: Page): Promise<TimelineState> =>
     async () =>
       (await (
         globalThis as unknown as {
-          appBridge: {
+          nativeApi: {
             getTimelineState: () => Promise<TimelineState>;
           };
         }
-      ).appBridge.getTimelineState()) as TimelineState
+      ).nativeApi.getTimelineState()) as TimelineState
   );
 
 const launchFixtureApp = async (

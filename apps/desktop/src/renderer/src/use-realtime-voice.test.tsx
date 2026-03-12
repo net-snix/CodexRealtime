@@ -3,7 +3,8 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppBridge, RealtimeState, VoicePreferences } from "@shared";
+import type { RealtimeState, VoicePreferences } from "@shared";
+import type { NativeApi } from "./native-api";
 import { useRealtimeVoice } from "./use-realtime-voice";
 
 const realtimeState: RealtimeState = {
@@ -21,7 +22,7 @@ const voicePreferences: VoicePreferences = {
 };
 
 type HookState = ReturnType<typeof useRealtimeVoice>;
-type RealtimeEventHandler = Parameters<AppBridge["subscribeRealtimeEvents"]>[0];
+type RealtimeEventHandler = Parameters<NativeApi["subscribeRealtimeEvents"]>[0];
 type MockAudioProcessEvent = {
   inputBuffer: {
     getChannelData: (channel: number) => Float32Array;
@@ -149,7 +150,7 @@ describe("useRealtimeVoice", () => {
       }
     });
 
-    Object.defineProperty(window, "appBridge", {
+    Object.defineProperty(window, "nativeApi", {
       configurable: true,
       value: {
         getAppInfo: vi.fn(),
@@ -194,7 +195,7 @@ describe("useRealtimeVoice", () => {
           };
         }),
         subscribeTimelineUpdates: vi.fn(() => () => {})
-      } satisfies AppBridge
+      } satisfies NativeApi
     });
 
     container = document.createElement("div");

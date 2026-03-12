@@ -5,15 +5,18 @@
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
+    "prebuild": "pnpm --filter @codex-realtime/contracts build && pnpm --filter @codex-realtime/shared build",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "pretypecheck": "pnpm --filter @codex-realtime/contracts build && pnpm --filter @codex-realtime/shared build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "pnpm build && vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
+    "@codex-realtime/contracts": "workspace:*",
     "@codex-realtime/shared": "workspace:*",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

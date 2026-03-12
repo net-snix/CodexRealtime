@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.23.0",
   "scripts": {
-    "dev": "pnpm --filter @codex-realtime/desktop dev",
-    "build": "pnpm --filter @codex-realtime/shared build && pnpm --filter @codex-realtime/desktop build",
+    "dev": "pnpm --filter @codex-realtime/server build && pnpm --filter @codex-realtime/desktop dev",
+    "build": "pnpm --filter @codex-realtime/contracts build && pnpm --filter @codex-realtime/shared build && pnpm --filter @codex-realtime/server build && pnpm --filter @codex-realtime/desktop build && node ./scripts/copy-local-server.mjs",
     "cleanup:helpers": "bash ./scripts/cleanup-helper-processes.sh",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",

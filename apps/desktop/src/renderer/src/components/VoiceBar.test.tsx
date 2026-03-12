@@ -95,6 +95,7 @@ describe("VoiceBar", () => {
       'button[aria-label="Hide voice bar"]'
     ) as HTMLButtonElement | null;
 
+    expect(container?.textContent).not.toContain("State");
     expect(buttons.at(-1)).toBe(collapseButton);
 
     await act(async () => {

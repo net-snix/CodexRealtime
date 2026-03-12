@@ -280,6 +280,9 @@ describe("SettingsPage", () => {
       button.textContent?.includes("Back to thread")
     ) as HTMLButtonElement | undefined;
 
+    expect(backButton?.closest(".settings-sidebar")).not.toBeNull();
+    expect(backButton?.querySelector("svg")).not.toBeNull();
+
     await act(async () => {
       backButton?.click();
     });

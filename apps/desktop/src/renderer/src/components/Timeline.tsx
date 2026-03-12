@@ -39,6 +39,7 @@ interface TimelineProps {
   timelineState: TimelineState;
   workspaceState: WorkspaceState;
   isStartingTurn: boolean;
+  isOpeningWorkspace?: boolean;
   activePane?: PaneKey;
   isRightPaneOpen?: boolean;
   isResolvingRequests: boolean;
@@ -55,6 +56,7 @@ interface TimelineProps {
   submittingUserInputs: Record<string, boolean>;
   userInputErrors: Record<string, string>;
   onStartTurn: (request: TurnStartRequest) => void | Promise<void>;
+  onOpenWorkspace?: () => void | Promise<void>;
   onToggleRightPane?: () => void;
   onOpenPane?: (pane: PaneKey) => void;
   onApproveRequest: (id: string, decision?: ApprovalDecision) => void | Promise<void>;
@@ -212,6 +214,7 @@ export function Timeline({
   timelineState,
   workspaceState,
   isStartingTurn,
+  isOpeningWorkspace = false,
   activePane = "plan",
   isRightPaneOpen = true,
   isResolvingRequests,
@@ -227,6 +230,7 @@ export function Timeline({
   submittingUserInputs,
   userInputErrors,
   onStartTurn,
+  onOpenWorkspace = () => undefined,
   onToggleRightPane = () => undefined,
   onOpenPane = () => undefined,
   onApproveRequest,
@@ -612,9 +616,16 @@ export function Timeline({
           </div>
         )
       ) : (
-        <div className="timeline-empty-state timeline-empty-state-muted">
-          <span className="panel-eyebrow">Workspace</span>
-          <p>Open a repo.</p>
+        <div className="timeline-empty-state timeline-empty-state-callout">
+          <p>Open a repo to get started</p>
+          <button
+            type="button"
+            className="timeline-empty-action"
+            onClick={() => void onOpenWorkspace()}
+            disabled={isOpeningWorkspace}
+          >
+            <span>{isOpeningWorkspace ? "Opening repo..." : "Add repo"}</span>
+          </button>
         </div>
       )}
 

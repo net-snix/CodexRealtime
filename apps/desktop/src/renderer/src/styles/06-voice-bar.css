@@ -1,4 +1,5 @@
 .voice-bar {
+  --voice-bar-edge-toggle-offset: 112px;
   position: relative;
   z-index: 1;
   min-height: 0;
@@ -83,7 +84,7 @@
 .voice-bar-edge-toggle {
   position: absolute;
   top: 0;
-  right: 12px;
+  left: var(--voice-bar-edge-toggle-offset);
   z-index: 3;
   display: inline-grid;
   place-items: center;
@@ -124,6 +125,12 @@
   background: rgba(255, 255, 255, 0.92);
   color: var(--text);
   transform: translateY(calc(-100% + 1px));
+}
+
+@media (max-width: 880px) {
+  .voice-bar {
+    --voice-bar-edge-toggle-offset: 96px;
+  }
 }
 
 .voice-bar-edge-toggle:hover::after {

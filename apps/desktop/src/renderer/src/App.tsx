@@ -27,6 +27,7 @@ import {
   createOptimisticUserEventId,
   removeOptimisticTurnStart
 } from "./timeline-state-transitions";
+import { ensureNativeApi } from "./native-api";
 
 type PaneKey = "plan" | "diff";
 type MainView = "thread" | "settings";
@@ -131,6 +132,10 @@ export default function App() {
   const previousIsRunningRef = useRef(false);
   const previousStatusRef = useRef<string | null>(null);
   const timelineRefreshPromiseRef = useRef<Promise<TimelineState> | null>(null);
+  const nativeApiRef = useRef<ReturnType<typeof ensureNativeApi> | null>(null);
+  if (!nativeApiRef.current) {
+    nativeApiRef.current = ensureNativeApi();
+  }
   const realtimeEnabled = Boolean(
     sessionState?.status === "connected" &&
       sessionState.features.realtimeConversation &&
@@ -158,7 +163,7 @@ export default function App() {
       enabled: realtimeEnabled,
       onVoicePrompt: async (prompt) => {
         try {
-          const nextTimeline = await window.appBridge.dispatchVoicePrompt(prompt);
+          const nextTimeline = await nativeApiRef.current!.dispatchVoicePrompt(prompt);
           setTimelineState(nextTimeline);
 
           if (nextTimeline.runState.phase === "steering") {
@@ -202,7 +207,7 @@ export default function App() {
       return timelineRefreshPromiseRef.current;
     }
 
-    const request = window.appBridge
+    const request = nativeApiRef.current!
       .getTimelineState()
       .then((nextTimeline) => {
         setTimelineState(nextTimeline);
@@ -220,10 +225,10 @@ export default function App() {
 
   useEffect(() => {
     void Promise.allSettled([
-      window.appBridge.getAppInfo(),
-      window.appBridge.getSessionState(),
-      window.appBridge.getWorkspaceState(),
-      window.appBridge.getTimelineState()
+      nativeApiRef.current!.getAppInfo(),
+      nativeApiRef.current!.getSessionState(),
+      nativeApiRef.current!.getWorkspaceState(),
+      nativeApiRef.current!.getTimelineState()
     ]).then(([appInfoResult, sessionResult, workspaceResult, timelineResult]) => {
       if (appInfoResult.status === "fulfilled") {
         setAppInfo(appInfoResult.value);
@@ -271,7 +276,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = window.appBridge.subscribeTimelineUpdates((nextTimeline) => {
+    const unsubscribe = nativeApiRef.current!.subscribeTimelineUpdates((nextTimeline) => {
       setTimelineState(nextTimeline);
     });
 
@@ -312,7 +317,7 @@ export default function App() {
 
     let cancelled = false;
 
-    void window.appBridge
+    void nativeApiRef.current!
       .selectThread(currentProject.id, currentProject.threads[0].id)
       .then((nextTimeline) => {
         if (cancelled) {
@@ -342,7 +347,7 @@ export default function App() {
     setIsOpeningWorkspace(true);
 
     try {
-      const nextState = await window.appBridge.openWorkspace();
+      const nextState = await nativeApiRef.current!.openWorkspace();
       setWorkspaceState(nextState);
       setMainView("thread");
       await refreshTimelineState();
@@ -357,7 +362,7 @@ export default function App() {
       await stopVoice();
     }
 
-    const nextState = await window.appBridge.selectWorkspace(workspaceId);
+    const nextState = await nativeApiRef.current!.selectWorkspace(workspaceId);
     setWorkspaceState(nextState);
     setMainView("thread");
     await refreshTimelineState();
@@ -372,7 +377,7 @@ export default function App() {
       await stopVoice();
     }
 
-    const nextTimeline = await window.appBridge.selectThread(workspaceId, threadId);
+    const nextTimeline = await nativeApiRef.current!.selectThread(workspaceId, threadId);
     setTimelineState(nextTimeline);
     startTransition(() => {
       setWorkspaceState((current) =>
@@ -397,7 +402,7 @@ export default function App() {
         await stopVoice();
       }
 
-      const nextTimeline = await window.appBridge.createThread(workspaceId);
+      const nextTimeline = await nativeApiRef.current!.createThread(workspaceId);
       const threadId = nextTimeline.threadId;
       setTimelineState(nextTimeline);
       if (threadId) {
@@ -425,7 +430,7 @@ export default function App() {
         await stopVoice();
       }
 
-      const nextState = await window.appBridge.removeWorkspace(workspaceId);
+      const nextState = await nativeApiRef.current!.removeWorkspace(workspaceId);
       setWorkspaceState(nextState);
       clearWorkerAttachments();
       setMainView("thread");
@@ -445,7 +450,7 @@ export default function App() {
         await stopVoice();
       }
 
-      const result: ArchiveThreadResult = await window.appBridge.archiveThread(workspaceId, threadId);
+      const result: ArchiveThreadResult = await nativeApiRef.current!.archiveThread(workspaceId, threadId);
       setTimelineState(result.timelineState);
       startTransition(() => {
         setWorkspaceState((current) =>
@@ -480,7 +485,7 @@ export default function App() {
         await stopVoice();
       }
 
-      const nextTimeline = await window.appBridge.unarchiveThread(workspaceId, threadId);
+      const nextTimeline = await nativeApiRef.current!.unarchiveThread(workspaceId, threadId);
       setTimelineState(nextTimeline);
       startTransition(() => {
         setWorkspaceState((current) =>
@@ -505,13 +510,13 @@ export default function App() {
     setTimelineState((current) => applyOptimisticTurnStart(current, request.prompt, optimisticEventId));
 
     try {
-      const nextTimeline = await window.appBridge.startTurn(request);
+      const nextTimeline = await nativeApiRef.current!.startTurn(request);
       const threadId = nextTimeline.threadId;
       setTimelineState(nextTimeline);
       if (currentWorkspaceId && threadId) {
         if (appSettings.autoNameNewThreads) {
           try {
-            const nextWorkspaceState = await window.appBridge.getWorkspaceState();
+            const nextWorkspaceState = await nativeApiRef.current!.getWorkspaceState();
             setWorkspaceState(nextWorkspaceState);
           } catch {
             startTransition(() => {
@@ -551,7 +556,7 @@ export default function App() {
 
     try {
       if (timelineState.isRunning) {
-        const nextTimeline = await window.appBridge.interruptActiveTurn();
+        const nextTimeline = await nativeApiRef.current!.interruptActiveTurn();
         setTimelineState(nextTimeline);
         setVoiceFeedback({
           tone: "success",
@@ -637,7 +642,7 @@ export default function App() {
       appSettings.notifyOnApprovals &&
       approvalCount > previousApprovalCountRef.current
     ) {
-      void window.appBridge.showDesktopNotification({
+      void nativeApiRef.current!.showDesktopNotification({
         title: "Approval needed",
         body: `${approvalCount} approval request${approvalCount === 1 ? "" : "s"} waiting`
       });
@@ -650,7 +655,7 @@ export default function App() {
       Boolean(timelineState.threadId) &&
       timelineState.runState.phase !== "interrupted"
     ) {
-      void window.appBridge.showDesktopNotification({
+      void nativeApiRef.current!.showDesktopNotification({
         title: "Worker finished",
         body: timelineState.runState.label ?? "Task complete"
       });
@@ -661,7 +666,7 @@ export default function App() {
       sessionState?.status === "error" &&
       previousStatusRef.current !== "error"
     ) {
-      void window.appBridge.showDesktopNotification({
+      void nativeApiRef.current!.showDesktopNotification({
         title: "Codex session error",
         body: sessionState.error ?? "Session needs attention"
       });
@@ -693,11 +698,11 @@ export default function App() {
   };
 
   const handleOpenUserDataDirectory = async () => {
-    await window.appBridge.openUserDataDirectory();
+    await nativeApiRef.current!.openUserDataDirectory();
   };
 
   const handleClearRecentWorkspaces = async () => {
-    const nextWorkspaceState = await window.appBridge.clearRecentWorkspaces();
+    const nextWorkspaceState = await nativeApiRef.current!.clearRecentWorkspaces();
     setWorkspaceState(nextWorkspaceState);
   };
 
@@ -710,7 +715,7 @@ export default function App() {
     setSubmittingApprovals((current) => ({ ...current, [id]: decision }));
 
     try {
-      const nextTimeline = await window.appBridge.respondToApproval(id, decision);
+      const nextTimeline = await nativeApiRef.current!.respondToApproval(id, decision);
       setTimelineState(nextTimeline);
     } catch (error) {
       setApprovalErrors((current) => ({
@@ -727,7 +732,7 @@ export default function App() {
     setSubmittingApprovals((current) => ({ ...current, [id]: "decline" }));
 
     try {
-      const nextTimeline = await window.appBridge.respondToApproval(id, "decline");
+      const nextTimeline = await nativeApiRef.current!.respondToApproval(id, "decline");
       setTimelineState(nextTimeline);
     } catch (error) {
       setApprovalErrors((current) => ({
@@ -747,7 +752,7 @@ export default function App() {
     setSubmittingUserInputs((current) => ({ ...current, [id]: true }));
 
     try {
-      const nextTimeline = await window.appBridge.submitUserInput(id, answers);
+      const nextTimeline = await nativeApiRef.current!.submitUserInput(id, answers);
       setTimelineState(nextTimeline);
     } catch (error) {
       setUserInputErrors((current) => ({
@@ -844,9 +849,11 @@ export default function App() {
               timelineState={timelineState}
               workspaceState={workspaceState}
               isStartingTurn={isStartingTurn}
+              isOpeningWorkspace={isOpeningWorkspace}
               activePane={activePane}
               isRightPaneOpen={isRightPaneOpen}
               onStartTurn={handleStartTurn}
+              onOpenWorkspace={handleOpenWorkspace}
               onToggleRightPane={() => setIsRightPaneOpen((current) => !current)}
               onOpenPane={(pane) => {
                 setActivePane(pane);

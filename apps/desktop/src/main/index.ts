@@ -1,7 +1,10 @@
 import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { createBootstrapLogger } from "./bootstrap-logger";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
+import { LocalServerProcess } from "./local-server-process";
 import { realtimeService } from "./realtime-service";
 import { workspaceService } from "./workspace-service";
 
@@ -9,12 +12,38 @@ const userDataOverride = process.env.CODEX_REALTIME_USER_DATA_DIR;
 const HELPER_CLEANUP_INTERVAL_MS = 45_000;
 const HELPER_CLEANUP_MIN_AGE_SECONDS = 45;
 
-let helperCleanupInterval: NodeJS.Timeout | null = null;
-let isQuitting = false;
-
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
 }
+
+let helperCleanupInterval: NodeJS.Timeout | null = null;
+let isQuitting = false;
+const bootstrapId = randomUUID();
+const { bootstrapLogger, localServerLogger, shutdownLogger, paths: bootstrapLogPaths } =
+  createBootstrapLogger({
+    bootstrapId,
+    appVersion: app.getVersion(),
+    userDataPath: app.getPath("userData")
+  });
+
+const localServerProcess = new LocalServerProcess({
+  bootstrapId,
+  serverLogFilePath: bootstrapLogPaths.serverLogPath,
+  expectedVersion: app.getVersion(),
+  onUnexpectedExit: ({ code, signal, expectedVersion, handshake }) => {
+    bootstrapLogger.error("Local server crashed after startup", {
+      code,
+      signal,
+      expectedVersion,
+      actualVersion: handshake?.version ?? null,
+      baseUrl: handshake?.baseUrl ?? null
+    });
+
+    if (!isQuitting) {
+      app.exit(1);
+    }
+  }
+}, localServerLogger);
 
 const installApplicationMenu = () => {
   const fileMenu: MenuItemConstructorOptions = {
@@ -197,13 +226,22 @@ const createMainWindow = () => {
 };
 
 const stopBridgeWork = async () => {
+  shutdownLogger.info("Desktop shutdown starting");
+
   try {
     await realtimeService.stop();
   } catch {
     // Ignore shutdown races from idle sessions.
   }
 
-  await codexBridge.stop();
+  try {
+    await localServerProcess.stop();
+    await codexBridge.stop();
+    shutdownLogger.info("Desktop shutdown completed");
+  } catch (error) {
+    shutdownLogger.error("Desktop shutdown failed", { error });
+    throw error;
+  }
 };
 
 const maybeCleanupIdleHelpers = async () => {
@@ -226,21 +264,31 @@ const maybeCleanupIdleHelpers = async () => {
   });
 };
 
-app.whenReady().then(async () => {
-  installApplicationMenu();
-  registerIpcHandlers();
-  await workspaceService.restoreLastWorkspace();
-  createMainWindow();
-  helperCleanupInterval = setInterval(() => {
-    void maybeCleanupIdleHelpers();
-  }, HELPER_CLEANUP_INTERVAL_MS);
+app.whenReady()
+  .then(async () => {
+    installApplicationMenu();
+    bootstrapLogger.info("Desktop bootstrap starting", {
+      userDataPath: app.getPath("userData")
+    });
+    await localServerProcess.start();
+    registerIpcHandlers();
+    await workspaceService.restoreLastWorkspace();
+    createMainWindow();
+    bootstrapLogger.info("Desktop bootstrap completed");
+    helperCleanupInterval = setInterval(() => {
+      void maybeCleanupIdleHelpers();
+    }, HELPER_CLEANUP_INTERVAL_MS);
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  })
+  .catch((error) => {
+    bootstrapLogger.error("Failed to bootstrap desktop services", { error });
+    app.exit(1);
   });
-});
 
 app.on("window-all-closed", () => {
   void stopBridgeWork();
@@ -256,6 +304,7 @@ app.on("before-quit", (event) => {
   }
 
   isQuitting = true;
+  shutdownLogger.info("Desktop quit requested");
   event.preventDefault();
 
   if (helperCleanupInterval) {

@@ -212,6 +212,67 @@ describe("Timeline", () => {
     expect(container?.textContent).not.toContain("Idle");
   });
 
+  it("shows a centered repo CTA when no workspace is selected", async () => {
+    const onOpenWorkspace = vi.fn();
+
+    await act(async () => {
+      root?.render(
+        <Timeline
+          timelineState={timelineState}
+          workspaceState={{
+            currentWorkspace: null,
+            currentThreadId: null,
+            recentWorkspaces: [],
+            threads: [],
+            projects: [],
+            archivedProjects: []
+          }}
+          isStartingTurn={false}
+          isOpeningWorkspace={false}
+          isResolvingRequests={false}
+          realtimeState={realtimeState}
+          voiceState="idle"
+          isVoiceActive={false}
+          liveTranscript={[]}
+          workerSettingsState={workerSettingsState}
+          workerAttachments={[]}
+          isUpdatingWorkerSettings={false}
+          isPickingAttachments={false}
+          submittingApprovals={{}}
+          approvalErrors={{}}
+          submittingUserInputs={{}}
+          userInputErrors={{}}
+          onStartTurn={vi.fn()}
+          onOpenWorkspace={onOpenWorkspace}
+          onApproveRequest={vi.fn()}
+          onDenyRequest={vi.fn()}
+          onSubmitUserInput={vi.fn()}
+          onUpdateWorkerSettings={vi.fn().mockResolvedValue(workerSettingsState)}
+          onPickAttachments={vi.fn().mockResolvedValue([])}
+          onAddAttachments={vi.fn().mockResolvedValue([])}
+          onAddPastedImageAttachments={vi.fn().mockResolvedValue([])}
+          onRemoveAttachment={vi.fn()}
+        />
+      );
+    });
+
+    expect(container?.textContent).toContain("Open a repo to get started");
+    expect(container?.textContent).toContain("Add repo");
+    expect(container?.textContent).not.toContain("Workspace");
+    expect(container?.textContent).not.toContain("Open a repo.");
+
+    const addRepoButton = Array.from(container?.querySelectorAll("button") ?? []).find((button) =>
+      button.textContent?.includes("Add repo")
+    );
+    expect(addRepoButton).toBeDefined();
+
+    await act(async () => {
+      addRepoButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
+  });
+
   it("renders assistant markdown-style text with lists and inline code", async () => {
     await act(async () => {
       root?.render(

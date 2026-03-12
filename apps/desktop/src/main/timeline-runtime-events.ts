@@ -1,4 +1,27 @@
 import { randomUUID } from "node:crypto";
+import {
+  normalizeProviderRuntimeNotification as parseProviderRuntimeNotification,
+  normalizeProviderRuntimeRequest as parseProviderRuntimeRequest
+} from "@codex-realtime/contracts";
+import type {
+  ProviderRuntimeActivityEvent,
+  ProviderRuntimeActivityItem,
+  ProviderRuntimeApprovalRequestEvent,
+  ProviderRuntimeAudioInputEvent,
+  ProviderRuntimeAudioOutputEvent,
+  ProviderRuntimeErrorEvent,
+  ProviderRuntimeInterruptionEvent,
+  ProviderRuntimeMessageItem,
+  ProviderRuntimeProgressStatus,
+  ProviderRuntimeRequestResolvedEvent,
+  ProviderRuntimeSessionLifecycleEvent,
+  ProviderRuntimeTaskEvent,
+  ProviderRuntimeThreadEvent,
+  ProviderRuntimeTimelineItem,
+  ProviderRuntimeToolCallEvent,
+  ProviderRuntimeUsageEvent,
+  ProviderRuntimeUserInputRequestEvent
+} from "@codex-realtime/contracts";
 import type {
   ApprovalDecision,
   TimelineActivityEntry,
@@ -13,7 +36,6 @@ import type {
   TimelinePlanStep,
   TimelineRunState,
   TimelineTurn,
-  TimelineUserInputOption,
   TimelineUserInputQuestion,
   TimelineUserInputRequest
 } from "@shared";
@@ -487,77 +509,190 @@ const buildDiffEntry = (
   };
 };
 
-const buildPlanSteps = (value: unknown): TimelinePlanStep[] =>
-  Array.isArray(value)
-    ? value
-        .map((entry) => {
-          if (!isRecord(entry) || typeof entry.step !== "string") {
-            return null;
-          }
+const buildCanonicalMessageEntry = (
+  item: ProviderRuntimeMessageItem,
+  turnId: string,
+  createdAt: string
+): TimelineMessageEntry | null => {
+  const text = item.text.trim();
 
-          return {
-            step: entry.step,
-            status:
-              entry.status === "completed" ||
-              entry.status === "in_progress" ||
-              entry.status === "pending"
-                ? entry.status
-                : "pending"
-          } satisfies TimelinePlanStep;
-        })
-        .filter((entry): entry is TimelinePlanStep => entry !== null)
-    : [];
-
-const mapApprovalDecisions = (value: unknown): ApprovalDecision[] => {
-  if (!Array.isArray(value)) {
-    return ["accept", "decline", "cancel"];
+  if (!text) {
+    return null;
   }
 
-  const decisions = value.filter(
-    (entry): entry is ApprovalDecision =>
-      entry === "accept" ||
-      entry === "acceptForSession" ||
-      entry === "decline" ||
-      entry === "cancel"
-  );
-
-  return decisions.length > 0 ? decisions : ["accept", "decline", "cancel"];
+  return {
+    id: item.id ?? `${turnId}-${item.role}-message-${randomUUID()}`,
+    kind: "message",
+    role: item.role,
+    text,
+    createdAt,
+    completedAt: item.completedAt,
+    turnId,
+    summary: summarizeActivityText(text),
+    isStreaming: false,
+    providerLabel: item.providerLabel
+  };
 };
 
-const mapUserInputOptions = (value: unknown): TimelineUserInputOption[] =>
-  Array.isArray(value)
-    ? value
-        .map((entry) => {
-          if (!isRecord(entry) || typeof entry.label !== "string") {
-            return null;
-          }
+const buildCanonicalActivityEntry = (
+  item: ProviderRuntimeActivityItem,
+  turnId: string,
+  createdAt: string
+): TimelineActivityEntry => {
+  const activityType = resolveActivityType(item.activityType);
+  const label =
+    item.label ??
+    (item.command ? summarizeCommand(item.command) : null) ??
+    (item.detail ? summarizeActivityText(item.detail) : null) ??
+    item.toolName ??
+    "Activity";
 
-          return {
-            label: entry.label,
-            description: typeof entry.description === "string" ? entry.description : ""
-          } satisfies TimelineUserInputOption;
-        })
-        .filter((entry): entry is TimelineUserInputOption => entry !== null)
-    : [];
+  return {
+    id: item.id ?? `${turnId}-${item.sourceType ?? item.activityType}-${randomUUID()}`,
+    kind: "activity",
+    activityType,
+    createdAt,
+    turnId,
+    tone: resolveActivityTone(activityType),
+    label,
+    detail: item.detail,
+    command: item.command,
+    changedFiles: item.changedFiles,
+    status: resolveActivityStatus(item.status),
+    toolName: item.toolName,
+    agentLabel: item.agentLabel
+  };
+};
 
-const mapUserInputQuestions = (value: unknown): TimelineUserInputQuestion[] =>
-  Array.isArray(value)
-    ? value
-        .map((entry) => {
-          if (!isRecord(entry) || typeof entry.id !== "string") {
-            return null;
-          }
+const buildTimelineActivityMutation = (args: {
+  id?: string | null;
+  activityType: string | null;
+  createdAt: string;
+  turnId: string | null;
+  label?: string | null;
+  detail?: string | null;
+  command?: string | null;
+  changedFiles?: TimelineChangedFile[];
+  status?: ProviderRuntimeProgressStatus | TimelineActivityStatus;
+  toolName?: string | null;
+  agentLabel?: string | null;
+}): TimelineRuntimeMutation => {
+  const activityType = resolveActivityType(args.activityType);
 
-          return {
-            id: entry.id,
-            header: typeof entry.header === "string" ? entry.header : "Question",
-            question: typeof entry.question === "string" ? entry.question : "Provide input",
-            isSecret: entry.isSecret === true,
-            options: mapUserInputOptions(entry.options)
-          } satisfies TimelineUserInputQuestion;
-        })
-        .filter((entry): entry is TimelineUserInputQuestion => entry !== null)
-    : [];
+  return {
+    type: "upsertEntry",
+    entry: {
+      id: args.id ?? `${args.turnId ?? "thread"}-${args.activityType ?? "activity"}-${randomUUID()}`,
+      kind: "activity",
+      activityType,
+      createdAt: args.createdAt,
+      turnId: args.turnId,
+      tone: resolveActivityTone(activityType),
+      label: args.label ?? formatTokenLabel(args.activityType ?? "activity"),
+      detail: args.detail ?? null,
+      command: args.command ?? null,
+      changedFiles: args.changedFiles ?? [],
+      status: resolveActivityStatus(args.status),
+      toolName: args.toolName ?? null,
+      agentLabel: args.agentLabel ?? null
+    }
+  };
+};
+
+const buildApprovalMutationFromEvent = (
+  event: ProviderRuntimeApprovalRequestEvent
+): TimelineRuntimeMutation | null => {
+  switch (event.requestType) {
+    case "command_execution_approval":
+    case "exec_command_approval":
+      return {
+        type: "upsertApproval",
+        approval: {
+          id: event.requestId,
+          kind: "command",
+          title: event.command ? `Run command: ${event.command}` : "Run command",
+          detail: [event.cwd ? `cwd: ${event.cwd}` : null, event.reason].filter(Boolean).join("\n"),
+          availableDecisions: event.availableDecisions as ApprovalDecision[],
+          isSubmitting: false
+        }
+      };
+    case "file_change_approval":
+    case "apply_patch_approval":
+    case "file_read_approval":
+      return {
+        type: "upsertApproval",
+        approval: {
+          id: event.requestId,
+          kind: "fileChange",
+          title: event.requestType === "file_read_approval" ? "Read file" : "Apply file changes",
+          detail: [event.reason, event.grantRoot ? `path: ${event.grantRoot}` : null].filter(Boolean).join("\n"),
+          availableDecisions:
+            event.requestType !== "file_read_approval" && event.grantRoot
+              ? ["accept", "acceptForSession", "decline", "cancel"]
+              : ["accept", "decline", "cancel"],
+          isSubmitting: false
+        }
+      };
+    default:
+      return null;
+  }
+};
+
+const buildUserInputMutationFromEvent = (
+  event: ProviderRuntimeUserInputRequestEvent
+): TimelineRuntimeMutation => ({
+  type: "upsertUserInput",
+  request: {
+    id: event.requestId,
+    title: event.title ?? "Clarification requested",
+    questions: event.questions as TimelineUserInputQuestion[],
+    isSubmitting: false
+  }
+});
+
+const projectCanonicalRuntimeItem = (
+  item: ProviderRuntimeTimelineItem,
+  turnId: string,
+  createdAt: string
+): TimelineRuntimeMutation[] => {
+  switch (item.kind) {
+    case "message": {
+      const message = buildCanonicalMessageEntry(item, turnId, createdAt);
+      return message ? [{ type: "upsertEntry", entry: message }] : [];
+    }
+    case "activity":
+      return [{ type: "upsertEntry", entry: buildCanonicalActivityEntry(item, turnId, createdAt) }];
+    case "plan":
+      return [
+        {
+          type: "upsertLatestProposedPlan",
+          plan: buildProposedPlanEntry(
+            item.id ?? `${turnId}-proposed-plan`,
+            turnId,
+            item.text,
+            createdAt,
+            item.updatedAt ?? item.completedAt ?? createdAt
+          ),
+          merge: "replace"
+        }
+      ];
+    case "file_change": {
+      const diff = buildDiffEntry(
+        item.id ?? `${turnId}-diff-${randomUUID()}`,
+        turnId,
+        createdAt,
+        item.files,
+        null,
+        item.title,
+        item.diff
+      );
+
+      return diff ? [{ type: "upsertTurnDiff", diff }] : [];
+    }
+  }
+
+  return [];
+};
 
 export const projectTurnRecord = (turn: TurnRecord, index: number): ProjectedTurn => {
   const turnId = turn.id ?? `turn-${index + 1}`;
@@ -635,253 +770,295 @@ export const projectTurnRecord = (turn: TurnRecord, index: number): ProjectedTur
   return { entries, latestProposedPlan, diffEntries };
 };
 
-const normalizeRequestType = (value: unknown) => toCanonicalToken(asString(value));
+type RuntimeActivityEvent =
+  | ProviderRuntimeActivityEvent
+  | ProviderRuntimeAudioInputEvent
+  | ProviderRuntimeAudioOutputEvent
+  | ProviderRuntimeErrorEvent
+  | ProviderRuntimeInterruptionEvent
+  | ProviderRuntimeSessionLifecycleEvent
+  | ProviderRuntimeTaskEvent
+  | ProviderRuntimeThreadEvent
+  | ProviderRuntimeToolCallEvent
+  | ProviderRuntimeUsageEvent;
 
-const resolveRequestTypeFromMethod = (methodKey: string | null) => {
-  switch (methodKey) {
-    case "item_command_execution_request_approval":
-      return "command_execution_approval";
-    case "item_exec_command_request_approval":
-      return "exec_command_approval";
-    case "item_file_change_request_approval":
-      return "file_change_approval";
-    case "item_file_read_request_approval":
-      return "file_read_approval";
-    case "item_apply_patch_request_approval":
-      return "apply_patch_approval";
-    case "item_tool_request_user_input":
-      return "tool_user_input";
-    default:
-      return methodKey;
+const pushRequestEventMutations = (
+  event:
+    | ProviderRuntimeApprovalRequestEvent
+    | ProviderRuntimeRequestResolvedEvent
+    | ProviderRuntimeUserInputRequestEvent,
+  mutations: TimelineRuntimeMutation[]
+) => {
+  if (event.kind === "approval.requested") {
+    const mutation = buildApprovalMutationFromEvent(event);
+
+    if (mutation) {
+      mutations.push(mutation);
+    }
+
+    return;
+  }
+
+  if (event.kind === "user_input.requested") {
+    mutations.push(buildUserInputMutationFromEvent(event));
+    return;
+  }
+
+  mutations.push({ type: "resolveRequest", requestId: event.requestId });
+};
+
+const resolveRuntimeActivityLabel = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+      return event.label ?? event.toolName ?? "Tool update";
+    case "task":
+      return event.label ?? formatTokenLabel(event.sourceMethod);
+    case "session.lifecycle":
+      return event.state ? `Session ${event.state}` : "Session updated";
+    case "thread":
+      return event.title ?? formatTokenLabel(event.sourceMethod);
+    case "audio.input":
+      return `Audio input ${formatTokenLabel(event.phase)}`;
+    case "audio.output":
+      return `Audio output ${formatTokenLabel(event.phase)}`;
+    case "interruption":
+      return "Interrupted";
+    case "usage":
+      return "Usage updated";
+    case "error":
+      return event.message;
+    case "activity":
+      return event.label ?? formatTokenLabel(event.sourceMethod);
   }
 };
 
-const buildApprovalMutation = (
-  requestId: string,
-  requestType: string | null,
-  params: Record<string, unknown>
-): TimelineRuntimeMutation | null => {
-  switch (requestType) {
-    case "command_execution_approval":
-    case "exec_command_approval": {
-      const command = normalizeCommandValue(params.command);
-      const cwd = asString(params.cwd);
-      const reason = asString(params.reason);
+const resolveRuntimeActivityDetail = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "audio.input":
+    case "audio.output":
+      return event.transcript ?? event.delta;
+    case "interruption":
+      return event.reason;
+    case "usage":
+      return Object.entries(event.usage)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join("\n");
+    case "error":
+      return event.detail;
+    case "session.lifecycle":
+      return event.error ?? event.detail;
+    default:
+      return event.detail;
+  }
+};
 
-      return {
-        type: "upsertApproval",
-        approval: {
-          id: requestId,
-          kind: "command",
-          title: command ? `Run command: ${command}` : "Run command",
-          detail: [cwd ? `cwd: ${cwd}` : null, reason].filter(Boolean).join("\n"),
-          availableDecisions: mapApprovalDecisions(params.availableDecisions),
-          isSubmitting: false
-        }
-      };
-    }
+const resolveRuntimeActivityTypeKey = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+      return "dynamic_tool_call";
+    case "task":
+      return event.command ? "command_execution" : event.sourceMethod;
+    case "error":
+      return "error";
+    case "activity":
+      return event.activityType;
+    default:
+      return event.sourceMethod;
+  }
+};
 
-    case "file_change_approval":
-    case "apply_patch_approval":
-    case "file_read_approval": {
-      const reason = asString(params.reason);
-      const grantRoot = asString(params.grantRoot) ?? asString(params.path);
+const resolveRuntimeActivityChangedFiles = (event: RuntimeActivityEvent): TimelineChangedFile[] => {
+  switch (event.kind) {
+    case "tool.call":
+    case "task":
+    case "thread":
+    case "activity":
+      return event.files;
+    default:
+      return [];
+  }
+};
 
-      return {
-        type: "upsertApproval",
-        approval: {
-          id: requestId,
-          kind: "fileChange",
-          title: requestType === "file_read_approval" ? "Read file" : "Apply file changes",
-          detail: [reason, grantRoot ? `path: ${grantRoot}` : null].filter(Boolean).join("\n"),
-          availableDecisions:
-            requestType !== "file_read_approval" && grantRoot
-              ? ["accept", "acceptForSession", "decline", "cancel"]
-              : ["accept", "decline", "cancel"],
-          isSubmitting: false
-        }
-      };
-    }
-
-    case "tool_user_input":
-      return {
-        type: "upsertUserInput",
-        request: {
-          id: requestId,
-          title: "Clarification requested",
-          questions: mapUserInputQuestions(params.questions),
-          isSubmitting: false
-        }
-      };
-
+const resolveRuntimeActivityStatusValue = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+    case "task":
+    case "activity":
+      return event.status;
     default:
       return null;
   }
 };
 
-const buildRuntimeActivityMutation = (
-  methodKey: string,
-  params: Record<string, unknown>,
-  turnId: string | null,
-  createdAt: string
-): TimelineRuntimeMutation => {
-  const label =
-    asString(params.label) ??
-    asString(params.title) ??
-    asString(params.message) ??
-    formatTokenLabel(methodKey);
-  const detail = collectJoinedText(
-    params.detail,
-    params.summary,
-    params.message,
-    params.reason,
-    params.output,
-    params.text
-  );
-  const command = normalizeCommandValue(params.command);
-  const toolName = asString(params.toolName) ?? asString(params.tool) ?? asString(params.name);
-  const agentLabel = asString(params.agentLabel) ?? asString(params.agentName) ?? asString(params.agent);
-
-  return {
-    type: "upsertEntry",
-    entry: {
-      id:
-        asString(params.itemId) ??
-        asString(params.id) ??
-        `${turnId ?? "thread"}-${methodKey}-${randomUUID()}`,
-      kind: "activity",
-      activityType: resolveActivityType(methodKey),
-      createdAt,
-      turnId,
-      tone: resolveActivityTone(resolveActivityType(methodKey)),
-      label,
-      detail,
-      command,
-      changedFiles: collectChangedFiles(params.files ?? params.changes ?? params.output),
-      status: resolveActivityStatus(params.status),
-      toolName: toolName ?? null,
-      agentLabel: agentLabel ?? null
-    }
-  };
+const resolveRuntimeActivityToolName = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+    case "task":
+    case "activity":
+      return event.toolName;
+    default:
+      return null;
+  }
 };
+
+const resolveRuntimeActivityAgentLabel = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+    case "task":
+    case "activity":
+      return event.agentLabel;
+    default:
+      return null;
+  }
+};
+
+const resolveRuntimeActivityCommand = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+    case "task":
+    case "activity":
+      return event.command;
+    default:
+      return null;
+  }
+};
+
+const resolveRuntimeActivityId = (event: RuntimeActivityEvent) => {
+  switch (event.kind) {
+    case "tool.call":
+    case "task":
+    case "activity":
+    case "error":
+    case "audio.input":
+    case "audio.output":
+    case "interruption":
+      return event.itemId;
+    default:
+      return null;
+  }
+};
+
+const buildRuntimeActivityMutationFromEvent = (
+  event: RuntimeActivityEvent,
+  createdAt: string
+): TimelineRuntimeMutation =>
+  buildTimelineActivityMutation({
+    id: resolveRuntimeActivityId(event),
+    activityType: resolveRuntimeActivityTypeKey(event),
+    createdAt,
+    turnId: event.turnId,
+    label: resolveRuntimeActivityLabel(event),
+    detail: resolveRuntimeActivityDetail(event),
+    command: resolveRuntimeActivityCommand(event),
+    changedFiles: resolveRuntimeActivityChangedFiles(event),
+    status: resolveRuntimeActivityStatusValue(event),
+    toolName: resolveRuntimeActivityToolName(event),
+    agentLabel: resolveRuntimeActivityAgentLabel(event)
+  });
 
 export const normalizeBridgeRequest = (payload: RequestPayload) => {
-  const params = isRecord(payload.params) ? payload.params : {};
-  const threadId = asString(params.threadId);
-  const mutations: TimelineRuntimeMutation[] = [];
-  const methodKey = toCanonicalToken(payload.method);
-  const requestType =
-    normalizeRequestType(params.requestType) ?? resolveRequestTypeFromMethod(methodKey);
-
-  const requestMutation = buildApprovalMutation(payload.id, requestType, params);
-
-  if (requestMutation) {
-    mutations.push(requestMutation);
-  }
-
-  return { threadId, mutations };
-};
-
-export const normalizeBridgeNotification = (payload: NotificationPayload) => {
-  const params = isRecord(payload.params) ? payload.params : {};
-  const threadId = asString(params.threadId);
-  const turnId = asString(params.turnId);
-  const createdAt = normalizeTimestamp(params.createdAt, "Live update");
-  const methodKey = toCanonicalToken(payload.method);
-  const latestTurn: TimelineTurn | null = turnId
-    ? {
-        id: turnId,
-        status: "inProgress",
-        startedAt: createdAt,
-        completedAt: null
-      }
-    : null;
+  const event = parseProviderRuntimeRequest(payload);
   const mutations: TimelineRuntimeMutation[] = [];
 
-  if (methodKey === "turn_started") {
-    mutations.push({
-      type: "setRunState",
-      runState: { phase: "running", label: "Working" },
-      isRunning: true,
-      latestTurn,
-      activeWorkStartedAt: createdAt
-    });
-  } else if (methodKey === "turn_completed" || methodKey === "turn_aborted") {
-    const turn = isRecord(params.turn) ? (params.turn as TurnRef) : null;
-    const interrupted =
-      methodKey === "turn_aborted" ||
-      turn?.status === "interrupted" ||
-      asString(params.reason) === "interrupted";
-    const nextLatestTurn =
-      turnId || asString(turn?.id)
-        ? {
-            id: turnId ?? asString(turn?.id) ?? randomUUID(),
-            status: interrupted ? "interrupted" : turn?.status ?? "completed",
-            startedAt: typeof turn?.startedAt === "string" ? turn.startedAt : null,
-            completedAt:
-              typeof turn?.completedAt === "string" ? turn.completedAt : normalizeTimestamp(params.createdAt, "Live update")
-          }
-        : null;
-    const phase =
-      turn?.status === "failed" ? "failed" : interrupted ? "interrupted" : "idle";
-    const label = phase === "failed" ? "Failed" : phase === "interrupted" ? "Interrupted" : "Idle";
-    mutations.push({
-      type: "setRunState",
-      runState: { phase, label },
-      isRunning: false,
-      latestTurn: nextLatestTurn,
-      activeWorkStartedAt: null
-    });
-  }
-
-  if (methodKey === "turn_plan_updated") {
-    const explanation = asString(params.explanation) ?? "";
-    const steps = buildPlanSteps(params.plan);
-    mutations.push({
-      type: "setActivePlan",
-      plan: steps.length > 0 || explanation
-        ? {
-            id: `active-plan-${threadId ?? "thread"}`,
-            createdAt,
-            updatedAt: createdAt,
-            turnId,
-            title: explanation ? resolvePlanTitle(explanation) : "Plan",
-            text: explanation,
-            steps
-          }
-        : null
-    });
-    mutations.push(
-      buildRuntimeActivityMutation(
-        "plan_update",
-        {
-          ...params,
-          label: "Plan updated",
-          detail: explanation
-        },
-        turnId,
-        createdAt
-      )
-    );
+  if (!event) {
+    return { threadId: null, mutations };
   }
 
   if (
-    methodKey === "turn_proposed_delta" ||
-    methodKey === "turn_proposed_completed" ||
-    methodKey === "turn_proposed_updated"
+    event.kind === "approval.requested" ||
+    event.kind === "user_input.requested" ||
+    event.kind === "request.resolved"
   ) {
-    const delta = asString(params.delta);
-    const text = asString(params.planMarkdown) ?? asString(params.text) ?? delta ?? "";
+    pushRequestEventMutations(event, mutations);
+  }
 
-    if (text) {
+  return { threadId: event.threadId, mutations };
+};
+
+export const normalizeBridgeNotification = (payload: NotificationPayload) => {
+  const event = parseProviderRuntimeNotification(payload);
+  const mutations: TimelineRuntimeMutation[] = [];
+
+  if (!event) {
+    return { threadId: null, sequence: null, mutations };
+  }
+
+  const threadId = event.threadId;
+  const turnId = event.turnId;
+  const createdAt = normalizeTimestamp(event.createdAt, "Live update");
+
+  if (event.kind === "turn.lifecycle") {
+    const latestTurn: TimelineTurn | null =
+      turnId || event.turn?.id
+        ? {
+            id: turnId ?? event.turn?.id ?? randomUUID(),
+            status: event.turn?.status ?? "inProgress",
+            startedAt: event.turn?.startedAt ?? createdAt,
+            completedAt: event.turn?.completedAt ?? null
+          }
+        : null;
+
+    if (event.phase === "started") {
+      mutations.push({
+        type: "setRunState",
+        runState: { phase: "running", label: "Working" },
+        isRunning: true,
+        latestTurn,
+        activeWorkStartedAt: createdAt
+      });
+    } else {
+      const interrupted =
+        event.phase === "aborted" ||
+        event.turn?.status === "interrupted" ||
+        event.reason === "interrupted";
+      const phase =
+        event.turn?.status === "failed" ? "failed" : interrupted ? "interrupted" : "idle";
+      const label = phase === "failed" ? "Failed" : phase === "interrupted" ? "Interrupted" : "Idle";
+
+      mutations.push({
+        type: "setRunState",
+        runState: { phase, label },
+        isRunning: false,
+        latestTurn,
+        activeWorkStartedAt: null
+      });
+    }
+  }
+
+  if (event.kind === "turn.plan") {
+    if (event.planKind === "active") {
+      mutations.push({
+        type: "setActivePlan",
+        plan:
+          event.steps.length > 0 || event.text
+            ? {
+                id: `active-plan-${threadId ?? "thread"}`,
+                createdAt,
+                updatedAt: createdAt,
+                turnId,
+                title: event.text ? resolvePlanTitle(event.text) : "Plan",
+                text: event.text,
+                steps: event.steps as TimelinePlanStep[]
+              }
+            : null
+      });
+      mutations.push(
+        buildTimelineActivityMutation({
+          activityType: "plan_update",
+          createdAt,
+          turnId,
+          label: "Plan updated",
+          detail: event.explanation ?? event.text
+        })
+      );
+    } else if (event.text) {
       mutations.push({
         type: "upsertLatestProposedPlan",
-        merge:
-          methodKey === "turn_proposed_delta" && !asString(params.planMarkdown) ? "append" : "replace",
+        merge: event.merge,
         plan: buildProposedPlanEntry(
-          asString(params.planId) ?? `${turnId ?? threadId ?? "thread"}-proposed-plan`,
+          event.planId ?? `${turnId ?? threadId ?? "thread"}-proposed-plan`,
           turnId,
-          text,
+          event.text,
           createdAt,
           createdAt
         )
@@ -889,150 +1066,65 @@ export const normalizeBridgeNotification = (payload: NotificationPayload) => {
     }
   }
 
-  if (methodKey === "turn_diff_updated") {
-    const diff = asString(params.diff) ?? "";
-
+  if (event.kind === "turn.diff") {
     mutations.push({
       type: "setActiveDiffPreview",
       diff: buildDiffEntry(
-        `live-diff-${turnId ?? threadId ?? randomUUID()}`,
+        event.diffId ?? `live-diff-${turnId ?? threadId ?? randomUUID()}`,
         turnId,
         createdAt,
-        collectChangedFiles(params.files),
-        null,
-        "Live diff preview",
-        diff
+        event.files,
+        event.assistantMessageId,
+        event.title ?? "Live diff preview",
+        event.diff
       )
     });
   }
 
-  if (methodKey === "item_agent_message_delta" || methodKey === "content_delta") {
-    const delta = asString(params.delta);
-
-    if (delta) {
-      mutations.push({
-        type: "appendAssistantDelta",
-        id: asString(params.itemId) ?? randomUUID(),
-        turnId,
-        delta,
-        createdAt
-      });
-    }
-  }
-
-  if (
-    methodKey === "item_started" ||
-    methodKey === "item_completed" ||
-    methodKey === "item_updated"
-  ) {
-    const item = isRecord(params.item) ? (params.item as ThreadItem) : null;
-
-    if (item) {
-      const projected = projectTurnRecord(
-        {
-          id: turnId ?? randomUUID(),
-          status: methodKey === "item_started" ? "inProgress" : "completed",
-          items: [
-            {
-              ...item,
-              status:
-                methodKey === "item_started"
-                  ? "in_progress"
-                  : asString(item.status) ?? "completed"
-            }
-          ],
-          createdAt
-        },
-        0
-      );
-
-      for (const entry of projected.entries) {
-        if (entry.kind === "proposedPlan") {
-          mutations.push({
-            type: "upsertLatestProposedPlan",
-            plan: entry,
-            merge: "replace"
-          });
-          continue;
-        }
-
-        if (entry.kind === "diffSummary") {
-          mutations.push({ type: "upsertTurnDiff", diff: entry });
-          continue;
-        }
-
-        mutations.push({ type: "upsertEntry", entry });
-      }
-    }
-  }
-
-  if (methodKey === "request_opened") {
-    const requestId = asString(params.requestId) ?? asString(params.id);
-    const requestMutation =
-      requestId && buildApprovalMutation(requestId, normalizeRequestType(params.requestType), params);
-
-    if (requestMutation) {
-      mutations.push(requestMutation);
-    }
-  }
-
-  if (methodKey === "user_input_requested") {
-    const requestId = asString(params.requestId) ?? asString(params.id) ?? randomUUID();
+  if (event.kind === "message.delta") {
     mutations.push({
-      type: "upsertUserInput",
-      request: {
-        id: requestId,
-        title: asString(params.title) ?? "Clarification requested",
-        questions: mapUserInputQuestions(params.questions),
-        isSubmitting: false
-      }
+      type: "appendAssistantDelta",
+      id: event.itemId ?? randomUUID(),
+      turnId,
+      delta: event.delta,
+      createdAt
     });
   }
 
-  if (
-    methodKey === "server_request_resolved" ||
-    methodKey === "request_resolved" ||
-    methodKey === "user_input_resolved"
-  ) {
-    const requestId = asString(params.requestId);
+  if (event.kind === "item.lifecycle") {
+    const projectedTurnId = turnId ?? event.item.id ?? randomUUID();
 
-    if (requestId) {
-      mutations.push({ type: "resolveRequest", requestId });
+    for (const mutation of projectCanonicalRuntimeItem(event.item, projectedTurnId, createdAt)) {
+      mutations.push(mutation);
     }
   }
 
   if (
-    methodKey &&
-    mutations.length === 0 &&
-    threadId &&
-    [
-      "task_started",
-      "task_progress",
-      "task_completed",
-      "hook_started",
-      "hook_progress",
-      "hook_completed",
-      "tool_progress",
-      "tool_summary",
-      "runtime_warning",
-      "runtime_error",
-      "files_persisted",
-      "thread_state_changed",
-      "thread_metadata_updated",
-      "session_state_changed"
-    ].includes(methodKey)
+    event.kind === "approval.requested" ||
+    event.kind === "user_input.requested" ||
+    event.kind === "request.resolved"
   ) {
-    mutations.push(buildRuntimeActivityMutation(methodKey, params, turnId, createdAt));
+    pushRequestEventMutations(event, mutations);
+  }
+
+  if (
+    event.kind === "activity" ||
+    event.kind === "audio.input" ||
+    event.kind === "audio.output" ||
+    event.kind === "error" ||
+    event.kind === "interruption" ||
+    event.kind === "session.lifecycle" ||
+    event.kind === "task" ||
+    event.kind === "thread" ||
+    event.kind === "tool.call" ||
+    event.kind === "usage"
+  ) {
+    mutations.push(buildRuntimeActivityMutationFromEvent(event, createdAt));
   }
 
   return {
     threadId,
-    sequence:
-      typeof params.sequence === "number"
-        ? params.sequence
-        : typeof params.eventSequence === "number"
-          ? params.eventSequence
-          : null,
+    sequence: event.sourceSeq,
     mutations
   };
 };

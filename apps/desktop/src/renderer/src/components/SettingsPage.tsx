@@ -212,6 +212,20 @@ function ActionRow({
   );
 }
 
+function BackArrowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M9.75 3.5 5.25 8l4.5 4.5M5.5 8h5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function SettingsPage({
   appInfo,
   appSettingsState,
@@ -287,15 +301,18 @@ export function SettingsPage({
         <div>
           <h2>App preferences</h2>
         </div>
-        <div className="settings-page-actions">
-          <button type="button" className="settings-button" onClick={onClose}>
-            Back to thread
-          </button>
-        </div>
       </header>
 
       <div className="settings-page-shell">
         <aside className="settings-sidebar">
+          <button
+            type="button"
+            className="settings-button settings-button-ghost settings-back-button"
+            onClick={onClose}
+          >
+            <BackArrowIcon />
+            <span>Back to thread</span>
+          </button>
           <nav className="settings-nav" aria-label="Settings sections">
             {SETTINGS_SECTIONS.map((section) => (
               <button

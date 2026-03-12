@@ -9,13 +9,21 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./structured-log": {
+      "types": "./dist/structured-log.d.ts",
+      "import": "./dist/structured-log.js"
     }
   },
   "scripts": {
+    "pretypecheck": "pnpm --filter @codex-realtime/contracts build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@codex-realtime/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

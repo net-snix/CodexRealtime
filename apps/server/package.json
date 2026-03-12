@@ -1,0 +1,23 @@
+{
+  "name": "@codex-realtime/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "prebuild": "pnpm --filter @codex-realtime/contracts build && pnpm --filter @codex-realtime/shared build",
+    "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @codex-realtime/contracts build && pnpm --filter @codex-realtime/shared build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "pnpm run build && node dist/server.test.js && node dist/logging.test.js",
+    "start": "pnpm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@codex-realtime/contracts": "workspace:*",
+    "@codex-realtime/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.3"
+  }
+}

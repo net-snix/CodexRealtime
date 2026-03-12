@@ -6,6 +6,7 @@ import type {
   RealtimeTranscriptEntry,
   VoiceState
 } from "@shared";
+import { ensureNativeApi, type NativeApi } from "./native-api";
 
 const initialRealtimeState: RealtimeState = {
   status: "idle",
@@ -27,6 +28,7 @@ const MAX_SAMPLES_PER_CHANNEL = 262_144;
 type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
   shouldDispatchPrompt: boolean;
 };
+type PersistedVoicePreferences = Awaited<ReturnType<NativeApi["getVoicePreferences"]>>;
 type AudioOutputElement = HTMLAudioElement & {
   setSinkId?: (sinkId: string) => Promise<void>;
 };
@@ -313,6 +315,11 @@ export const useRealtimeVoice = ({
   enabled: boolean;
   onVoicePrompt?: (prompt: string) => void | Promise<void>;
 }) => {
+  const nativeApiRef = useRef<NativeApi | null>(null);
+  if (!nativeApiRef.current) {
+    nativeApiRef.current = ensureNativeApi();
+  }
+
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [realtimeState, setRealtimeState] = useState<RealtimeState>(initialRealtimeState);
   const [isActive, setIsActive] = useState(false);
@@ -364,7 +371,7 @@ export const useRealtimeVoice = ({
         }
 
         try {
-          await window.appBridge.appendRealtimeAudio(nextChunk);
+          await nativeApiRef.current!.appendRealtimeAudio(nextChunk);
         } catch {
           // Keep capture responsive if a single realtime chunk fails to send.
         }
@@ -433,14 +440,14 @@ export const useRealtimeVoice = ({
   useEffect(() => {
     let isCancelled = false;
 
-    const applyVoicePreferences = (preferences: Awaited<ReturnType<typeof window.appBridge.getVoicePreferences>>) => {
+    const applyVoicePreferences = (preferences: PersistedVoicePreferences) => {
       setSelectedInputDeviceId(preferences.selectedInputDeviceId);
       setSelectedOutputDeviceId(preferences.selectedOutputDeviceId);
       setIsDeviceHintDismissed(preferences.deviceHintDismissed);
       setHasCompletedDeviceSetup(preferences.deviceSetupComplete);
     };
 
-    void window.appBridge
+    void nativeApiRef.current!
       .getVoicePreferences()
       .then((preferences) => {
         if (isCancelled) {
@@ -468,7 +475,7 @@ export const useRealtimeVoice = ({
       return;
     }
 
-    void window.appBridge
+    void nativeApiRef.current!
       .updateVoicePreferences({
         selectedInputDeviceId,
         selectedOutputDeviceId,
@@ -496,7 +503,7 @@ export const useRealtimeVoice = ({
     void playbackElement.setSinkId(selectedOutputDeviceId);
   }, [selectedOutputDeviceId]);
 
-const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) => {
+  const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) => {
     let decoded: ReturnType<typeof decodePcm16>;
     try {
       decoded = decodePcm16(chunk);
@@ -554,8 +561,8 @@ const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) =
   }, [scheduleAudioPlayback]);
 
   useEffect(() => {
-    void window.appBridge.getRealtimeState().then(setRealtimeState);
-    const unsubscribe = window.appBridge.subscribeRealtimeEvents((event) => {
+    void nativeApiRef.current!.getRealtimeState().then(setRealtimeState);
+    const unsubscribe = nativeApiRef.current!.subscribeRealtimeEvents((event) => {
       if (event.type === "state") {
         setRealtimeState(event.state);
         setVoiceState(
@@ -642,7 +649,7 @@ const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) =
     isSendingAudioRef.current = false;
     dispatchedTranscriptIdsRef.current.clear();
     lastDispatchedPromptRef.current = "";
-    await window.appBridge.startRealtime();
+    await nativeApiRef.current!.startRealtime();
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -711,7 +718,7 @@ const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) =
     setVoiceState("idle");
 
     try {
-      await window.appBridge.stopRealtime();
+      await nativeApiRef.current!.stopRealtime();
     } catch {
       // Keep local teardown best-effort for prototype mode.
     }
@@ -720,7 +727,7 @@ const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) =
   const shouldShowDeviceHint = !isDeviceHintDismissed && !hasCompletedDeviceSetup;
 
   const resetVoicePreferences = async () => {
-    const nextPreferences = await window.appBridge.resetVoicePreferences();
+    const nextPreferences = await nativeApiRef.current!.resetVoicePreferences();
     setSelectedInputDeviceId(nextPreferences.selectedInputDeviceId);
     setSelectedOutputDeviceId(nextPreferences.selectedOutputDeviceId);
     setIsDeviceHintDismissed(nextPreferences.deviceHintDismissed);

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppSettings, AppSettingsState } from "@shared";
+import { ensureNativeApi } from "./native-api";
 
 const emptyState: AppSettingsState = {
   settings: {
@@ -23,13 +24,18 @@ const emptyState: AppSettingsState = {
 };
 
 export function useAppSettings() {
+  const nativeApiRef = useRef<ReturnType<typeof ensureNativeApi> | null>(null);
+  if (!nativeApiRef.current) {
+    nativeApiRef.current = ensureNativeApi();
+  }
+
   const [settingsState, setSettingsState] = useState<AppSettingsState>(emptyState);
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    void window.appBridge
+    void nativeApiRef.current!
       .getAppSettingsState()
       .then((nextState) => {
         if (!cancelled) {
@@ -49,7 +55,7 @@ export function useAppSettings() {
     setIsUpdating(true);
 
     try {
-      const nextState = await window.appBridge.updateAppSettings(patch);
+      const nextState = await nativeApiRef.current!.updateAppSettings(patch);
       setSettingsState(nextState);
       return nextState;
     } finally {
