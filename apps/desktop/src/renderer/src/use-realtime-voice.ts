@@ -1,13 +1,12 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type {
   AudioDeviceOption,
-  NativeApi,
   RealtimeAudioChunk,
   RealtimeState,
   RealtimeTranscriptEntry,
   VoiceState
 } from "@shared";
-import { ensureNativeApi } from "./native-api";
+import { ensureNativeApi, type NativeApi } from "./native-api";
 
 const initialRealtimeState: RealtimeState = {
   status: "idle",
@@ -504,7 +503,7 @@ export const useRealtimeVoice = ({
     void playbackElement.setSinkId(selectedOutputDeviceId);
   }, [selectedOutputDeviceId]);
 
-const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) => {
+  const scheduleAudioPlayback = useEffectEvent(async (chunk: RealtimeAudioChunk) => {
     let decoded: ReturnType<typeof decodePcm16>;
     try {
       decoded = decodePcm16(chunk);

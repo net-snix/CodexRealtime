@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { NativeApi } from "@codex-realtime/contracts";
 import {
   ensureNativeApi,
   readNativeApi,
-  resetNativeApiCacheForTests
+  resetNativeApiCacheForTests,
+  type NativeApi
 } from "./native-api";
 
 afterEach(() => {
