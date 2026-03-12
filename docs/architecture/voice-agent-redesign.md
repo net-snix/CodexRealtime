@@ -1,4 +1,4 @@
-# Voice-Agent T3code Redesign ADR
+# Voice-Agent Redesign ADR
 
 ## Status
 Accepted
@@ -7,10 +7,10 @@ Accepted
 2026-03-12
 
 ## Branch
-`codex/t3code-voice-redesign`
+`codex/voice-agent-redesign`
 
 ## Decision
-CodexRealtime will move from a single Electron-heavy app shape toward a `t3code`-style split:
+CodexRealtime will move from a single Electron-heavy app shape toward a desktop shell + local server split:
 
 - `apps/desktop`: native shell only
 - `apps/server`: local source of truth for sessions, orchestration, projections, and provider runtime ingestion
