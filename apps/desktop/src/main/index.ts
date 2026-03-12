@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { createStructuredLogger } from "@codex-realtime/shared/structured-log";
+import { createBootstrapLogger } from "./bootstrap-logger";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
 import { LocalServerProcess } from "./local-server-process";
@@ -19,24 +19,16 @@ if (userDataOverride) {
 let helperCleanupInterval: NodeJS.Timeout | null = null;
 let isQuitting = false;
 const bootstrapId = randomUUID();
-const logDirectory = join(app.getPath("userData"), "logs");
-const desktopBootstrapLogPath = join(logDirectory, "desktop-bootstrap.ndjson");
-const serverBootstrapLogPath = join(logDirectory, "server-bootstrap.ndjson");
-const bootstrapLogger = createStructuredLogger({
-  source: "desktop",
-  scope: "bootstrap",
-  logFilePath: desktopBootstrapLogPath,
-  baseContext: {
-    correlationId: bootstrapId,
-    appVersion: app.getVersion()
-  }
-});
-const localServerLogger = bootstrapLogger.child("local-server");
-const shutdownLogger = bootstrapLogger.child("shutdown");
+const { bootstrapLogger, localServerLogger, shutdownLogger, paths: bootstrapLogPaths } =
+  createBootstrapLogger({
+    bootstrapId,
+    appVersion: app.getVersion(),
+    userDataPath: app.getPath("userData")
+  });
 
 const localServerProcess = new LocalServerProcess({
   bootstrapId,
-  serverLogFilePath: serverBootstrapLogPath,
+  serverLogFilePath: bootstrapLogPaths.serverLogPath,
   expectedVersion: app.getVersion(),
   onUnexpectedExit: ({ code, signal, expectedVersion, handshake }) => {
     bootstrapLogger.error("Local server crashed after startup", {
