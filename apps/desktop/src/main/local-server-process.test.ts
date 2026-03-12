@@ -99,6 +99,15 @@ describe("parseServerHandshakeLine", () => {
     expect(parseServerHandshakeLine("Local server ready")).toBeNull();
     expect(parseServerHandshakeLine("{\"type\":\"different\"}")).toBeNull();
   });
+
+  it("ignores oversized handshake lines", () => {
+    const handshake = {
+      ...createHandshake(),
+      name: "x".repeat(9_000)
+    };
+
+    expect(parseServerHandshakeLine(JSON.stringify(handshake))).toBeNull();
+  });
 });
 
 describe("validateLocalServerHandshake", () => {
@@ -174,6 +183,25 @@ describe("LocalServerProcess", () => {
     await vi.advanceTimersByTimeAsync(25);
 
     await timeoutExpectation;
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+  });
+
+  it("fails fast when stdout buffer grows past the handshake limit", async () => {
+    const child = new FakeChildProcess();
+    const process = new LocalServerProcess(
+      {
+        entryOverride: "/tmp/server.js",
+        startupTimeoutMs: 1_000,
+        pathExists: () => true,
+        spawnProcess: createSpawnProcess(child)
+      },
+      createSilentLogger()
+    );
+
+    const startPromise = process.start();
+    child.stdout.write("x".repeat(70_000));
+
+    await expect(startPromise).rejects.toThrow(/stdout buffer exceeded/);
     expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   });
 
