@@ -1,4 +1,5 @@
 import { createStructuredLogger } from "./logging.js";
+import { parseServerPort } from "./server-config.js";
 import { createServerApp, createServerContainer } from "./server.js";
 
 interface ProcessLike {
@@ -27,19 +28,6 @@ const serverLogger = createStructuredLogger("bootstrap", {
   }
 });
 
-const parsePort = (rawPort: string | undefined) => {
-  if (!rawPort) {
-    return 0;
-  }
-
-  const parsedPort = Number.parseInt(rawPort, 10);
-  if (!Number.isFinite(parsedPort) || parsedPort < 0) {
-    throw new Error(`Invalid CODEX_REALTIME_SERVER_PORT: ${rawPort}`);
-  }
-
-  return parsedPort;
-};
-
 const server = createServerApp({
   container: createServerContainer({
     logger: createStructuredLogger("lifecycle", {
@@ -55,7 +43,7 @@ const server = createServerApp({
     appVersion
   }),
   host: processLike?.env?.CODEX_REALTIME_SERVER_HOST ?? "127.0.0.1",
-  port: parsePort(processLike?.env?.CODEX_REALTIME_SERVER_PORT)
+  port: parseServerPort(processLike?.env?.CODEX_REALTIME_SERVER_PORT)
 });
 
 let shuttingDown = false;
@@ -89,7 +77,7 @@ processLike?.on?.("SIGTERM", () => {
 try {
   serverLogger.info("Local server bootstrap starting", {
     host: processLike?.env?.CODEX_REALTIME_SERVER_HOST ?? "127.0.0.1",
-    port: parsePort(processLike?.env?.CODEX_REALTIME_SERVER_PORT)
+    port: parseServerPort(processLike?.env?.CODEX_REALTIME_SERVER_PORT)
   });
   const handshake = await server.start();
   serverLogger.info("Local server handshake emitted", {

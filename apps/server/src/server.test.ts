@@ -1,3 +1,4 @@
+import { parseServerPort } from "./server-config.js";
 import { createServerApp, createServerContainer } from "./server.js";
 
 const processLike = (globalThis as { process?: { exitCode?: number } }).process;
@@ -66,6 +67,30 @@ test("serves a ready health payload after startup", async () => {
   assertEqual(stoppedHandshake.ready, false);
   assertEqual(stoppedHandshake.baseUrl, null);
   assertEqual(stoppedHandshake.healthUrl, null);
+});
+
+test("accepts canonical integer server ports", () => {
+  assertEqual(parseServerPort(undefined), 0);
+  assertEqual(parseServerPort("0"), 0);
+  assertEqual(parseServerPort("43123"), 43123);
+});
+
+test("rejects lenient or out-of-range server ports", () => {
+  for (const rawPort of ["12.5", "12abc", "1e3", "-1", "65536"]) {
+    let didThrow = false;
+
+    try {
+      parseServerPort(rawPort);
+    } catch (error) {
+      didThrow = true;
+      assert(
+        error instanceof Error && error.message.includes(rawPort),
+        `Expected parseServerPort to report the invalid value: ${rawPort}`
+      );
+    }
+
+    assert(didThrow, `Expected parseServerPort to reject ${rawPort}`);
+  }
 });
 
 test("reuses injected container state in the readiness handshake", async () => {
