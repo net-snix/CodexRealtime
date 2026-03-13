@@ -11,6 +11,7 @@ describe("VoicePreferencesService", () => {
 
   it("caches preferences after the first load", async () => {
     const readFileSync = vi.fn(() => JSON.stringify({ selectedInputDeviceId: "mic-1" }));
+    const statSync = vi.fn(() => ({ size: 64 }));
     const writeFileSync = vi.fn();
     const mkdirSync = vi.fn();
     const getPath = vi.fn(() => "/tmp/codex");
@@ -18,6 +19,7 @@ describe("VoicePreferencesService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync,
       writeFileSync
     }));
     vi.doMock("electron", () => ({
@@ -36,6 +38,7 @@ describe("VoicePreferencesService", () => {
 
   it("updates and resets the cached preferences without rereading disk", async () => {
     const readFileSync = vi.fn(() => JSON.stringify({ selectedOutputDeviceId: "speaker-1" }));
+    const statSync = vi.fn(() => ({ size: 64 }));
     const writeFileSync = vi.fn();
     const mkdirSync = vi.fn();
     const getPath = vi.fn(() => "/tmp/codex");
@@ -43,6 +46,7 @@ describe("VoicePreferencesService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync,
       writeFileSync
     }));
     vi.doMock("electron", () => ({
@@ -80,6 +84,7 @@ describe("VoicePreferencesService", () => {
         deviceSetupComplete: true
       })
     );
+    const statSync = vi.fn(() => ({ size: 128 }));
     const writeFileSync = vi.fn();
     const mkdirSync = vi.fn();
     const getPath = vi.fn(() => "/tmp/codex");
@@ -87,6 +92,7 @@ describe("VoicePreferencesService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync,
       writeFileSync
     }));
     vi.doMock("electron", () => ({
