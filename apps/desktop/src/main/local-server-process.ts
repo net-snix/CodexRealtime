@@ -20,6 +20,8 @@ export interface LocalServerProcessOptions {
   host?: string;
   port?: number;
   startupTimeoutMs?: number;
+  maxHandshakeStdoutBytes?: number;
+  maxHandshakeStderrBytes?: number;
   entryOverride?: string;
   spawnProcess?: typeof spawn;
   pathExists?: (path: string) => boolean;
@@ -47,13 +49,48 @@ export interface LocalServerUnexpectedExit {
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 0;
 const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_HANDSHAKE_STDOUT_BYTES = 64 * 1024;
+const DEFAULT_MAX_HANDSHAKE_STDERR_BYTES = 8 * 1024;
 const HANDSHAKE_PREFIX = "{\"type\":\"server-handshake\"";
 const MAX_HANDSHAKE_LINE_LENGTH = 8 * 1024;
-const MAX_STDOUT_BUFFER_LENGTH = 64 * 1024;
-const MAX_STDERR_BUFFER_LENGTH = 8 * 1024;
+const OVERSIZED_HANDSHAKE_STDOUT_ERROR =
+  "Local server sent oversized startup stdout before handshake";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
+const utf8ByteLength = (value: string) => Buffer.byteLength(value, "utf8");
+
+const retainUtf8Tail = (value: string, maxBytes: number) => {
+  if (!value || maxBytes <= 0) {
+    return "";
+  }
+
+  let retainedBytes = 0;
+  let retainedStartIndex = value.length;
+
+  for (const codePoint of Array.from(value).reverse()) {
+    const codePointBytes = utf8ByteLength(codePoint);
+
+    if (retainedBytes + codePointBytes > maxBytes) {
+      break;
+    }
+
+    retainedBytes += codePointBytes;
+    retainedStartIndex -= codePoint.length;
+  }
+
+  return value.slice(retainedStartIndex);
+};
+
+const formatBufferedStderr = (stderrBuffer: string, truncated: boolean) => {
+  const trimmed = stderrBuffer.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return truncated ? ` (stderr tail: ${trimmed})` : ` (${trimmed})`;
+};
 
 export const parseServerHandshakeLine = (line: string): LocalServerHandshake | null => {
   const trimmed = line.trim();
@@ -141,6 +178,8 @@ export class LocalServerProcess {
   private readonly host: string;
   private readonly port: number;
   private readonly startupTimeoutMs: number;
+  private readonly maxHandshakeStdoutBytes: number;
+  private readonly maxHandshakeStderrBytes: number;
   private readonly entryOverride: string | undefined;
   private readonly spawnProcess: typeof spawn;
   private readonly pathExists: (path: string) => boolean;
@@ -156,6 +195,14 @@ export class LocalServerProcess {
     this.host = options.host ?? DEFAULT_HOST;
     this.port = options.port ?? DEFAULT_PORT;
     this.startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
+    this.maxHandshakeStdoutBytes = Math.max(
+      1,
+      options.maxHandshakeStdoutBytes ?? DEFAULT_MAX_HANDSHAKE_STDOUT_BYTES
+    );
+    this.maxHandshakeStderrBytes = Math.max(
+      1,
+      options.maxHandshakeStderrBytes ?? DEFAULT_MAX_HANDSHAKE_STDERR_BYTES
+    );
     this.entryOverride = options.entryOverride;
     this.spawnProcess = options.spawnProcess ?? spawn;
     this.pathExists = options.pathExists ?? existsSync;
@@ -287,28 +334,39 @@ export class LocalServerProcess {
   private waitForHandshake(child: LocalServerChild, entryPath: string) {
     return new Promise<LocalServerHandshake>((resolveHandshake, rejectHandshake) => {
       let stdoutBuffer = "";
+      let stdoutBufferBytes = 0;
       let stderrBuffer = "";
+      let stderrBufferTruncated = false;
       let settled = false;
 
       const handleStdoutData = (chunk: Buffer | string) => {
-        stdoutBuffer += chunk.toString();
+        const message = chunk.toString();
+        const messageByteLength = utf8ByteLength(message);
 
-        if (stdoutBuffer.length > MAX_STDOUT_BUFFER_LENGTH) {
+        if (stdoutBufferBytes + messageByteLength > this.maxHandshakeStdoutBytes) {
           settle(() => {
             child.kill("SIGKILL");
             rejectHandshake(
               new Error(
-                `Local server stdout buffer exceeded ${MAX_STDOUT_BUFFER_LENGTH} bytes before handshake from ${entryPath}`
+                `${OVERSIZED_HANDSHAKE_STDOUT_ERROR} from ${entryPath} (${this.maxHandshakeStdoutBytes} bytes max)${formatBufferedStderr(
+                  stderrBuffer,
+                  stderrBufferTruncated
+                )}`
               )
             );
           });
           return;
         }
 
+        stdoutBuffer += message;
+        stdoutBufferBytes += messageByteLength;
+
         while (stdoutBuffer.includes("\n")) {
           const newlineIndex = stdoutBuffer.indexOf("\n");
-          const line = stdoutBuffer.slice(0, newlineIndex);
+          const consumed = stdoutBuffer.slice(0, newlineIndex + 1);
           stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+          stdoutBufferBytes -= utf8ByteLength(consumed);
+          const line = consumed.slice(0, -1);
 
           const handshake = parseServerHandshakeLine(line);
           if (!handshake) {
@@ -322,7 +380,14 @@ export class LocalServerProcess {
 
       const handleStderrData = (chunk: Buffer | string) => {
         const message = chunk.toString();
-        stderrBuffer = `${stderrBuffer}${message}`.slice(-MAX_STDERR_BUFFER_LENGTH);
+        const combined = `${stderrBuffer}${message}`;
+
+        if (utf8ByteLength(combined) > this.maxHandshakeStderrBytes) {
+          stderrBuffer = retainUtf8Tail(combined, this.maxHandshakeStderrBytes);
+          stderrBufferTruncated = true;
+        } else {
+          stderrBuffer = combined;
+        }
         process.stderr.write(message);
       };
 
@@ -336,7 +401,10 @@ export class LocalServerProcess {
         settle(() =>
           rejectHandshake(
             new Error(
-              `Local server exited before handshake (code=${code ?? "null"}, signal=${signal ?? "null"})${stderrBuffer ? `: ${stderrBuffer.trim()}` : ""}`
+              `Local server exited before handshake (code=${code ?? "null"}, signal=${signal ?? "null"})${formatBufferedStderr(
+                stderrBuffer,
+                stderrBufferTruncated
+              )}`
             )
           )
         );
@@ -365,7 +433,10 @@ export class LocalServerProcess {
           child.kill("SIGKILL");
           rejectHandshake(
             new Error(
-              `Timed out waiting for local server handshake from ${entryPath}${stderrBuffer ? ` (${stderrBuffer.trim()})` : ""}`
+              `Timed out waiting for local server handshake from ${entryPath}${formatBufferedStderr(
+                stderrBuffer,
+                stderrBufferTruncated
+              )}`
             )
           );
         });
