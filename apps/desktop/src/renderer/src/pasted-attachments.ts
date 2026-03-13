@@ -2,6 +2,7 @@ import {
   type PastedImageAttachment
 } from "@shared";
 import {
+  buildPastedImageFileName,
   getPastedImageFileExtension,
   isPastedImageByteLengthWithinLimit
 } from "../../pasted-image-limits";
@@ -136,7 +137,10 @@ const toPastedImageAttachment = async (
     return null;
   }
 
-  const name = file.name?.trim() || `pasted-image-${fallbackIndex + 1}${fallbackExtension}`;
+  const name = buildPastedImageFileName(
+    file.name?.trim() || `pasted-image-${fallbackIndex + 1}`,
+    mimeType
+  );
 
   return {
     name,
