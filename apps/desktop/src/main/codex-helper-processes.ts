@@ -30,6 +30,16 @@ const HELPER_PATTERNS: Record<HelperKind, RegExp> = {
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const STRICT_INTEGER = /^\d+$/;
+
+const parseStrictInteger = (value: string): number | null => {
+  if (!STRICT_INTEGER.test(value)) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+};
 
 export const parseElapsedSeconds = (value: string): number | null => {
   const trimmed = value.trim();
@@ -39,25 +49,35 @@ export const parseElapsedSeconds = (value: string): number | null => {
   }
 
   const [dayPart, clockPart] = trimmed.includes("-") ? trimmed.split("-", 2) : [null, trimmed];
-  const clockSegments = clockPart.split(":").map((segment) => Number.parseInt(segment, 10));
+  const clockSegments = clockPart.split(":").map((segment) => parseStrictInteger(segment));
 
-  if (clockSegments.some((segment) => Number.isNaN(segment))) {
+  if (clockSegments.some((segment) => segment === null)) {
     return null;
   }
 
-  const days = dayPart ? Number.parseInt(dayPart, 10) : 0;
+  const days = dayPart ? parseStrictInteger(dayPart) : 0;
 
-  if (Number.isNaN(days)) {
+  if (days === null) {
     return null;
   }
 
   if (clockSegments.length === 2) {
     const [minutes, seconds] = clockSegments;
+
+    if (minutes === null || seconds === null) {
+      return null;
+    }
+
     return days * 86_400 + minutes * 60 + seconds;
   }
 
   if (clockSegments.length === 3) {
     const [hours, minutes, seconds] = clockSegments;
+
+    if (hours === null || minutes === null || seconds === null) {
+      return null;
+    }
+
     return days * 86_400 + hours * 3_600 + minutes * 60 + seconds;
   }
 
@@ -71,11 +91,11 @@ export const parseProcessSnapshotLine = (line: string): ProcessSnapshot | null =
     return null;
   }
 
-  const pid = Number.parseInt(match[1], 10);
-  const ppid = Number.parseInt(match[2], 10);
+  const pid = parseStrictInteger(match[1]);
+  const ppid = parseStrictInteger(match[2]);
   const elapsedSeconds = parseElapsedSeconds(match[3]);
 
-  if (Number.isNaN(pid) || Number.isNaN(ppid) || elapsedSeconds === null) {
+  if (pid === null || ppid === null || elapsedSeconds === null) {
     return null;
   }
 
