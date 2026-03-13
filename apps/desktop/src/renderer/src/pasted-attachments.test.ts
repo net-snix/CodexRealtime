@@ -121,6 +121,30 @@ describe("pasted attachments", () => {
     });
   });
 
+  it("canonicalizes inline pasted image file names for downstream storage", async () => {
+    const clipboardData = createClipboardStub({
+      files: [
+        {
+          name: " Screenshot 2026-03-11 at 14.27.00!!.png ",
+          type: "image/png",
+          size: 3,
+          arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer
+        }
+      ]
+    });
+
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: [
+        {
+          name: "Screenshot-2026-03-11-at-14.27.00.png",
+          mimeType: "image/png",
+          dataBase64: "AQID"
+        }
+      ]
+    });
+  });
+
   it("rejects oversized inline pasted image blobs before reading them", async () => {
     const arrayBuffer = vi.fn(async () => Uint8Array.from([1, 2, 3]).buffer);
     const clipboardData = createClipboardStub({
