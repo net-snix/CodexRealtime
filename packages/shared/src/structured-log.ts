@@ -48,6 +48,8 @@ const REDACTED_LOG_VALUE = "[Redacted]";
 const MAX_LOG_STRING_LENGTH = 4_096;
 const MAX_LOG_ARRAY_ITEMS = 24;
 const MAX_LOG_OBJECT_ENTRIES = 24;
+const MAX_SENSITIVE_LOG_KEY_CACHE_SIZE = 256;
+const sensitiveLogContextKeyCache = new Map<string, boolean>();
 
 const truncateLogString = (value: string) => {
   if (value.length <= MAX_LOG_STRING_LENGTH) {
@@ -71,12 +73,15 @@ const SENSITIVE_LOG_KEY_PATTERNS = [
   ["authorization"],
   ["cookie"],
   ["cookies"],
+  ["credential"],
+  ["credentials"],
   ["password"],
   ["passphrase"],
   ["passwd"],
   ["pwd"],
   ["secret"],
   ["api", "key"],
+  ["api", "token"],
   ["access", "token"],
   ["refresh", "token"],
   ["session", "token"],
@@ -101,14 +106,35 @@ const hasTokenSequence = (tokens: string[], sequence: readonly string[]) => {
   return false;
 };
 
+const rememberSensitiveLogContextKey = (key: string, value: boolean) => {
+  // Bound cache growth; log field names can come from untrusted payloads.
+  if (sensitiveLogContextKeyCache.size >= MAX_SENSITIVE_LOG_KEY_CACHE_SIZE) {
+    const oldestKey = sensitiveLogContextKeyCache.keys().next().value;
+    if (typeof oldestKey === "string") {
+      sensitiveLogContextKeyCache.delete(oldestKey);
+    }
+  }
+
+  sensitiveLogContextKeyCache.set(key, value);
+  return value;
+};
+
 const isSensitiveLogContextKey = (key: string) => {
+  const cached = sensitiveLogContextKeyCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const tokens = tokenizeLogContextKey(key);
 
   if (tokens.length === 0) {
-    return false;
+    return rememberSensitiveLogContextKey(key, false);
   }
 
-  return SENSITIVE_LOG_KEY_PATTERNS.some((pattern) => hasTokenSequence(tokens, pattern));
+  return rememberSensitiveLogContextKey(
+    key,
+    SENSITIVE_LOG_KEY_PATTERNS.some((pattern) => hasTokenSequence(tokens, pattern))
+  );
 };
 
 const serializeLogValue = (

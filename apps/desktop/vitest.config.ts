@@ -10,6 +10,9 @@ export default defineConfig({
       "@codex-realtime/contracts/ipc": fromRoot("../../packages/contracts/src/ipc.ts"),
       "@codex-realtime/contracts/server-api": fromRoot("../../packages/contracts/src/server-api.ts"),
       "@codex-realtime/contracts/shell-api": fromRoot("../../packages/contracts/src/shell-api.ts"),
+      "@codex-realtime/shared/structured-log": fromRoot(
+        "../../packages/shared/src/structured-log.ts"
+      ),
       "@renderer": fromRoot("src/renderer/src"),
       "@shared": fromRoot("../../packages/shared/src/index.ts")
     }
