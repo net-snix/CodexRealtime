@@ -13,6 +13,7 @@ describe("AppSettingsService", () => {
     const readFileSync = vi.fn(() =>
       JSON.stringify({ reduceMotion: true, autoNameNewThreads: true })
     );
+    const statSync = vi.fn(() => ({ size: 128 }));
     const writeFileSync = vi.fn();
     const mkdirSync = vi.fn();
     const getPath = vi.fn(() => "/tmp/codex");
@@ -22,6 +23,7 @@ describe("AppSettingsService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync,
       writeFileSync
     }));
     vi.doMock("electron", () => ({
@@ -46,6 +48,7 @@ describe("AppSettingsService", () => {
 
   it("reuses the cached state after updates", async () => {
     const readFileSync = vi.fn(() => JSON.stringify({ autoStartVoice: false }));
+    const statSync = vi.fn(() => ({ size: 128 }));
     const writeFileSync = vi.fn();
     const mkdirSync = vi.fn();
     const getPath = vi.fn(() => "/tmp/codex");
@@ -55,6 +58,7 @@ describe("AppSettingsService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync,
       writeFileSync
     }));
     vi.doMock("electron", () => ({
@@ -108,6 +112,7 @@ describe("AppSettingsService", () => {
         }
       })
     );
+    const statSync = vi.fn(() => ({ size: 256 }));
     const writeFileSync = vi.fn();
     const mkdirSync = vi.fn();
     const getPath = vi.fn(() => "/tmp/codex");
@@ -117,6 +122,7 @@ describe("AppSettingsService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync,
       writeFileSync
     }));
     vi.doMock("electron", () => ({
@@ -138,5 +144,40 @@ describe("AppSettingsService", () => {
     expect(state.density).toBe("comfortable");
     expect(state.notifyOnErrors).toBe(false);
     expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+
+  it("skips reading oversized persisted settings files", async () => {
+    const readFileSync = vi.fn();
+    const statSync = vi.fn(() => ({ size: 128 * 1024 }));
+    const writeFileSync = vi.fn();
+    const mkdirSync = vi.fn();
+    const getPath = vi.fn(() => "/tmp/codex");
+    const getLoginItemSettings = vi.fn(() => ({ openAtLogin: false }));
+    const setLoginItemSettings = vi.fn();
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync,
+      readFileSync,
+      statSync,
+      writeFileSync
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath,
+        getLoginItemSettings,
+        setLoginItemSettings
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+
+    const { AppSettingsService } = await import("./app-settings-service");
+    const service = new AppSettingsService();
+    const state = service.getSettingsState().settings;
+
+    expect(state.reduceMotion).toBe(false);
+    expect(state.autoNameNewThreads).toBe(false);
+    expect(readFileSync).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@
   "include": [
     "electron.vite.config.ts",
     "vitest.e2e.config.ts",
+    "src/pasted-image-limits.ts",
     "src/main",
     "src/preload",
     "e2e",

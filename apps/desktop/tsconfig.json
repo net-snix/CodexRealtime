@@ -5,5 +5,5 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client"]
   },
-  "include": ["src/renderer/src", "../../packages/shared/src/index.ts"]
+  "include": ["src/pasted-image-limits.ts", "src/renderer/src", "../../packages/shared/src/index.ts"]
 }

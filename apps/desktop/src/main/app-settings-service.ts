@@ -1,9 +1,8 @@
 import { app } from "electron";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppSettings, AppSettingsState } from "@shared";
 import { Notification } from "electron";
-import { readPersistedState } from "./persisted-state";
+import { readPersistedStateFile, writePersistedStateFile } from "./persisted-state";
 
 const DEFAULT_SETTINGS: AppSettings = {
   launchAtLogin: false,
@@ -49,12 +48,7 @@ export class AppSettingsService {
   }
 
   private loadPersisted(): AppSettings {
-    try {
-      const raw = readFileSync(this.statePath, "utf8");
-      return readPersistedState(raw, DEFAULT_SETTINGS, APP_SETTINGS_VALIDATORS);
-    } catch {
-      return { ...DEFAULT_SETTINGS };
-    }
+    return readPersistedStateFile(this.statePath, DEFAULT_SETTINGS, APP_SETTINGS_VALIDATORS);
   }
 
   private readPersisted(): AppSettings {
@@ -67,8 +61,7 @@ export class AppSettingsService {
 
   private writePersisted(settings: AppSettings) {
     this.cachedSettings = cloneSettings(settings);
-    mkdirSync(app.getPath("userData"), { recursive: true });
-    writeFileSync(this.statePath, JSON.stringify(settings, null, 2), "utf8");
+    writePersistedStateFile(this.statePath, settings);
   }
 
   getSettingsState(): AppSettingsState {
