@@ -44,6 +44,72 @@ const normalizeIdentifier = (value: unknown) =>
 
 const MAX_LOG_SERIALIZATION_DEPTH = 8;
 const DEPTH_LIMIT_MARKER = "[DepthLimitExceeded]";
+const REDACTED_LOG_VALUE = "[Redacted]";
+const MAX_LOG_STRING_LENGTH = 4_096;
+const MAX_LOG_ARRAY_ITEMS = 24;
+const MAX_LOG_OBJECT_ENTRIES = 24;
+
+const truncateLogString = (value: string) => {
+  if (value.length <= MAX_LOG_STRING_LENGTH) {
+    return value;
+  }
+
+  const truncatedCount = value.length - MAX_LOG_STRING_LENGTH;
+  return `${value.slice(0, MAX_LOG_STRING_LENGTH)}...[+${truncatedCount} chars]`;
+};
+
+const tokenizeLogContextKey = (value: string) =>
+  value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+const SENSITIVE_LOG_KEY_PATTERNS = [
+  ["authorization"],
+  ["cookie"],
+  ["cookies"],
+  ["password"],
+  ["passphrase"],
+  ["passwd"],
+  ["pwd"],
+  ["secret"],
+  ["api", "key"],
+  ["access", "token"],
+  ["refresh", "token"],
+  ["session", "token"],
+  ["bearer", "token"],
+  ["auth", "token"],
+  ["client", "secret"],
+  ["private", "key"],
+  ["id", "token"]
+] as const;
+
+const hasTokenSequence = (tokens: string[], sequence: readonly string[]) => {
+  if (sequence.length === 0 || tokens.length < sequence.length) {
+    return false;
+  }
+
+  for (let index = 0; index <= tokens.length - sequence.length; index += 1) {
+    if (sequence.every((token, offset) => tokens[index + offset] === token)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const isSensitiveLogContextKey = (key: string) => {
+  const tokens = tokenizeLogContextKey(key);
+
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  return SENSITIVE_LOG_KEY_PATTERNS.some((pattern) => hasTokenSequence(tokens, pattern));
+};
 
 const serializeLogValue = (
   value: unknown,
@@ -56,11 +122,14 @@ const serializeLogValue = (
 
   if (
     value === null ||
-    typeof value === "string" ||
     typeof value === "number" ||
     typeof value === "boolean"
   ) {
     return value;
+  }
+
+  if (typeof value === "string") {
+    return truncateLogString(value);
   }
 
   if (value === undefined) {
@@ -82,11 +151,11 @@ const serializeLogValue = (
   if (value instanceof Error) {
     const serializedError: Record<string, unknown> = {
       name: value.name,
-      message: value.message
+      message: truncateLogString(value.message)
     };
 
     if (value.stack) {
-      serializedError.stack = value.stack;
+      serializedError.stack = truncateLogString(value.stack);
     }
 
     if ("cause" in value) {
@@ -97,7 +166,9 @@ const serializeLogValue = (
     }
 
     for (const [key, nestedValue] of Object.entries(value)) {
-      const serializedValue = serializeLogValue(nestedValue, seen, depth + 1);
+      const serializedValue = isSensitiveLogContextKey(key)
+        ? REDACTED_LOG_VALUE
+        : serializeLogValue(nestedValue, seen, depth + 1);
       if (serializedValue !== undefined) {
         serializedError[key] = serializedValue;
       }
@@ -107,7 +178,15 @@ const serializeLogValue = (
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => serializeLogValue(item, seen, depth + 1));
+    const serializedItems = value
+      .slice(0, MAX_LOG_ARRAY_ITEMS)
+      .map((item) => serializeLogValue(item, seen, depth + 1));
+
+    if (value.length > MAX_LOG_ARRAY_ITEMS) {
+      serializedItems.push(`[+${value.length - MAX_LOG_ARRAY_ITEMS} items]`);
+    }
+
+    return serializedItems;
   }
 
   if (typeof value === "object") {
@@ -118,12 +197,24 @@ const serializeLogValue = (
     seen.add(value);
 
     try {
-      return Object.fromEntries(
-        Object.entries(value).flatMap(([key, nestedValue]) => {
-          const serializedValue = serializeLogValue(nestedValue, seen, depth + 1);
-          return serializedValue === undefined ? [] : [[key, serializedValue]];
-        })
-      );
+      const entries = Object.entries(value);
+      const serializedEntries = entries
+        .slice(0, MAX_LOG_OBJECT_ENTRIES)
+        .flatMap(([key, nestedValue]) => {
+          const serializedValue = isSensitiveLogContextKey(key)
+            ? REDACTED_LOG_VALUE
+            : serializeLogValue(nestedValue, seen, depth + 1);
+          return serializedValue === undefined ? [] : [[key, serializedValue] as const];
+        });
+
+      if (entries.length > MAX_LOG_OBJECT_ENTRIES) {
+        serializedEntries.push([
+          "__truncatedKeys",
+          entries.length - MAX_LOG_OBJECT_ENTRIES
+        ]);
+      }
+
+      return Object.fromEntries(serializedEntries);
     } finally {
       seen.delete(value);
     }
@@ -144,7 +235,10 @@ const sanitizeData = (context: StructuredLogContext | undefined) => {
         key !== "threadId" &&
         key !== "sessionId" &&
         value !== undefined
-    ).map(([key, value]) => [key, serializeLogValue(value)])
+    ).map(([key, value]) => [
+      key,
+      isSensitiveLogContextKey(key) ? REDACTED_LOG_VALUE : serializeLogValue(value)
+    ])
   );
 
   return Object.keys(data).length > 0 ? data : null;

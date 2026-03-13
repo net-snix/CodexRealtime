@@ -112,6 +112,39 @@ describe("createStructuredLogRecord", () => {
 
     expect(depthLimitHit).toBe(true);
   });
+
+  it("redacts secret-like keys and caps oversized nested payloads", () => {
+    const record = createStructuredLogRecord({
+      source: "server",
+      scope: "bootstrap",
+      level: "info",
+      message: "Payload received",
+      context: {
+        accessToken: "top-secret",
+        nested: {
+          clientSecret: "also-secret",
+          values: Array.from({ length: 26 }, (_, index) => index + 1),
+          fields: Object.fromEntries(
+            Array.from({ length: 26 }, (_, index) => [`field${index + 1}`, index + 1])
+          )
+        }
+      }
+    });
+
+    expect(record.data).toEqual({
+      accessToken: "[Redacted]",
+      nested: {
+        clientSecret: "[Redacted]",
+        values: [...Array.from({ length: 24 }, (_, index) => index + 1), "[+2 items]"],
+        fields: {
+          ...Object.fromEntries(
+            Array.from({ length: 24 }, (_, index) => [`field${index + 1}`, index + 1])
+          ),
+          __truncatedKeys: 2
+        }
+      }
+    });
+  });
 });
 
 describe("createStructuredLogger", () => {
