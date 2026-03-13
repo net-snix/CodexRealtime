@@ -27,9 +27,11 @@ import { codexBridge } from "./codex-bridge";
 import { countDiffStats } from "./diff-stats";
 import { readPersistedState } from "./persisted-state";
 import {
+  buildPastedImageFileName,
+  estimateBase64DecodedBytes,
   getPastedImageFileExtension,
   isPastedImageByteLengthWithinLimit,
-  MAX_PASTED_IMAGE_BYTES
+  MAX_PASTED_IMAGE_BASE64_LENGTH
 } from "../pasted-image-limits";
 import { buildAutoThreadName } from "./thread-auto-name";
 import {
@@ -143,7 +145,6 @@ const normalizeRuntimeMethod = (value: string) =>
     .replace(/[.\-/\s]+/g, "_")
     .replace(/__+/g, "_")
     .toLowerCase();
-const MAX_PASTED_IMAGE_BASE64_LENGTH = Math.ceil(MAX_PASTED_IMAGE_BYTES / 3) * 4;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 const now = () => new Date().toISOString();
@@ -252,22 +253,6 @@ const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null
   }
 
   return null;
-};
-
-const estimateBase64DecodedBytes = (value: string) => {
-  if (!value) {
-    return 0;
-  }
-
-  let paddingBytes = 0;
-
-  if (value.endsWith("==")) {
-    paddingBytes = 2;
-  } else if (value.endsWith("=")) {
-    paddingBytes = 1;
-  }
-
-  return Math.floor((value.length * 3) / 4) - paddingBytes;
 };
 
 const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
@@ -1424,9 +1409,7 @@ export class WorkspaceService extends EventEmitter {
     }
 
     const mimeType = image.mimeType.trim().toLowerCase();
-    const extension = getPastedImageFileExtension(mimeType);
-
-    if (!extension) {
+    if (!getPastedImageFileExtension(mimeType)) {
       return null;
     }
 
@@ -1456,17 +1439,9 @@ export class WorkspaceService extends EventEmitter {
       return null;
     }
 
-    const sanitizedBaseName = image.name
-      .trim()
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .replace(/\.+/g, ".");
-    const baseNameWithoutExtension = sanitizedBaseName.replace(/\.[A-Za-z0-9]+$/, "");
-    const fileNameBase = baseNameWithoutExtension || "pasted-image";
-
     return {
       data,
-      fileName: `${fileNameBase}${extension}`
+      fileName: buildPastedImageFileName(image.name, mimeType)
     };
   }
 
