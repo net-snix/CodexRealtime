@@ -136,6 +136,128 @@ describe("WorkspaceService", () => {
     expect(threadChangeCache.has("thread-139")).toBe(true);
   });
 
+  it("deduplicates attachment path candidates before filesystem resolution", async () => {
+    const realpathSync = vi.fn((value: string) => value.trim());
+    const statSync = vi.fn(() => ({
+      isFile: () => true
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync: vi.fn(() => JSON.stringify({ currentWorkspaceId: null, workspaces: {} })),
+      writeFileSync: vi.fn(),
+      realpathSync,
+      statSync
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn()
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+
+    const attachments = await service.addWorkerAttachments([
+      " /tmp/codex/a.txt ",
+      "/tmp/codex/a.txt",
+      "/tmp/codex/b.txt",
+      "/tmp/codex/a.txt"
+    ]);
+
+    expect(realpathSync).toHaveBeenCalledTimes(2);
+    expect(statSync).toHaveBeenCalledTimes(2);
+    expect(attachments).toEqual([
+      {
+        id: "/tmp/codex/a.txt",
+        kind: "file",
+        name: "a.txt",
+        path: "/tmp/codex/a.txt"
+      },
+      {
+        id: "/tmp/codex/b.txt",
+        kind: "file",
+        name: "b.txt",
+        path: "/tmp/codex/b.txt"
+      }
+    ]);
+  });
+
+  it("rejects oversized attachment path candidates before filesystem access", async () => {
+    const realpathSync = vi.fn((value: string) => value);
+    const statSync = vi.fn(() => ({
+      isFile: () => true
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync: vi.fn(() => JSON.stringify({ currentWorkspaceId: null, workspaces: {} })),
+      writeFileSync: vi.fn(),
+      realpathSync,
+      statSync
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn()
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+
+    const attachments = await service.addWorkerAttachments([
+      `/tmp/${"x".repeat(4_100)}`,
+      "/tmp/codex/ok.txt"
+    ]);
+
+    expect(realpathSync).toHaveBeenCalledTimes(1);
+    expect(statSync).toHaveBeenCalledTimes(1);
+    expect(attachments).toEqual([
+      {
+        id: "/tmp/codex/ok.txt",
+        kind: "file",
+        name: "ok.txt",
+        path: "/tmp/codex/ok.txt"
+      }
+    ]);
+  });
+
   it("ignores invalid persisted workspace maps", async () => {
     const readFileSync = vi.fn(() =>
       JSON.stringify({
