@@ -178,6 +178,48 @@ export interface TurnStartRequest {
   attachments: WorkerAttachment[];
 }
 
+export interface VoiceTaskEnvelope {
+  workspaceId: string | null;
+  threadId: string | null;
+  source: "message" | "handoff_request";
+  sourceItemId: string | null;
+  handoffId: string | null;
+  transcript: string;
+  userGoal: string;
+  distilledPrompt: string;
+  constraints: string[];
+  acceptanceCriteria: string[];
+  clarificationPolicy: "request_user_input";
+  replyStyle: string;
+  sourceMessageIds: string[];
+  rawPayload: Record<string, unknown> | null;
+}
+
+export interface VoiceIntentSource {
+  sourceType: "message" | "handoff_request";
+  itemId: string | null;
+  handoffId: string | null;
+  transcript: string;
+  metadata: Record<string, unknown> | null;
+}
+
+type VoiceIntentBase = {
+  source: VoiceIntentSource;
+};
+
+export type VoiceIntent =
+  | (VoiceIntentBase & {
+      kind: "conversation";
+    })
+  | (VoiceIntentBase & {
+      kind: "interrupt_request";
+      reason: string | null;
+    })
+  | (VoiceIntentBase & {
+      kind: "work_request";
+      taskEnvelope: VoiceTaskEnvelope;
+    });
+
 export interface TimelineState {
   threadId: string | null;
   entries: TimelineEntry[];

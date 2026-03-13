@@ -191,7 +191,7 @@ describe("LocalServerProcess", () => {
     const process = new LocalServerProcess(
       {
         entryOverride: "/tmp/server.js",
-        startupTimeoutMs: 1_000,
+        maxHandshakeStdoutBytes: 32,
         pathExists: () => true,
         spawnProcess: createSpawnProcess(child)
       },
@@ -199,12 +199,40 @@ describe("LocalServerProcess", () => {
     );
 
     const startPromise = process.start();
-    child.stdout.write("x".repeat(70_000));
+    const oversizedExpectation = expect(startPromise).rejects.toThrow(
+      /oversized startup stdout before handshake/
+    );
+    child.stdout.write("x".repeat(33));
 
-    await expect(startPromise).rejects.toThrow(/stdout buffer exceeded/);
+    await oversizedExpectation;
     expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   });
 
+  it("keeps only the stderr tail when timeout diagnostics get noisy", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis.process.stderr, "write").mockReturnValue(true);
+    const child = new FakeChildProcess();
+    const serverProcess = new LocalServerProcess(
+      {
+        entryOverride: "/tmp/server.js",
+        startupTimeoutMs: 25,
+        maxHandshakeStderrBytes: 12,
+        pathExists: () => true,
+        spawnProcess: createSpawnProcess(child)
+      },
+      createSilentLogger()
+    );
+
+    const startPromise = serverProcess.start();
+    const timeoutExpectation = expect(startPromise).rejects.toThrow(
+      /\(stderr tail: x-tail-value\)/
+    );
+    child.stderr.write("prefix-");
+    child.stderr.write("tail-value");
+    await vi.advanceTimersByTimeAsync(25);
+
+    await timeoutExpectation;
+  });
   it("rejects version mismatch and stops the child", async () => {
     const child = new FakeChildProcess();
     const process = new LocalServerProcess({

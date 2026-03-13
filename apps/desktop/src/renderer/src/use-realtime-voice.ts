@@ -4,9 +4,15 @@ import type {
   RealtimeAudioChunk,
   RealtimeState,
   RealtimeTranscriptEntry,
+  VoiceIntent,
   VoiceState
 } from "@shared";
 import { ensureNativeApi, type NativeApi } from "./native-api";
+import {
+  normalizeVoiceDispatchKey,
+  parseRealtimeVoiceItem,
+  shouldDelayVoiceIntent
+} from "./realtime-voice-intents";
 
 const initialRealtimeState: RealtimeState = {
   status: "idle",
@@ -17,152 +23,55 @@ const initialRealtimeState: RealtimeState = {
 
 const TRANSCRIPT_LIMIT = 6;
 const MAX_QUEUED_AUDIO_CHUNKS = 4;
-const MAX_DISPATCHED_TRANSCRIPT_IDS = 128;
+const MAX_VOICE_INTENT_RECORDS = 128;
 const PCM16_BASE64_CHUNK_SIZE = 0x8000;
 const MIN_AUDIO_SAMPLE_RATE = 8_000;
 const MAX_AUDIO_SAMPLE_RATE = 192_000;
 const MAX_AUDIO_CHANNELS = 8;
 const MAX_PCM16_BYTES_PER_CHUNK = 8 * 1024 * 1024;
 const MAX_SAMPLES_PER_CHANNEL = 262_144;
+const MESSAGE_WORK_REQUEST_DELAY_MS = 160;
 
-type ParsedRealtimeTranscriptEntry = RealtimeTranscriptEntry & {
-  shouldDispatchPrompt: boolean;
-};
 type PersistedVoicePreferences = Awaited<ReturnType<NativeApi["getVoicePreferences"]>>;
 type AudioOutputElement = HTMLAudioElement & {
   setSinkId?: (sinkId: string) => Promise<void>;
 };
-const normalizePromptKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object";
-
-const normalizeText = (value: unknown): string[] => {
-  if (typeof value === "string") {
-    const text = value.trim();
-    return text ? [text] : [];
-  }
-
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => normalizeText(entry));
-  }
-
-  if (!isRecord(value)) {
-    return [];
-  }
-
-  return [
-    ...normalizeText(value.text),
-    ...normalizeText(value.transcript),
-    ...normalizeText(value.delta),
-    ...normalizeText(value.summary),
-    ...normalizeText(value.content)
-  ];
-};
-
-const joinText = (...values: unknown[]) => {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-
-  for (const value of values) {
-    for (const text of normalizeText(value)) {
-      if (seen.has(text)) {
-        continue;
-      }
-
-      seen.add(text);
-      unique.push(text);
-    }
-  }
-
-  return unique.join("\n").trim();
-};
-
-const parseRealtimeItem = (
-  item: unknown,
-  fallbackIndex: number
-): ParsedRealtimeTranscriptEntry | null => {
-  if (!isRecord(item)) {
-    return null;
-  }
-
-  const type = typeof item.type === "string" ? item.type : "unknown";
-  const id =
-    typeof item.id === "string"
-      ? item.id
-      : typeof item.item_id === "string"
-        ? item.item_id
-        : typeof item.handoff_id === "string"
-          ? item.handoff_id
-          : `${type}-${fallbackIndex}`;
-  const createdAt = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-
-  if (type === "message") {
-    const role = typeof item.role === "string" ? item.role : "system";
-    const speaker: RealtimeTranscriptEntry["speaker"] =
-      role === "assistant" ? "assistant" : role === "user" ? "user" : "system";
-    const acceptedContentTypes =
-      speaker === "assistant" ? ["output_text"] : speaker === "user" ? ["input_text"] : [];
-    const text = acceptedContentTypes.length
-      ? joinText(
-          Array.isArray(item.content)
-            ? item.content.filter(
-                (entry) =>
-                  isRecord(entry) &&
-                  typeof entry.type === "string" &&
-                  acceptedContentTypes.includes(entry.type)
-              )
-            : [],
-          item.text,
-          item.transcript
-        )
-      : joinText(item.text, item.transcript, item.content);
-
-    return text
-      ? {
-          id,
-          speaker,
-          text,
-          status: item.status === "in_progress" ? "partial" : "final",
-          createdAt,
-          shouldDispatchPrompt: speaker === "user"
-        }
-      : null;
-  }
-
-  if (type === "handoff_request") {
-    const text = joinText(
-      item.input_transcript,
-      Array.isArray(item.messages)
-        ? item.messages.map((message) => (isRecord(message) ? message.text : null))
-        : []
-    );
-
-    return text
-      ? {
-          id,
-          speaker: "user",
-          text,
-          status: "final",
-          createdAt,
-          shouldDispatchPrompt: true
-        }
-      : null;
-  }
-
-  return null;
-};
 
 const upsertTranscriptEntry = (
   entries: RealtimeTranscriptEntry[],
-  nextEntry: RealtimeTranscriptEntry
+  nextEntry: RealtimeTranscriptEntry,
+  {
+    allowReplace = true,
+    matchEntryIds = [],
+    matchNormalizedText = null
+  }: {
+    allowReplace?: boolean;
+    matchEntryIds?: string[];
+    matchNormalizedText?: string | null;
+  } = {}
 ) => {
-  const existingIndex = entries.findIndex((entry) => entry.id === nextEntry.id);
+  let existingIndex = entries.findIndex((entry) => entry.id === nextEntry.id);
+
+  if (existingIndex < 0 && matchEntryIds.length > 0 && nextEntry.speaker === "user") {
+    existingIndex = entries.findIndex(
+      (entry) =>
+        entry.speaker === "user" && matchEntryIds.includes(entry.id)
+    );
+  }
+
+  if (existingIndex < 0 && matchNormalizedText && nextEntry.speaker === "user") {
+    existingIndex = entries.findIndex(
+      (entry) =>
+        entry.speaker === "user" &&
+        normalizeVoiceDispatchKey(entry.text) === matchNormalizedText
+    );
+  }
 
   if (existingIndex >= 0) {
+    if (!allowReplace) {
+      return entries.slice(-TRANSCRIPT_LIMIT);
+    }
+
     const nextEntries = [...entries];
     nextEntries[existingIndex] = nextEntry;
     return nextEntries.slice(-TRANSCRIPT_LIMIT);
@@ -171,20 +80,98 @@ const upsertTranscriptEntry = (
   return [...entries, nextEntry].slice(-TRANSCRIPT_LIMIT);
 };
 
-const rememberDispatchedTranscriptId = (ids: Set<string>, id: string) => {
-  if (ids.has(id)) {
+type VoiceIntentDispatchRecord = {
+  primaryKey: string;
+  aliases: Set<string>;
+  intent: VoiceIntent;
+  transcriptEntry: RealtimeTranscriptEntry;
+  richness: number;
+  dispatched: boolean;
+  timeoutId: ReturnType<typeof window.setTimeout> | null;
+};
+
+const findDispatchRecord = (
+  records: Map<string, VoiceIntentDispatchRecord>,
+  aliasToPrimary: Map<string, string>,
+  keys: string[]
+) => {
+  for (const key of keys) {
+    const primaryKey = aliasToPrimary.get(key) ?? key;
+    const record = records.get(primaryKey);
+
+    if (record) {
+      return record;
+    }
+  }
+
+  return null;
+};
+
+const registerRecordAliases = (
+  aliasToPrimary: Map<string, string>,
+  record: VoiceIntentDispatchRecord,
+  keys: string[]
+) => {
+  for (const key of keys) {
+    aliasToPrimary.set(key, record.primaryKey);
+    record.aliases.add(key);
+  }
+};
+
+const promoteDispatchRecordPrimaryKey = (
+  records: Map<string, VoiceIntentDispatchRecord>,
+  aliasToPrimary: Map<string, string>,
+  record: VoiceIntentDispatchRecord,
+  nextPrimaryKey: string
+) => {
+  if (record.primaryKey === nextPrimaryKey) {
     return;
   }
 
-  ids.add(id);
+  records.delete(record.primaryKey);
+  record.primaryKey = nextPrimaryKey;
+  records.set(nextPrimaryKey, record);
 
-  if (ids.size <= MAX_DISPATCHED_TRANSCRIPT_IDS) {
-    return;
+  for (const alias of record.aliases) {
+    aliasToPrimary.set(alias, nextPrimaryKey);
+  }
+};
+
+const clearDispatchRecords = (
+  records: Map<string, VoiceIntentDispatchRecord>,
+  aliasToPrimary: Map<string, string>
+) => {
+  for (const record of records.values()) {
+    if (record.timeoutId !== null) {
+      clearTimeout(record.timeoutId);
+    }
   }
 
-  const oldestId = ids.values().next().value;
-  if (typeof oldestId === "string") {
-    ids.delete(oldestId);
+  records.clear();
+  aliasToPrimary.clear();
+};
+
+const trimDispatchRecords = (
+  records: Map<string, VoiceIntentDispatchRecord>,
+  aliasToPrimary: Map<string, string>
+) => {
+  while (records.size > MAX_VOICE_INTENT_RECORDS) {
+    const oldestPrimaryKey = records.keys().next().value;
+
+    if (typeof oldestPrimaryKey !== "string") {
+      return;
+    }
+
+    const record = records.get(oldestPrimaryKey);
+    if (record?.timeoutId != null) {
+      clearTimeout(record.timeoutId);
+    }
+
+    records.delete(oldestPrimaryKey);
+
+    for (const alias of record?.aliases ?? []) {
+      aliasToPrimary.delete(alias);
+    }
   }
 };
 
@@ -310,10 +297,10 @@ const toDeviceOptions = (
 
 export const useRealtimeVoice = ({
   enabled,
-  onVoicePrompt
+  onVoiceIntent
 }: {
   enabled: boolean;
-  onVoicePrompt?: (prompt: string) => void | Promise<void>;
+  onVoiceIntent?: (intent: VoiceIntent) => void | Promise<void>;
 }) => {
   const nativeApiRef = useRef<NativeApi | null>(null);
   if (!nativeApiRef.current) {
@@ -340,6 +327,7 @@ export const useRealtimeVoice = ({
   const playbackContextRef = useRef<AudioContext | null>(null);
   const playbackDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const playbackElementRef = useRef<AudioOutputElement | null>(null);
+  const liveTranscriptRef = useRef<RealtimeTranscriptEntry[]>([]);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -347,9 +335,9 @@ export const useRealtimeVoice = ({
   const queuedAudioChunksRef = useRef<RealtimeAudioChunk[]>([]);
   const isSendingAudioRef = useRef(false);
   const audioSendGenerationRef = useRef(0);
-  const dispatchedTranscriptIdsRef = useRef(new Set<string>());
-  const lastDispatchedPromptRef = useRef("");
-  const onVoicePromptRef = useRef(onVoicePrompt);
+  const dispatchedVoiceIntentsRef = useRef(new Map<string, VoiceIntentDispatchRecord>());
+  const dispatchedVoiceIntentAliasesRef = useRef(new Map<string, string>());
+  const onVoiceIntentRef = useRef(onVoiceIntent);
 
   const flushQueuedAudio = async () => {
     if (isSendingAudioRef.current) {
@@ -401,8 +389,12 @@ export const useRealtimeVoice = ({
   };
 
   useEffect(() => {
-    onVoicePromptRef.current = onVoicePrompt;
-  }, [onVoicePrompt]);
+    onVoiceIntentRef.current = onVoiceIntent;
+  }, [onVoiceIntent]);
+
+  useEffect(() => {
+    liveTranscriptRef.current = liveTranscript;
+  }, [liveTranscript]);
 
   useEffect(() => {
     setSupportsOutputSelection(
@@ -562,6 +554,8 @@ export const useRealtimeVoice = ({
 
   useEffect(() => {
     void nativeApiRef.current!.getRealtimeState().then(setRealtimeState);
+    const voiceIntentRecords = dispatchedVoiceIntentsRef.current;
+    const voiceIntentAliases = dispatchedVoiceIntentAliasesRef.current;
     const unsubscribe = nativeApiRef.current!.subscribeRealtimeEvents((event) => {
       if (event.type === "state") {
         setRealtimeState(event.state);
@@ -588,42 +582,141 @@ export const useRealtimeVoice = ({
 
       if (event.type === "item") {
         let nextEntrySpeaker: RealtimeTranscriptEntry["speaker"] | null = null;
-        let dispatchPrompt: string | null = null;
+        const nextItem = parseRealtimeVoiceItem(event.item, liveTranscriptRef.current.length + 1);
+        let transcriptMatchEntryIds: string[] = [];
+        let transcriptMatchNormalizedText: string | null = null;
+        let allowTranscriptReplace = true;
 
-        setLiveTranscript((current) => {
-          const nextEntry = parseRealtimeItem(event.item, current.length + 1);
+        if (!nextItem) {
+          return;
+        }
 
-          if (!nextEntry) {
-            return current;
-          }
+        let dispatchIntent: VoiceIntent | null = null;
+        let nextTranscriptEntry = nextItem.transcriptEntry;
+        nextEntrySpeaker = nextItem.transcriptEntry.speaker;
 
-          nextEntrySpeaker = nextEntry.speaker;
-          if (
-            nextEntry.shouldDispatchPrompt &&
-            nextEntry.status === "final" &&
-            !dispatchedTranscriptIdsRef.current.has(nextEntry.id)
-          ) {
-            const normalizedPrompt = normalizePromptKey(nextEntry.text);
+        if (nextItem.intent && nextItem.dedupeKeys.length > 0) {
+          const existing = findDispatchRecord(
+            dispatchedVoiceIntentsRef.current,
+            dispatchedVoiceIntentAliasesRef.current,
+            nextItem.dedupeKeys
+          );
+          const primaryKey = existing?.primaryKey ?? nextItem.dedupeKeys[0]!;
+          transcriptMatchEntryIds = Array.from(new Set([primaryKey, ...nextItem.dedupeKeys]));
 
-            if (normalizedPrompt !== lastDispatchedPromptRef.current) {
-              rememberDispatchedTranscriptId(
-                dispatchedTranscriptIdsRef.current,
-                nextEntry.id
+          if (existing) {
+            const previousRichness = existing.richness;
+            const isTranscriptUpgrade = nextItem.richness > previousRichness;
+            const isTranscriptDowngrade = nextItem.richness < previousRichness;
+
+            if (!isTranscriptUpgrade) {
+              nextTranscriptEntry = {
+                ...nextItem.transcriptEntry,
+                id: primaryKey
+              };
+            }
+
+            allowTranscriptReplace = !isTranscriptDowngrade;
+            registerRecordAliases(
+              dispatchedVoiceIntentAliasesRef.current,
+              existing,
+              nextItem.dedupeKeys
+            );
+            if (nextItem.richness > previousRichness) {
+              promoteDispatchRecordPrimaryKey(
+                dispatchedVoiceIntentsRef.current,
+                dispatchedVoiceIntentAliasesRef.current,
+                existing,
+                nextItem.dedupeKeys[0] ?? existing.primaryKey
               );
-              lastDispatchedPromptRef.current = normalizedPrompt;
-              dispatchPrompt = nextEntry.text;
+              nextTranscriptEntry = {
+                ...nextItem.transcriptEntry,
+                id: existing.primaryKey
+              };
+              existing.intent = nextItem.intent;
+              existing.transcriptEntry = nextTranscriptEntry;
+              existing.richness = nextItem.richness;
+            } else if (nextItem.richness < previousRichness) {
+              nextTranscriptEntry = existing.transcriptEntry;
+            } else {
+              existing.intent = nextItem.intent;
+              existing.transcriptEntry = nextTranscriptEntry;
+            }
+
+            if (
+              !existing.dispatched &&
+              nextItem.richness > previousRichness &&
+              existing.timeoutId !== null
+            ) {
+              clearTimeout(existing.timeoutId);
+              existing.timeoutId = null;
+              existing.dispatched = true;
+              dispatchIntent = nextItem.intent;
+            }
+          } else {
+            const record: VoiceIntentDispatchRecord = {
+              primaryKey,
+              aliases: new Set(),
+              intent: nextItem.intent,
+              transcriptEntry: nextTranscriptEntry,
+              richness: nextItem.richness,
+              dispatched: false,
+              timeoutId: null
+            };
+            registerRecordAliases(
+              dispatchedVoiceIntentAliasesRef.current,
+              record,
+              nextItem.dedupeKeys
+            );
+            dispatchedVoiceIntentsRef.current.set(primaryKey, record);
+            trimDispatchRecords(
+              dispatchedVoiceIntentsRef.current,
+              dispatchedVoiceIntentAliasesRef.current
+            );
+
+            if (shouldDelayVoiceIntent(nextItem.intent)) {
+              record.timeoutId = window.setTimeout(() => {
+                record.timeoutId = null;
+                if (record.dispatched) {
+                  return;
+                }
+
+                record.dispatched = true;
+                void onVoiceIntentRef.current?.(record.intent);
+              }, MESSAGE_WORK_REQUEST_DELAY_MS);
+            } else {
+              record.dispatched = true;
+              dispatchIntent = nextItem.intent;
             }
           }
 
-          return upsertTranscriptEntry(current, nextEntry);
+          if (nextItem.intent.source.sourceType === "handoff_request") {
+            transcriptMatchNormalizedText = normalizeVoiceDispatchKey(
+              nextItem.intent.source.transcript
+            );
+          }
+        }
+
+        setLiveTranscript((current) => {
+          const nextTranscript = upsertTranscriptEntry(
+            current,
+            nextTranscriptEntry,
+            {
+              allowReplace: allowTranscriptReplace,
+              matchEntryIds: transcriptMatchEntryIds,
+              matchNormalizedText: transcriptMatchNormalizedText
+            }
+          );
+          liveTranscriptRef.current = nextTranscript;
+          return nextTranscript;
         });
 
         if (nextEntrySpeaker) {
           setVoiceState(nextEntrySpeaker === "assistant" ? "working" : "thinking");
         }
 
-        if (dispatchPrompt) {
-          void onVoicePromptRef.current?.(dispatchPrompt);
+        if (dispatchIntent) {
+          void onVoiceIntentRef.current?.(dispatchIntent);
         }
         return;
       }
@@ -634,6 +727,7 @@ export const useRealtimeVoice = ({
     });
 
     return () => {
+      clearDispatchRecords(voiceIntentRecords, voiceIntentAliases);
       unsubscribe();
     };
   }, []);
@@ -647,8 +741,10 @@ export const useRealtimeVoice = ({
     audioSendGenerationRef.current += 1;
     queuedAudioChunksRef.current = [];
     isSendingAudioRef.current = false;
-    dispatchedTranscriptIdsRef.current.clear();
-    lastDispatchedPromptRef.current = "";
+    clearDispatchRecords(
+      dispatchedVoiceIntentsRef.current,
+      dispatchedVoiceIntentAliasesRef.current
+    );
     await nativeApiRef.current!.startRealtime();
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -713,8 +809,10 @@ export const useRealtimeVoice = ({
     nextPlaybackTimeRef.current = 0;
     setIsActive(false);
     setLiveTranscript([]);
-    dispatchedTranscriptIdsRef.current.clear();
-    lastDispatchedPromptRef.current = "";
+    clearDispatchRecords(
+      dispatchedVoiceIntentsRef.current,
+      dispatchedVoiceIntentAliasesRef.current
+    );
     setVoiceState("idle");
 
     try {

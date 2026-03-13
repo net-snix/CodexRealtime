@@ -291,6 +291,20 @@ The assistant should not send raw speech blindly to Codex. It should create a no
 - preserve constraints and preferences from the conversation
 - include clarification policy explicitly
 
+### Implemented desktop path
+
+The current desktop implementation should carry spoken repo-work through this canonical path:
+
+1. Realtime item becomes a structured `VoiceIntent`
+2. Renderer dispatches `dispatchVoiceIntent(...)`, not a raw prompt string
+3. Main/workspace resolves `work_request` into start-vs-steer using authoritative active-turn state
+4. A normalized `VoiceTaskEnvelope` is preserved through workspace execution and reduced into Codex worker input
+
+Current intent kinds:
+- `conversation`
+- `interrupt_request`
+- `work_request`
+
 ## 12. Ambiguity and clarification policy
 
 This is the most important product rule after safety.

@@ -13,6 +13,7 @@ import type {
   ThreadSummary,
   TimelineState,
   TurnStartRequest,
+  VoiceIntent,
   WorkerAttachment,
   WorkerCollaborationModeOption,
   WorkerExecutionSettings,
@@ -37,6 +38,8 @@ import { buildAutoThreadName } from "./thread-auto-name";
 import {
   DEFAULT_WORKER_COLLABORATION_MODES,
   buildWorkerInputs,
+  buildVoiceTaskPrompt,
+  buildVoiceTaskInputs,
   getSelectedWorkerModel,
   mapWorkerCollaborationMode,
   mapWorkerModel,
@@ -45,6 +48,7 @@ import {
   toWorkerAttachment,
   workerSettingsFromConfig
 } from "./worker-settings";
+import { isRestartableSteerError, resolveVoiceTaskEnvelope } from "./voice-intent";
 import {
   applyBridgeNotification,
   applyBridgeRequest,
@@ -295,6 +299,7 @@ export class WorkspaceService extends EventEmitter {
   private readonly liveTimelineStateByThread = new Map<string, TimelineState>();
   private readonly liveTimelineSequenceByThread = new Map<string, number>();
   private activeTurnId: string | null = null;
+  private activeTurnThreadId: string | null = null;
   private readonly threadChangeCache = new Map<string, ThreadChangeSummary | null>();
   private workerModelsCache: WorkerModelOption[] | null = null;
   private workerCollaborationModesCache: WorkerCollaborationModeOption[] | null = null;
@@ -317,12 +322,38 @@ export class WorkspaceService extends EventEmitter {
     });
   }
 
+  private hasActiveTurnForThread(threadId: string) {
+    return Boolean(this.activeTurnId) && this.activeTurnThreadId === threadId;
+  }
+
+  private setActiveTurn(threadId: string, turnId: string | null) {
+    this.activeTurnId = turnId;
+    this.activeTurnThreadId = turnId ? threadId : null;
+  }
+
+  private clearActiveTurn(threadId?: string) {
+    if (threadId && this.activeTurnThreadId !== threadId) {
+      return;
+    }
+
+    this.activeTurnId = null;
+    this.activeTurnThreadId = null;
+  }
+
   private get statePath() {
     return join(app.getPath("userData"), "workspace-state.json");
   }
 
   private get pastedAttachmentDirectoryPath() {
     return join(app.getPath("userData"), "worker-attachments", "pasted");
+  }
+
+  private getCurrentSelectedThreadId(persisted: PersistedState = this.readState()) {
+    if (!persisted.currentWorkspaceId) {
+      return null;
+    }
+
+    return persisted.workspaces[persisted.currentWorkspaceId]?.threadId ?? null;
   }
 
   async getWorkspaceState(): Promise<WorkspaceState> {
@@ -509,7 +540,11 @@ export class WorkspaceService extends EventEmitter {
       throw new Error("Workspace not found.");
     }
 
-    if (persisted.currentWorkspaceId === workspaceId && this.activeTurnId) {
+    if (
+      persisted.currentWorkspaceId === workspaceId &&
+      workspace.threadId &&
+      this.hasActiveTurnForThread(workspace.threadId)
+    ) {
       throw new Error("Stop active work before removing this project.");
     }
 
@@ -524,7 +559,7 @@ export class WorkspaceService extends EventEmitter {
     if (persisted.currentWorkspaceId === workspaceId) {
       const nextWorkspace = this.listRecentWorkspaces(persisted)[0] ?? null;
       persisted.currentWorkspaceId = nextWorkspace?.id ?? null;
-      this.activeTurnId = null;
+      this.clearActiveTurn(workspace.threadId ?? undefined);
       if (nextWorkspace?.threadId) {
         await this.hydrateLiveTimeline(nextWorkspace.threadId, emptyTimelineState(nextWorkspace.threadId));
       } else {
@@ -568,13 +603,14 @@ export class WorkspaceService extends EventEmitter {
       throw new Error("Codex did not return a thread id");
     }
 
+    const previousThreadId = workspace.threadId;
     persisted.currentWorkspaceId = workspace.id;
     workspace.threadId = started.thread.id;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
 
-    this.activeTurnId = null;
+    this.clearActiveTurn(previousThreadId ?? undefined);
     this.workerDraftSettingsByWorkspace.delete(workspace.id);
     this.clearTimelineCache(started.thread.id);
     this.setLiveTimelineState({
@@ -599,7 +635,7 @@ export class WorkspaceService extends EventEmitter {
     if (
       persisted.currentWorkspaceId === workspaceId &&
       workspace.threadId === threadId &&
-      this.activeTurnId
+      this.hasActiveTurnForThread(threadId)
     ) {
       throw new Error("Stop active work before archiving this thread.");
     }
@@ -614,7 +650,7 @@ export class WorkspaceService extends EventEmitter {
       persisted.workspaces[workspace.id] = workspace;
 
       if (persisted.currentWorkspaceId === workspaceId) {
-        this.activeTurnId = null;
+        this.clearActiveTurn(threadId);
         if (workspace.threadId) {
           await this.hydrateLiveTimeline(workspace.threadId, emptyTimelineState(workspace.threadId));
         } else {
@@ -649,13 +685,14 @@ export class WorkspaceService extends EventEmitter {
     await codexBridge.unarchiveThread(threadId);
     this.clearTimelineCache(threadId);
 
+    const previousThreadId = workspace.threadId;
     persisted.currentWorkspaceId = workspaceId;
     workspace.threadId = threadId;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
 
-    this.activeTurnId = null;
+    this.clearActiveTurn(previousThreadId ?? undefined);
     await this.hydrateLiveTimeline(threadId, emptyTimelineState(threadId));
     return cloneTimelineState(this.liveTimelineState);
   }
@@ -754,13 +791,7 @@ export class WorkspaceService extends EventEmitter {
     return timeline;
   }
 
-  async startTurn(request: TurnStartRequest): Promise<TimelineState> {
-    const trimmedPrompt = request.prompt.trim();
-
-    if (!trimmedPrompt) {
-      return this.getTimelineState();
-    }
-
+  private async getCurrentWorkspaceForTurn() {
     const persisted = this.readState();
 
     if (!persisted.currentWorkspaceId) {
@@ -773,23 +804,53 @@ export class WorkspaceService extends EventEmitter {
       throw new Error("Current workspace is missing.");
     }
 
-    const hadThread = Boolean(workspace.threadId);
+    return {
+      persisted,
+      workspace
+    };
+  }
+
+  private async resolveTurnExecutionContext(workspace: PersistedWorkspace) {
     const models = await this.loadWorkerModels().catch(() => []);
     const settings = await this.resolveWorkerSettingsForWorkspace(workspace, models);
     const selectedModel = getSelectedWorkerModel(settings, models);
-    const input = buildWorkerInputs(
-      trimmedPrompt,
-      request.attachments,
-      supportsImageAttachments(selectedModel?.model ?? null, models)
-    );
-    const threadId = await this.ensureThread(workspace);
+
+    return {
+      models,
+      settings,
+      selectedModel,
+      resolvedModel: selectedModel?.model ?? settings.model ?? null
+    };
+  }
+
+  private async startPreparedTurn({
+    persisted,
+    workspace,
+    threadId,
+    hadThread,
+    displayPrompt,
+    input,
+    settings,
+    resolvedModel
+  }: {
+    persisted: PersistedState;
+    workspace: PersistedWorkspace;
+    threadId: string;
+    hadThread: boolean;
+    displayPrompt: string;
+    input: unknown[];
+    settings: WorkerExecutionSettings;
+    resolvedModel: string | null;
+  }): Promise<TimelineState> {
     const previousTimeline = cloneTimelineState(this.liveTimelineState);
     const isFreshThread =
       !hadThread || (previousTimeline.threadId === threadId && previousTimeline.entries.length === 0);
+
     workspace.threadId = threadId;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
+
     this.setLiveTimelineState(
       appendOptimisticUserEvent(
         hadThread
@@ -801,12 +862,11 @@ export class WorkspaceService extends EventEmitter {
                 label: "Starting"
               }
             },
-        trimmedPrompt
+        displayPrompt
       )
     );
 
     try {
-      const resolvedModel = selectedModel?.model ?? settings.model ?? null;
       const started = (await codexBridge.startTurn(
         threadId,
         input,
@@ -815,14 +875,21 @@ export class WorkspaceService extends EventEmitter {
       )) as {
         turn?: { id?: string };
       };
+
       if (isFreshThread) {
         this.workerSettingsByThread.set(threadId, settings);
         this.workerDraftSettingsByWorkspace.delete(workspace.id);
         if (appSettingsService.getSettings().autoNameNewThreads) {
-          await this.autoNameThread(threadId, trimmedPrompt);
+          await this.autoNameThread(threadId, displayPrompt);
         }
       }
-      this.activeTurnId = started.turn?.id ?? this.activeTurnId;
+
+      if (started.turn?.id) {
+        this.setActiveTurn(threadId, started.turn.id);
+      } else {
+        this.clearActiveTurn(threadId);
+      }
+
       this.setLiveTimelineState({
         ...this.ensureLiveTimeline(threadId),
         isRunning: true,
@@ -839,40 +906,95 @@ export class WorkspaceService extends EventEmitter {
     }
   }
 
-  async dispatchVoicePrompt(prompt: string): Promise<TimelineState> {
-    const trimmedPrompt = prompt.trim();
+  async startTurn(request: TurnStartRequest): Promise<TimelineState> {
+    const trimmedPrompt = request.prompt.trim();
 
     if (!trimmedPrompt) {
       return this.getTimelineState();
     }
 
-    const persisted = this.readState();
-
-    if (!persisted.currentWorkspaceId) {
-      throw new Error("Open a workspace first.");
-    }
-
-    const workspace = persisted.workspaces[persisted.currentWorkspaceId];
-
-    if (!workspace) {
-      throw new Error("Current workspace is missing.");
-    }
-
+    const { persisted, workspace } = await this.getCurrentWorkspaceForTurn();
+    const hadThread = Boolean(workspace.threadId);
+    const { models, settings, selectedModel, resolvedModel } =
+      await this.resolveTurnExecutionContext(workspace);
+    const input = buildWorkerInputs(
+      trimmedPrompt,
+      request.attachments,
+      supportsImageAttachments(selectedModel?.model ?? null, models)
+    );
     const threadId = await this.ensureThread(workspace);
+    return this.startPreparedTurn({
+      persisted,
+      workspace,
+      threadId,
+      hadThread,
+      displayPrompt: trimmedPrompt,
+      input,
+      settings,
+      resolvedModel
+    });
+  }
+
+  async dispatchVoiceIntent(intent: VoiceIntent): Promise<TimelineState> {
+    if (intent.kind === "conversation") {
+      return this.getTimelineState();
+    }
+
+    if (intent.kind === "interrupt_request") {
+      return this.interruptActiveTurn();
+    }
+
+    const transcript = intent.source.transcript.trim();
+
+    if (!transcript) {
+      return this.getTimelineState();
+    }
+
+    const { persisted, workspace } = await this.getCurrentWorkspaceForTurn();
+    const hadThread = Boolean(workspace.threadId);
+    const { models, settings, selectedModel, resolvedModel } =
+      await this.resolveTurnExecutionContext(workspace);
+    const threadId = await this.ensureThread(workspace);
+    const canSendImages = supportsImageAttachments(selectedModel?.model ?? null, models);
+    const envelope = resolveVoiceTaskEnvelope(intent.taskEnvelope, workspace.id, threadId);
+    const input = buildVoiceTaskInputs(envelope, [], canSendImages);
+
     workspace.threadId = threadId;
     workspace.lastOpenedAt = now();
     persisted.workspaces[workspace.id] = workspace;
     this.writeState(persisted);
 
-    if (!this.activeTurnId) {
-      return this.startTurn({ prompt: trimmedPrompt, attachments: [] });
+    if (!this.hasActiveTurnForThread(threadId) || !this.activeTurnId) {
+      return this.startPreparedTurn({
+        persisted,
+        workspace,
+        threadId,
+        hadThread,
+        displayPrompt: transcript,
+        input,
+        settings,
+        resolvedModel
+      });
     }
 
     try {
-      await codexBridge.steerTurn(threadId, this.activeTurnId, trimmedPrompt);
-    } catch {
-      this.activeTurnId = null;
-      return this.startTurn({ prompt: trimmedPrompt, attachments: [] });
+      await codexBridge.steerTurn(threadId, this.activeTurnId, buildVoiceTaskPrompt(envelope));
+    } catch (error) {
+      if (!isRestartableSteerError(error)) {
+        throw error;
+      }
+
+      this.clearActiveTurn(threadId);
+      return this.startPreparedTurn({
+        persisted,
+        workspace,
+        threadId,
+        hadThread,
+        displayPrompt: transcript,
+        input,
+        settings,
+        resolvedModel
+      });
     }
 
     this.setLiveTimelineState({
@@ -887,8 +1009,8 @@ export class WorkspaceService extends EventEmitter {
     return cloneTimelineState(this.liveTimelineState);
   }
 
-  hasActiveTurn() {
-    return Boolean(this.activeTurnId);
+  hasActiveTurn(threadId?: string) {
+    return threadId ? this.hasActiveTurnForThread(threadId) : Boolean(this.activeTurnId);
   }
 
   async interruptActiveTurn(): Promise<TimelineState> {
@@ -896,11 +1018,16 @@ export class WorkspaceService extends EventEmitter {
       return this.getTimelineState();
     }
 
-    const threadId = await this.getCurrentThreadId();
+    const threadId = this.getCurrentSelectedThreadId();
+
+    if (!threadId || this.activeTurnThreadId !== threadId) {
+      return this.getTimelineState();
+    }
+
     const turnId = this.activeTurnId;
 
     await codexBridge.interruptTurn(threadId, turnId);
-    this.activeTurnId = null;
+    this.clearActiveTurn(threadId);
     await this.hydrateLiveTimeline(threadId, {
       ...this.ensureLiveTimeline(threadId),
       isRunning: false,
@@ -1032,7 +1159,7 @@ export class WorkspaceService extends EventEmitter {
       result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
     } catch (error) {
       if (isThreadNotMaterializedError(error)) {
-        this.activeTurnId = null;
+        this.clearActiveTurn(threadId);
         return {
           ...emptyTimelineState(threadId),
           runState: {
@@ -1046,7 +1173,14 @@ export class WorkspaceService extends EventEmitter {
     }
 
     const turns = result.thread?.turns ?? [];
-    this.activeTurnId = turns.find((turn) => turn.status === "inProgress")?.id ?? null;
+    const activeTurnId = turns.find((turn) => turn.status === "inProgress")?.id ?? null;
+
+    if (activeTurnId) {
+      this.setActiveTurn(threadId, activeTurnId);
+    } else {
+      this.clearActiveTurn(threadId);
+    }
+
     return buildTimelineState(threadId, turns);
   }
 
@@ -1601,20 +1735,31 @@ export class WorkspaceService extends EventEmitter {
     const params = payload.params as { threadId?: unknown; turn?: { id?: unknown } } | undefined;
     const threadId = typeof params?.threadId === "string" ? params.threadId : null;
 
-    if (!threadId || !this.isCurrentThread(threadId)) {
+    if (
+      !threadId ||
+      (!this.isCurrentThread(threadId) &&
+        this.activeTurnThreadId !== threadId &&
+        this.activeTurnId !== null)
+    ) {
       return;
     }
 
     const methodKey = normalizeRuntimeMethod(payload.method);
 
     if (methodKey === "turn_started") {
-      this.activeTurnId =
-        params?.turn && typeof params.turn.id === "string" ? params.turn.id : this.activeTurnId;
+      this.setActiveTurn(
+        threadId,
+        params?.turn && typeof params.turn.id === "string"
+          ? params.turn.id
+          : this.activeTurnThreadId === threadId
+            ? this.activeTurnId
+            : null
+      );
       return;
     }
 
     if (methodKey === "turn_completed" || methodKey === "turn_aborted") {
-      this.activeTurnId = null;
+      this.clearActiveTurn(threadId);
     }
   }
 

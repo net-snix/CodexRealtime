@@ -36,7 +36,7 @@ export const SERVER_API_CHANNELS = {
   realtimeStop: "realtime:stop",
   realtimeAppendAudio: "realtime:append-audio",
   realtimeAppendText: "realtime:append-text",
-  realtimeDispatchPrompt: "realtime:dispatch-prompt",
+  realtimeDispatchIntent: "realtime:dispatch-intent",
 } as const;
 
 export const IPC_EVENT_CHANNELS = {
