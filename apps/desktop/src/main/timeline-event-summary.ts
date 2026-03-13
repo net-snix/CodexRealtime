@@ -1,16 +1,6 @@
+import { countDiffStats } from "./diff-stats";
+
 const MAX_ACTIVITY_SUMMARY = 120;
-const DIFF_METADATA_PREFIXES = [
-  "diff --git",
-  "index ",
-  "@@",
-  "---",
-  "+++",
-  "new file mode",
-  "deleted file mode",
-  "rename from",
-  "rename to",
-  "similarity index"
-] as const;
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, " ").trim();
 const basename = (value: string) => value.split("/").filter(Boolean).at(-1) ?? value;
@@ -38,32 +28,6 @@ export const summarizeActivityText = (text: string) => {
 export const summarizeCommand = (command: string) => {
   const trimmed = normalizeWhitespace(command);
   return trimmed ? truncate(`Ran ${trimmed}`, 96) : "Ran command";
-};
-
-const countDiffStats = (diff: string) => {
-  let additions = 0;
-  let deletions = 0;
-
-  for (const line of diff.split("\n")) {
-    if (!line) {
-      continue;
-    }
-
-    if (DIFF_METADATA_PREFIXES.some((prefix) => line.startsWith(prefix))) {
-      continue;
-    }
-
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-
-  return { additions, deletions };
 };
 
 export const buildFileChangeEvents = <

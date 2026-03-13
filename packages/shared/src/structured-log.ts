@@ -42,7 +42,18 @@ export interface CreateStructuredLoggerOptions {
 const normalizeIdentifier = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : null;
 
-const serializeLogValue = (value: unknown, seen = new WeakSet<object>()): unknown => {
+const MAX_LOG_SERIALIZATION_DEPTH = 8;
+const DEPTH_LIMIT_MARKER = "[DepthLimitExceeded]";
+
+const serializeLogValue = (
+  value: unknown,
+  seen = new WeakSet<object>(),
+  depth = 0
+): unknown => {
+  if (depth >= MAX_LOG_SERIALIZATION_DEPTH) {
+    return DEPTH_LIMIT_MARKER;
+  }
+
   if (
     value === null ||
     typeof value === "string" ||
@@ -79,14 +90,14 @@ const serializeLogValue = (value: unknown, seen = new WeakSet<object>()): unknow
     }
 
     if ("cause" in value) {
-      const cause = serializeLogValue((value as { cause?: unknown }).cause, seen);
+      const cause = serializeLogValue((value as { cause?: unknown }).cause, seen, depth + 1);
       if (cause !== undefined) {
         serializedError.cause = cause;
       }
     }
 
     for (const [key, nestedValue] of Object.entries(value)) {
-      const serializedValue = serializeLogValue(nestedValue, seen);
+      const serializedValue = serializeLogValue(nestedValue, seen, depth + 1);
       if (serializedValue !== undefined) {
         serializedError[key] = serializedValue;
       }
@@ -96,7 +107,7 @@ const serializeLogValue = (value: unknown, seen = new WeakSet<object>()): unknow
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => serializeLogValue(item, seen));
+    return value.map((item) => serializeLogValue(item, seen, depth + 1));
   }
 
   if (typeof value === "object") {
@@ -109,7 +120,7 @@ const serializeLogValue = (value: unknown, seen = new WeakSet<object>()): unknow
     try {
       return Object.fromEntries(
         Object.entries(value).flatMap(([key, nestedValue]) => {
-          const serializedValue = serializeLogValue(nestedValue, seen);
+          const serializedValue = serializeLogValue(nestedValue, seen, depth + 1);
           return serializedValue === undefined ? [] : [[key, serializedValue]];
         })
       );

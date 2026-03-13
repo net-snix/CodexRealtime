@@ -25,7 +25,15 @@ import type {
 } from "@shared";
 import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
+import { countDiffStats } from "./diff-stats";
 import { readPersistedState } from "./persisted-state";
+import {
+  buildPastedImageFileName,
+  estimateBase64DecodedBytes,
+  getPastedImageFileExtension,
+  isPastedImageByteLengthWithinLimit,
+  MAX_PASTED_IMAGE_BASE64_LENGTH
+} from "../pasted-image-limits";
 import { buildAutoThreadName } from "./thread-auto-name";
 import {
   DEFAULT_WORKER_COLLABORATION_MODES,
@@ -141,18 +149,6 @@ const normalizeRuntimeMethod = (value: string) =>
     .replace(/[.\-/\s]+/g, "_")
     .replace(/__+/g, "_")
     .toLowerCase();
-const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-  "image/heic": ".heic",
-  "image/heif": ".heif",
-  "image/bmp": ".bmp",
-  "image/tiff": ".tiff"
-};
-const MAX_PASTED_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_PASTED_IMAGE_BASE64_LENGTH = Math.ceil(MAX_PASTED_IMAGE_BYTES / 3) * 4;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 const now = () => new Date().toISOString();
@@ -223,45 +219,6 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: 
   }
 };
 
-const DIFF_METADATA_PREFIXES = [
-  "diff --git",
-  "index ",
-  "@@",
-  "---",
-  "+++",
-  "new file mode",
-  "deleted file mode",
-  "rename from",
-  "rename to",
-  "similarity index"
-];
-
-const countDiffLines = (diff: string): ThreadChangeSummary => {
-  let additions = 0;
-  let deletions = 0;
-
-  for (const line of diff.split("\n")) {
-    if (!line) {
-      continue;
-    }
-
-    if (DIFF_METADATA_PREFIXES.some((prefix) => line.startsWith(prefix))) {
-      continue;
-    }
-
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-
-  return { additions, deletions };
-};
-
 const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null => {
   const isFileChangeItem = (
     item: unknown
@@ -288,7 +245,7 @@ const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null
 
       for (const change of item.changes) {
         const diff = typeof change.diff === "string" ? change.diff : "";
-        const counts = countDiffLines(diff);
+        const counts = countDiffStats(diff);
         additions += counts.additions;
         deletions += counts.deletions;
       }
@@ -300,22 +257,6 @@ const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null
   }
 
   return null;
-};
-
-const estimateBase64DecodedBytes = (value: string) => {
-  if (!value) {
-    return 0;
-  }
-
-  let paddingBytes = 0;
-
-  if (value.endsWith("==")) {
-    paddingBytes = 2;
-  } else if (value.endsWith("=")) {
-    paddingBytes = 1;
-  }
-
-  return Math.floor((value.length * 3) / 4) - paddingBytes;
 };
 
 const restoreWindowFocus = (window: BrowserWindow | null | undefined) => {
@@ -1602,8 +1543,7 @@ export class WorkspaceService extends EventEmitter {
     }
 
     const mimeType = image.mimeType.trim().toLowerCase();
-
-    if (!mimeType.startsWith("image/")) {
+    if (!getPastedImageFileExtension(mimeType)) {
       return null;
     }
 
@@ -1623,28 +1563,19 @@ export class WorkspaceService extends EventEmitter {
       return null;
     }
 
-    if (estimateBase64DecodedBytes(dataBase64) > MAX_PASTED_IMAGE_BYTES) {
+    if (!isPastedImageByteLengthWithinLimit(estimateBase64DecodedBytes(dataBase64))) {
       return null;
     }
 
     const data = Buffer.from(dataBase64, "base64");
 
-    if (data.byteLength === 0 || data.byteLength > MAX_PASTED_IMAGE_BYTES) {
+    if (!isPastedImageByteLengthWithinLimit(data.byteLength)) {
       return null;
     }
 
-    const extension = PASTED_IMAGE_EXTENSIONS[mimeType] ?? ".png";
-    const sanitizedBaseName = image.name
-      .trim()
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .replace(/\.+/g, ".");
-    const baseNameWithoutExtension = sanitizedBaseName.replace(/\.[A-Za-z0-9]+$/, "");
-    const fileNameBase = baseNameWithoutExtension || "pasted-image";
-
     return {
       data,
-      fileName: `${fileNameBase}${extension}`
+      fileName: buildPastedImageFileName(image.name, mimeType)
     };
   }
 

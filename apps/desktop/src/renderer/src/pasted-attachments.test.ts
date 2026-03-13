@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hasPastedAttachmentCandidates, readPastedAttachments } from "./pasted-attachments";
 
 type ClipboardFile = Partial<File> & { path?: string };
@@ -94,5 +94,96 @@ describe("pasted attachments", () => {
       paths: ["/tmp/photo.png"],
       images: []
     });
+  });
+
+  it("accepts inline pasted image blobs within the size limit", async () => {
+    const clipboardData = createClipboardStub({
+      files: [
+        {
+          name: "paste.png",
+          type: "image/png",
+          size: 3,
+          arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer
+        }
+      ]
+    });
+
+    expect(hasPastedAttachmentCandidates(clipboardData)).toBe(true);
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: [
+        {
+          name: "paste.png",
+          mimeType: "image/png",
+          dataBase64: "AQID"
+        }
+      ]
+    });
+  });
+
+  it("canonicalizes inline pasted image file names for downstream storage", async () => {
+    const clipboardData = createClipboardStub({
+      files: [
+        {
+          name: " Screenshot 2026-03-11 at 14.27.00!!.png ",
+          type: "image/png",
+          size: 3,
+          arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer
+        }
+      ]
+    });
+
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: [
+        {
+          name: "Screenshot-2026-03-11-at-14.27.00.png",
+          mimeType: "image/png",
+          dataBase64: "AQID"
+        }
+      ]
+    });
+  });
+
+  it("rejects oversized inline pasted image blobs before reading them", async () => {
+    const arrayBuffer = vi.fn(async () => Uint8Array.from([1, 2, 3]).buffer);
+    const clipboardData = createClipboardStub({
+      files: [
+        {
+          name: "huge.png",
+          type: "image/png",
+          size: 10 * 1024 * 1024 + 1,
+          arrayBuffer
+        }
+      ]
+    });
+
+    expect(hasPastedAttachmentCandidates(clipboardData)).toBe(false);
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: []
+    });
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported inline pasted image mime types before reading them", async () => {
+    const arrayBuffer = vi.fn(async () => Uint8Array.from([1, 2, 3]).buffer);
+    const clipboardData = createClipboardStub({
+      files: [
+        {
+          name: "vector.svg",
+          type: "image/svg+xml",
+          size: 3,
+          arrayBuffer
+        }
+      ]
+    });
+
+    expect(hasPastedAttachmentCandidates(clipboardData)).toBe(false);
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: []
+    });
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 });

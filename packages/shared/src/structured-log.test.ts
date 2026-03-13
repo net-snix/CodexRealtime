@@ -73,6 +73,45 @@ describe("createStructuredLogRecord", () => {
       attempt: 2
     });
   });
+
+  it("truncates deeply nested context values to avoid unbounded recursion", () => {
+    let nested: Record<string, unknown> = {};
+    const root = nested;
+
+    for (let index = 0; index < 12; index += 1) {
+      const next: Record<string, unknown> = {};
+      nested.child = next;
+      nested = next;
+    }
+
+    const record = createStructuredLogRecord({
+      source: "desktop",
+      scope: "bootstrap",
+      level: "info",
+      message: "Deep context payload",
+      context: {
+        nested: root
+      }
+    });
+
+    let cursor: unknown = (record.data as { nested?: unknown })?.nested;
+    let depthLimitHit = false;
+
+    for (let index = 0; index < 12; index += 1) {
+      if (cursor === "[DepthLimitExceeded]") {
+        depthLimitHit = true;
+        break;
+      }
+
+      if (!cursor || typeof cursor !== "object") {
+        break;
+      }
+
+      cursor = (cursor as { child?: unknown }).child;
+    }
+
+    expect(depthLimitHit).toBe(true);
+  });
 });
 
 describe("createStructuredLogger", () => {

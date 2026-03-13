@@ -1,8 +1,7 @@
 import { app } from "electron";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { VoicePreferences } from "@shared";
-import { readPersistedState } from "./persisted-state";
+import { readPersistedStateFile, writePersistedStateFile } from "./persisted-state";
 
 const DEFAULT_PREFERENCES: VoicePreferences = {
   selectedInputDeviceId: "",
@@ -30,12 +29,7 @@ export class VoicePreferencesService {
   }
 
   private loadPreferences(): VoicePreferences {
-    try {
-      const raw = readFileSync(this.statePath, "utf8");
-      return readPersistedState(raw, DEFAULT_PREFERENCES, VOICE_PREFERENCES_VALIDATORS);
-    } catch {
-      return { ...DEFAULT_PREFERENCES };
-    }
+    return readPersistedStateFile(this.statePath, DEFAULT_PREFERENCES, VOICE_PREFERENCES_VALIDATORS);
   }
 
   getPreferences(): VoicePreferences {
@@ -53,16 +47,14 @@ export class VoicePreferencesService {
     };
 
     this.cachedPreferences = clonePreferences(nextState);
-    mkdirSync(app.getPath("userData"), { recursive: true });
-    writeFileSync(this.statePath, JSON.stringify(nextState, null, 2), "utf8");
+    writePersistedStateFile(this.statePath, nextState);
 
     return clonePreferences(nextState);
   }
 
   resetPreferences(): VoicePreferences {
     this.cachedPreferences = clonePreferences(DEFAULT_PREFERENCES);
-    mkdirSync(app.getPath("userData"), { recursive: true });
-    writeFileSync(this.statePath, JSON.stringify(DEFAULT_PREFERENCES, null, 2), "utf8");
+    writePersistedStateFile(this.statePath, DEFAULT_PREFERENCES);
     return clonePreferences(DEFAULT_PREFERENCES);
   }
 }

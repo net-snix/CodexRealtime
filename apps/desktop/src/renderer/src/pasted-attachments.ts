@@ -1,4 +1,11 @@
-import type { PastedImageAttachment } from "@shared";
+import {
+  type PastedImageAttachment
+} from "@shared";
+import {
+  buildPastedImageFileName,
+  getPastedImageFileExtension,
+  isPastedImageByteLengthWithinLimit
+} from "../../pasted-image-limits";
 
 type FileWithPath = File & {
   path?: string;
@@ -9,16 +16,6 @@ type PastedAttachments = {
   images: PastedImageAttachment[];
 };
 
-const IMAGE_EXTENSIONS: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-  "image/heic": ".heic",
-  "image/heif": ".heif",
-  "image/bmp": ".bmp",
-  "image/tiff": ".tiff"
-};
 const CONTROL_PATH_CHARS = /[\u0000-\u001f\u007f]/;
 const MAX_LOCAL_PATH_LENGTH = 4096;
 
@@ -30,7 +27,8 @@ const sanitizeLocalPath = (value: string) => {
   return value;
 };
 
-const isImageMimeType = (mimeType: string) => mimeType.trim().toLowerCase().startsWith("image/");
+const isPasteableInlineImageFile = (file: File) =>
+  getPastedImageFileExtension(file.type) !== null && isPastedImageByteLengthWithinLimit(file.size);
 
 const normalizeFileUrlPath = (value: string) => {
   try {
@@ -122,19 +120,27 @@ const toPastedImageAttachment = async (
   file: File,
   fallbackIndex: number
 ): Promise<PastedImageAttachment | null> => {
-  if (!isImageMimeType(file.type)) {
+  if (!isPasteableInlineImageFile(file)) {
     return null;
   }
 
   const arrayBuffer = await file.arrayBuffer();
 
-  if (arrayBuffer.byteLength === 0) {
+  if (!isPastedImageByteLengthWithinLimit(arrayBuffer.byteLength)) {
     return null;
   }
 
   const mimeType = file.type.trim().toLowerCase();
-  const fallbackExtension = IMAGE_EXTENSIONS[mimeType] ?? ".png";
-  const name = file.name?.trim() || `pasted-image-${fallbackIndex + 1}${fallbackExtension}`;
+  const fallbackExtension = getPastedImageFileExtension(mimeType);
+
+  if (!fallbackExtension) {
+    return null;
+  }
+
+  const name = buildPastedImageFileName(
+    file.name?.trim() || `pasted-image-${fallbackIndex + 1}`,
+    mimeType
+  );
 
   return {
     name,
@@ -199,7 +205,7 @@ export const hasPastedAttachmentCandidates = (clipboardData: DataTransfer | null
 
   const fileEntries = getClipboardFileEntries(clipboardData);
   return fileEntries.some(({ file, filePath }) => {
-    return Boolean(filePath) || isImageMimeType(file.type);
+    return Boolean(filePath) || isPasteableInlineImageFile(file);
   });
 };
 
@@ -233,7 +239,7 @@ export const readPastedAttachments = async (
   }
 
   const imageFiles = fileEntries
-    .filter(({ file, filePath }) => !filePath && isImageMimeType(file.type))
+    .filter(({ file, filePath }) => !filePath && isPasteableInlineImageFile(file))
     .map(({ file }) => file);
   const images = (
     await Promise.all(imageFiles.map((file, index) => toPastedImageAttachment(file, index)))

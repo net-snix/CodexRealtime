@@ -820,7 +820,7 @@ describe("Timeline", () => {
     expect(onAddAttachments).not.toHaveBeenCalled();
     expect(onAddPastedImageAttachments).toHaveBeenCalledWith([
       {
-        name: "Screenshot 2026-03-11 at 14.27.00.png",
+        name: "Screenshot-2026-03-11-at-14.27.00.png",
         mimeType: "image/png",
         dataBase64: "AQID"
       }
@@ -894,7 +894,7 @@ describe("Timeline", () => {
 
     expect(onAddPastedImageAttachments).toHaveBeenCalledWith([
       {
-        name: "Screenshot 2026-03-11 at 14.27.00.png",
+        name: "Screenshot-2026-03-11-at-14.27.00.png",
         mimeType: "image/png",
         dataBase64: "AQID"
       }
