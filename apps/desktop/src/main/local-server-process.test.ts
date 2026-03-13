@@ -177,6 +177,50 @@ describe("LocalServerProcess", () => {
     expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   });
 
+  it("keeps only the tail of startup stderr in timeout errors", async () => {
+    vi.useFakeTimers();
+    const stderrWrite = vi
+      .spyOn(globalThis.process.stderr, "write")
+      .mockImplementation((() => true) as typeof globalThis.process.stderr.write);
+    const child = new FakeChildProcess();
+    const localServerProcess = new LocalServerProcess({
+      entryOverride: "/tmp/server.js",
+      startupTimeoutMs: 25,
+      pathExists: () => true,
+      spawnProcess: createSpawnProcess(child)
+    }, createSilentLogger());
+
+    const startPromise = localServerProcess.start().then(
+      () => new Error("Expected startup to time out"),
+      (error: unknown) => error as Error
+    );
+
+    child.stderr.write(`prefix-${"x".repeat(12_000)}-suffix`);
+    await vi.advanceTimersByTimeAsync(25);
+
+    const error = await startPromise;
+    expect(stderrWrite).toHaveBeenCalled();
+    expect(error.message).toContain("-suffix");
+    expect(error.message).not.toContain("prefix-");
+    expect(error.message.length).toBeLessThan(8_400);
+  });
+
+  it("still resolves the handshake after a large unterminated stdout preamble", async () => {
+    const child = new FakeChildProcess();
+    const localServerProcess = new LocalServerProcess({
+      entryOverride: "/tmp/server.js",
+      expectedVersion: "0.1.0",
+      pathExists: () => true,
+      spawnProcess: createSpawnProcess(child)
+    }, createSilentLogger());
+
+    const startPromise = localServerProcess.start();
+    child.stdout.write("x".repeat(20_000));
+    child.stdout.write(`\n${JSON.stringify(createHandshake())}\n`);
+
+    await expect(startPromise).resolves.toEqual(createHandshake());
+  });
+
   it("rejects version mismatch and stops the child", async () => {
     const child = new FakeChildProcess();
     const process = new LocalServerProcess({

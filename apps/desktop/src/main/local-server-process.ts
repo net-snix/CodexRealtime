@@ -48,9 +48,13 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 0;
 const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
 const HANDSHAKE_PREFIX = "{\"type\":\"server-handshake\"";
+const MAX_STARTUP_OUTPUT_CHARS = 8_192;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
+
+const keepOutputTail = (value: string, maxChars: number) =>
+  value.length <= maxChars ? value : value.slice(-maxChars);
 
 export const parseServerHandshakeLine = (line: string): LocalServerHandshake | null => {
   const trimmed = line.trim();
@@ -284,7 +288,7 @@ export class LocalServerProcess {
   private waitForHandshake(child: LocalServerChild, entryPath: string) {
     return new Promise<LocalServerHandshake>((resolveHandshake, rejectHandshake) => {
       let stdoutBuffer = "";
-      let stderrBuffer = "";
+      let stderrPreview = "";
       let settled = false;
 
       const handleStdoutData = (chunk: Buffer | string) => {
@@ -303,11 +307,13 @@ export class LocalServerProcess {
           settle(() => resolveHandshake(handshake));
           return;
         }
+
+        stdoutBuffer = keepOutputTail(stdoutBuffer, MAX_STARTUP_OUTPUT_CHARS);
       };
 
       const handleStderrData = (chunk: Buffer | string) => {
         const message = chunk.toString();
-        stderrBuffer += message;
+        stderrPreview = keepOutputTail(`${stderrPreview}${message}`, MAX_STARTUP_OUTPUT_CHARS);
         process.stderr.write(message);
       };
 
@@ -321,7 +327,7 @@ export class LocalServerProcess {
         settle(() =>
           rejectHandshake(
             new Error(
-              `Local server exited before handshake (code=${code ?? "null"}, signal=${signal ?? "null"})${stderrBuffer ? `: ${stderrBuffer.trim()}` : ""}`
+              `Local server exited before handshake (code=${code ?? "null"}, signal=${signal ?? "null"})${stderrPreview ? `: ${stderrPreview.trim()}` : ""}`
             )
           )
         );
@@ -350,7 +356,7 @@ export class LocalServerProcess {
           child.kill("SIGKILL");
           rejectHandshake(
             new Error(
-              `Timed out waiting for local server handshake from ${entryPath}${stderrBuffer ? ` (${stderrBuffer.trim()})` : ""}`
+              `Timed out waiting for local server handshake from ${entryPath}${stderrPreview ? ` (${stderrPreview.trim()})` : ""}`
             )
           );
         });
