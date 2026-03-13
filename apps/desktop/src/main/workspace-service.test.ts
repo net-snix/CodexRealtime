@@ -6,7 +6,6 @@ type WorkRequestIntentOverrides = Partial<Omit<WorkRequestIntent, "source" | "ta
   source?: Partial<WorkRequestIntent["source"]>;
   taskEnvelope?: Partial<WorkRequestIntent["taskEnvelope"]>;
 };
-type StartTurnBridgeCall = [string, unknown[], unknown, string | null];
 
 describe("WorkspaceService", () => {
   beforeEach(() => {
@@ -884,8 +883,9 @@ describe("WorkspaceService", () => {
     expect(resumeThread).toHaveBeenCalledWith("thread-current", "/tmp/CodexRealtime");
     expect(steerTurn).not.toHaveBeenCalled();
     expect(startTurn).toHaveBeenCalledTimes(1);
-    const startArgs = startTurn.mock.calls[0] as unknown as StartTurnBridgeCall;
-    expect(startArgs[0]).toBe("thread-current");
+    const firstStartCall = startTurn.mock.calls[0];
+    expect(firstStartCall).toBeDefined();
+    expect(firstStartCall?.[0]).toBe("thread-current");
   });
 
   it("rethrows non-restartable steer failures instead of silently restarting", async () => {
