@@ -89,15 +89,39 @@ describe("presentTimelineEvent", () => {
     expect(
       presentTimelineEvent(
         makeEntry({
-          label: "Ran pnpm build",
+          label: "Ran command",
           command: "pnpm build",
-          detail: "Done"
+          detail: "stdout line 1\nstdout line 2",
+          createdAt: "2026-03-13T20:00:00.000Z"
         })
       )
     ).toMatchObject({
       variant: "activity",
       badge: "Command",
-      title: "Ran pnpm build"
+      title: "Ran pnpm build",
+      body: null,
+      monospace: true,
+      metaLabel: "2026-03-13T20:00:00.000Z"
+    });
+  });
+
+  it("keeps an existing compact command label while hiding verbose output", () => {
+    expect(
+      presentTimelineEvent(
+        makeEntry({
+          label: "Ran pnpm build",
+          command: "/bin/zsh -lc 'pnpm build --reporter ndjson'",
+          detail: "stdout line 1\nstdout line 2",
+          createdAt: "2026-03-13T20:00:00.000Z"
+        })
+      )
+    ).toMatchObject({
+      variant: "activity",
+      badge: "Command",
+      title: "Ran pnpm build",
+      body: null,
+      monospace: true,
+      metaLabel: "2026-03-13T20:00:00.000Z"
     });
   });
 
