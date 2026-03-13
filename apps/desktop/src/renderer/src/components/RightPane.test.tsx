@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineState } from "@shared";
+import * as rightPaneDiff from "../right-pane-diff";
 import { RightPane } from "./RightPane";
 
 const timelineState: TimelineState = {
@@ -272,5 +273,74 @@ describe("RightPane", () => {
     });
 
     expect(writeText).toHaveBeenCalledWith("@@ -7 +7 @@\n-old view\n+new view");
+  });
+
+  it("skips diff preprocessing until the diff pane is opened", async () => {
+    const buildDiffBrowserScopesSpy = vi.spyOn(rightPaneDiff, "buildDiffBrowserScopes");
+    const resolveDiffBrowserViewSpy = vi.spyOn(rightPaneDiff, "resolveDiffBrowserView");
+
+    await act(async () => {
+      root?.render(
+        <RightPane
+          activePane="plan"
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+          timelineState={{
+            ...timelineState,
+            latestProposedPlan: {
+              id: "plan-1",
+              createdAt: "10:06",
+              updatedAt: "10:06",
+              turnId: "turn-2",
+              title: "Tighten render work",
+              text: "Keep the plan tab cheap.",
+              steps: [{ step: "Skip diff derivation in plan mode", status: "pending" }]
+            }
+          }}
+        />
+      );
+    });
+
+    expect(buildDiffBrowserScopesSpy).not.toHaveBeenCalled();
+    expect(resolveDiffBrowserViewSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root?.render(
+        <RightPane
+          activePane="plan"
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+          timelineState={{
+            ...timelineState,
+            latestProposedPlan: {
+              id: "plan-1",
+              createdAt: "10:06",
+              updatedAt: "10:07",
+              turnId: "turn-2",
+              title: "Tighten render work",
+              text: "Keep the plan tab cheap.",
+              steps: [{ step: "Still on the plan tab", status: "completed" }]
+            }
+          }}
+        />
+      );
+    });
+
+    expect(buildDiffBrowserScopesSpy).not.toHaveBeenCalled();
+    expect(resolveDiffBrowserViewSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root?.render(
+        <RightPane
+          activePane="diff"
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+          timelineState={timelineState}
+        />
+      );
+    });
+
+    expect(buildDiffBrowserScopesSpy).toHaveBeenCalledTimes(1);
+    expect(resolveDiffBrowserViewSpy.mock.calls.length).toBeGreaterThan(0);
   });
 });

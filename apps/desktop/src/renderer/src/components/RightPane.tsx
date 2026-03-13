@@ -82,20 +82,27 @@ export function RightPane({
   const [diffViewMode, setDiffViewMode] = useState<DiffBrowserViewMode>("files");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const paneKey: PaneKey = activePane === "diff" ? "diff" : "plan";
+  const isDiffPane = paneKey === "diff";
   const pane = PANELS[paneKey];
   const activePlan = timelineState.activePlan ?? timelineState.latestProposedPlan;
   const diffEntries = timelineState.turnDiffs;
-  const activeDiff = timelineState.activeDiffPreview ?? diffEntries.at(-1) ?? null;
+  const activeDiff = isDiffPane
+    ? timelineState.activeDiffPreview ?? diffEntries.at(-1) ?? null
+    : null;
   const diffScopes = useMemo(
-    () => buildDiffBrowserScopes(diffEntries, timelineState.activeDiffPreview),
-    [diffEntries, timelineState.activeDiffPreview]
+    () =>
+      isDiffPane
+        ? buildDiffBrowserScopes(diffEntries, timelineState.activeDiffPreview)
+        : ([] as ReturnType<typeof buildDiffBrowserScopes>),
+    [diffEntries, isDiffPane, timelineState.activeDiffPreview]
   );
   const selectedDiff = selectedDiffId
     ? diffScopes.find((entry) => entry.id === selectedDiffId) ?? null
     : activeDiff;
   const diffViewer = useMemo(
-    () => resolveDiffBrowserView(selectedDiff, selectedFilePath, diffViewMode),
-    [diffViewMode, selectedDiff, selectedFilePath]
+    () =>
+      isDiffPane ? resolveDiffBrowserView(selectedDiff, selectedFilePath, diffViewMode) : null,
+    [diffViewMode, isDiffPane, selectedDiff, selectedFilePath]
   );
   const paneTimestamp =
     paneKey === "plan"
