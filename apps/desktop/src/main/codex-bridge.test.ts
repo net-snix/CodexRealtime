@@ -71,6 +71,21 @@ describe("CodexBridge", () => {
     expect((bridge as unknown as { buffer: string }).buffer).toBe("");
   });
 
+  it("fails pending requests and stops the child on oversized stdout payloads", async () => {
+    const bridge = new CodexBridge({ maxStdoutBufferBytes: 16 });
+    const child = attachChild(bridge, new MockChild());
+    const request = (
+      bridge as unknown as { request: (method: string, params: unknown) => Promise<unknown> }
+    ).request("thread/read", {});
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout("x".repeat(17));
+
+    await expect(request).rejects.toThrow(/Codex app-server sent oversized stdout payload/);
+    await vi.waitFor(() => {
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    });
+  });
+
   it("drops oversized stdout lines before JSON parse", () => {
     const bridge = new CodexBridge({
       maxStdoutBufferBytes: 64,
@@ -84,6 +99,28 @@ describe("CodexBridge", () => {
     expect(bridge.getState().error).toContain("Codex app-server sent oversized stdout line");
     expect((bridge as unknown as { buffer: string }).buffer).toBe("");
     expect((bridge as unknown as { bufferByteLength: number }).bufferByteLength).toBe(0);
+  });
+
+  it("fails pending requests and stops the child on oversized stdout lines", async () => {
+    const bridge = new CodexBridge({
+      maxStdoutBufferBytes: 64,
+      maxStdoutLineBytes: 10
+    });
+    const child = attachChild(bridge, new MockChild());
+    const request = (
+      bridge as unknown as { request: (method: string, params: unknown) => Promise<unknown> }
+    ).request("thread/read", {});
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout(
+      `${"x".repeat(11)}\n`
+    );
+
+    await expect(request).rejects.toThrow(
+      "Codex app-server sent oversized stdout line: exceeded 10 bytes"
+    );
+    await vi.waitFor(() => {
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    });
   });
 
   it("tracks remaining stdout buffer bytes after consuming complete lines", () => {

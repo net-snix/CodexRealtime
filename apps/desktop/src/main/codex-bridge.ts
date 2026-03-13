@@ -524,13 +524,9 @@ export class CodexBridge extends EventEmitter {
   private handleStdout(chunk: string) {
     const chunkByteLength = utf8ByteLength(chunk);
     if (this.bufferByteLength + chunkByteLength > this.maxStdoutBufferBytes) {
-      this.clearBuffer();
-      this.state = {
-        ...this.state,
-        error: `${OVERSIZED_STDOUT_BUFFER_ERROR}: exceeded ${this.maxStdoutBufferBytes} bytes`,
-        lastUpdatedAt: now()
-      };
-      this.emit("stateChanged", this.state);
+      this.failStdoutProtocol(
+        `${OVERSIZED_STDOUT_BUFFER_ERROR}: exceeded ${this.maxStdoutBufferBytes} bytes`
+      );
       return;
     }
 
@@ -547,14 +543,10 @@ export class CodexBridge extends EventEmitter {
       this.bufferByteLength -= utf8ByteLength(consumedChunk);
       const rawLine = consumedChunk.slice(0, -1);
       if (utf8ByteLength(rawLine) > this.maxStdoutLineBytes) {
-        this.state = {
-          ...this.state,
-          error: `${OVERSIZED_STDOUT_LINE_ERROR}: exceeded ${this.maxStdoutLineBytes} bytes`,
-          lastUpdatedAt: now()
-        };
-        this.emit("stateChanged", this.state);
-        this.buffer = this.buffer.slice(newlineIndex + 1);
-        continue;
+        this.failStdoutProtocol(
+          `${OVERSIZED_STDOUT_LINE_ERROR}: exceeded ${this.maxStdoutLineBytes} bytes`
+        );
+        return;
       }
 
       const line = rawLine.trim();
@@ -757,6 +749,18 @@ export class CodexBridge extends EventEmitter {
   private clearBuffer() {
     this.buffer = "";
     this.bufferByteLength = 0;
+  }
+
+  private failStdoutProtocol(message: string) {
+    this.clearBuffer();
+    this.rejectAllPending(message);
+    this.state = {
+      ...this.state,
+      error: message,
+      lastUpdatedAt: now()
+    };
+    this.emit("stateChanged", this.state);
+    void this.stop();
   }
 
   private mapAccount(account: unknown): CodexAccountSummary | null {
