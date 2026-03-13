@@ -1,8 +1,14 @@
 import { memo, useMemo, type ReactNode } from "react";
+import type { EditorId } from "@codex-realtime/contracts";
+import { openInPreferredEditor } from "../editor-preferences";
+import { resolveMarkdownFileLinkTarget } from "../markdown-links";
+import { readNativeApi } from "../native-api";
 
 type TimelineRichTextProps = {
   text: string;
   className?: string;
+  cwd?: string;
+  availableEditors?: readonly EditorId[];
 };
 
 type RichTextBlock =
@@ -23,7 +29,12 @@ const ORDERED_LIST_PATTERN = /^\s*\d+\.\s+(.*)$/;
 const UNORDERED_LIST_PATTERN = /^\s*[-*]\s+(.*)$/;
 const FENCE_PATTERN = /^\s*```/;
 const INLINE_TOKEN_PATTERN =
-  /`([^`\n]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\n]+)\*|_([^_\n]+)_/g;
+  /\[([^\]\n]+)\]\(([^)\n]+)\)|`([^`\n]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\n]+)\*|_([^_\n]+)_/g;
+
+type InlineRenderContext = {
+  cwd?: string;
+  availableEditors: readonly EditorId[];
+};
 
 const isBlankLine = (line: string) => line.trim().length === 0;
 
@@ -39,7 +50,11 @@ const appendLineBreaks = (text: string, keyPrefix: string): ReactNode[] =>
     index === 0 ? [segment] : [<br key={`${keyPrefix}-br-${index}`} />, segment]
   );
 
-const renderInlineContent = (text: string, keyPrefix: string): ReactNode[] => {
+const renderInlineContent = (
+  text: string,
+  keyPrefix: string,
+  context: InlineRenderContext
+): ReactNode[] => {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
 
@@ -50,21 +65,55 @@ const renderInlineContent = (text: string, keyPrefix: string): ReactNode[] => {
       nodes.push(...appendLineBreaks(text.slice(lastIndex, matchIndex), `${keyPrefix}-text-${lastIndex}`));
     }
 
-    const inlineCode = match[1];
-    const strongText = match[2] ?? match[3];
-    const emphasisText = match[4] ?? match[5];
+    const markdownLinkLabel = match[1];
+    const markdownLinkHref = match[2];
+    const inlineCode = match[3];
+    const strongText = match[4] ?? match[5];
+    const emphasisText = match[6] ?? match[7];
     const tokenKey = `${keyPrefix}-token-${matchIndex}`;
 
-    if (inlineCode !== undefined) {
+    if (markdownLinkLabel !== undefined && markdownLinkHref !== undefined) {
+      const targetPath = resolveMarkdownFileLinkTarget(markdownLinkHref, context.cwd);
+
+      nodes.push(
+        <a
+          key={tokenKey}
+          className="timeline-rich-text-link"
+          href={markdownLinkHref}
+          onClick={(event) => {
+            if (!targetPath) {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const api = readNativeApi();
+            if (!api) {
+              console.warn("Native API not found. Unable to open file in editor.");
+              return;
+            }
+
+            void openInPreferredEditor(api, targetPath, context.availableEditors).catch((error) => {
+              console.warn("Unable to open file in preferred editor.", error);
+            });
+          }}
+          rel={targetPath ? undefined : "noreferrer"}
+          target={targetPath ? undefined : "_blank"}
+        >
+          {renderInlineContent(markdownLinkLabel, tokenKey, context)}
+        </a>
+      );
+    } else if (inlineCode !== undefined) {
       nodes.push(
         <code key={tokenKey} className="timeline-rich-text-inline-code">
           {inlineCode}
         </code>
       );
     } else if (strongText !== undefined) {
-      nodes.push(<strong key={tokenKey}>{renderInlineContent(strongText, tokenKey)}</strong>);
+      nodes.push(<strong key={tokenKey}>{renderInlineContent(strongText, tokenKey, context)}</strong>);
     } else if (emphasisText !== undefined) {
-      nodes.push(<em key={tokenKey}>{renderInlineContent(emphasisText, tokenKey)}</em>);
+      nodes.push(<em key={tokenKey}>{renderInlineContent(emphasisText, tokenKey, context)}</em>);
     }
 
     lastIndex = matchIndex + match[0].length;
@@ -190,8 +239,20 @@ const parseBlocks = (text: string): RichTextBlock[] => {
   return blocks;
 };
 
-function TimelineRichTextComponent({ text, className }: TimelineRichTextProps) {
+function TimelineRichTextComponent({
+  text,
+  className,
+  cwd,
+  availableEditors = []
+}: TimelineRichTextProps) {
   const blocks = useMemo(() => parseBlocks(text), [text]);
+  const inlineContext = useMemo(
+    () => ({
+      cwd,
+      availableEditors
+    }),
+    [availableEditors, cwd]
+  );
 
   return (
     <div className={className}>
@@ -201,7 +262,7 @@ function TimelineRichTextComponent({ text, className }: TimelineRichTextProps) {
         if (block.type === "paragraph") {
           return (
             <p key={key} className="timeline-rich-text-paragraph">
-              {renderInlineContent(block.text, key)}
+              {renderInlineContent(block.text, key, inlineContext)}
             </p>
           );
         }
@@ -223,7 +284,9 @@ function TimelineRichTextComponent({ text, className }: TimelineRichTextProps) {
         return (
           <ListTag key={key} className={listClassName}>
             {block.items.map((item, itemIndex) => (
-              <li key={`${key}-item-${itemIndex}`}>{renderInlineContent(item, `${key}-item-${itemIndex}`)}</li>
+              <li key={`${key}-item-${itemIndex}`}>
+                {renderInlineContent(item, `${key}-item-${itemIndex}`, inlineContext)}
+              </li>
             ))}
           </ListTag>
         );

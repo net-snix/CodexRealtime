@@ -30,7 +30,8 @@ const makeThreadSummary = (overrides: Partial<ThreadSummary> = {}): ThreadSummar
 const appInfo: AppInfo = {
   name: "Codex Realtime",
   version: "0.1.0",
-  platform: "darwin"
+  platform: "darwin",
+  availableEditors: []
 };
 
 const appSettingsState: AppSettingsState = {

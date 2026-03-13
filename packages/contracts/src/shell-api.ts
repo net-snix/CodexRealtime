@@ -3,6 +3,7 @@ import type {
   AppSettings,
   AppSettingsState,
   DesktopNotificationRequest,
+  EditorId,
   VoicePreferences,
   WorkerAttachment,
   WorkspaceState,
@@ -14,6 +15,7 @@ export interface ShellApi {
   updateAppSettings: (patch: Partial<AppSettings>) => Promise<AppSettingsState>;
   showDesktopNotification: (request: DesktopNotificationRequest) => Promise<boolean>;
   openUserDataDirectory: () => Promise<void>;
+  openInEditor: (targetPath: string, editor: EditorId) => Promise<void>;
   openWorkspace: () => Promise<WorkspaceState>;
   openCurrentWorkspace: () => Promise<WorkspaceState>;
   pickWorkerAttachments: () => Promise<WorkerAttachment[]>;

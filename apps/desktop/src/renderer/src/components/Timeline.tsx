@@ -8,6 +8,7 @@ import {
   type ClipboardEventHandler,
   type KeyboardEventHandler
 } from "react";
+import type { EditorId } from "@codex-realtime/contracts";
 import { createPortal } from "react-dom";
 import type {
   ApprovalDecision,
@@ -31,6 +32,7 @@ import {
 import { getTimelineWorkingLabels } from "../timeline-event-stream";
 import { useThinkingLabel } from "../timeline-working-status";
 import { TimelineEventStream } from "./TimelineEventStream";
+import { TimelineOpenInPicker } from "./TimelineOpenInPicker";
 import { TimelineRequests } from "./TimelineRequests";
 
 type PaneKey = "plan" | "diff";
@@ -42,6 +44,7 @@ interface TimelineProps {
   isOpeningWorkspace?: boolean;
   activePane?: PaneKey;
   isRightPaneOpen?: boolean;
+  availableEditors?: readonly EditorId[];
   isResolvingRequests: boolean;
   realtimeState: RealtimeState;
   voiceState: VoiceState;
@@ -217,6 +220,7 @@ export function Timeline({
   isOpeningWorkspace = false,
   activePane = "plan",
   isRightPaneOpen = true,
+  availableEditors = [],
   isResolvingRequests,
   realtimeState,
   isVoiceActive,
@@ -346,6 +350,7 @@ export function Timeline({
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null);
   const reasoningTriggerRef = useRef<HTMLButtonElement | null>(null);
   const approvalTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const modelOptions = [
     {
@@ -373,6 +378,13 @@ export function Timeline({
   const selectedApprovalLabel =
     APPROVAL_OPTIONS.find((option) => option.value === workerSettingsState.settings.approvalPolicy)
       ?.label ?? "Never";
+  const composerPlaceholder = hasWorkspace
+    ? "Ask anything, @tag files/folders, or use / to show available commands"
+    : "Open a repo first";
+  const composerModeLabel =
+    workerSettingsState.settings.collaborationMode === "plan"
+      ? (planModeOption?.label ?? "Plan")
+      : "Chat";
 
   const handleSubmit = async () => {
     const prompt = draft.trim();
@@ -437,14 +449,14 @@ export function Timeline({
     );
   }, []);
 
-  const handleKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
+  const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (shouldSubmitComposerKey(event)) {
       event.preventDefault();
       void handleSubmit();
     }
   };
 
-  const handlePaste: ClipboardEventHandler<HTMLInputElement> = (event) => {
+  const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (!hasWorkspace || isStartingTurn) {
       return;
     }
@@ -469,6 +481,17 @@ export function Timeline({
         console.error("Failed to add pasted attachments", error);
       });
   };
+
+  useEffect(() => {
+    const textarea = composerInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "0px";
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 84), 160);
+    textarea.style.height = `${nextHeight}px`;
+  }, [draft, hasWorkspace]);
 
   useEffect(() => {
     if (!openPicker) {
@@ -557,6 +580,12 @@ export function Timeline({
           <h2>{hasWorkspace ? currentProject?.name : "Open a workspace"}</h2>
         </div>
         <div className="timeline-header-actions">
+          {hasWorkspace ? (
+            <TimelineOpenInPicker
+              availableEditors={availableEditors}
+              openInCwd={currentProject?.path ?? null}
+            />
+          ) : null}
           {inspectorButtons.length > 0 ? (
             <div className="timeline-inspector-group" role="tablist" aria-label="Inspector targets">
               {inspectorButtons.map((button) => (
@@ -609,6 +638,8 @@ export function Timeline({
             latestWorkingStatus={latestWorkingStatus}
             activeWorkStartedAt={timelineState.activeWorkStartedAt}
             streamRef={streamRef}
+            cwd={currentProject?.path}
+            availableEditors={availableEditors}
           />
         ) : (
           <div className="timeline-empty-state timeline-empty-state-prompt">
@@ -665,17 +696,21 @@ export function Timeline({
             </div>
           ) : null}
 
-          <input
-            type="text"
-            className="timeline-input"
-            placeholder={hasWorkspace ? "Ask for follow-up changes" : "Open a repo first"}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            disabled={!hasWorkspace || isStartingTurn}
-            autoComplete="off"
-          />
+          <div className="timeline-input-shell">
+            <textarea
+              ref={composerInputRef}
+              className="timeline-input"
+              placeholder={composerPlaceholder}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              disabled={!hasWorkspace || isStartingTurn}
+              autoComplete="off"
+              rows={1}
+              spellCheck={false}
+            />
+          </div>
 
           <div className="composer-row">
             <div className="timeline-compose-tools">
@@ -721,8 +756,9 @@ export function Timeline({
                   <span className="timeline-model-trigger-label">{selectedModelLabel}</span>
                   <ChevronDownIcon />
                 </button>
-
               </div>
+
+              <span className="timeline-compose-divider" aria-hidden="true" />
 
               <div className="timeline-model-picker timeline-model-picker-narrow">
                 <button
@@ -741,35 +777,36 @@ export function Timeline({
               </div>
 
               {showPlanModeToggle ? (
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={workerSettingsState.settings.collaborationMode === "plan"}
-                  aria-label={`${planModeOption?.label ?? "Plan"} mode`}
-                  className={`timeline-worker-toggle timeline-worker-toggle-switch ${
-                    workerSettingsState.settings.collaborationMode === "plan"
-                      ? "timeline-worker-toggle-active"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    void onUpdateWorkerSettings({
-                      collaborationMode:
-                        workerSettingsState.settings.collaborationMode === "plan"
-                          ? "default"
-                          : "plan"
-                    })
-                  }
-                  disabled={!hasWorkspace || isUpdatingWorkerSettings || isStartingTurn}
-                  title={planModeOption?.name ?? "Plan"}
-                >
-                  <span className="timeline-worker-toggle-label">
-                    {planModeOption?.label ?? "Plan"}
-                  </span>
-                  <span className="timeline-worker-switch" aria-hidden="true">
-                    <span className="timeline-worker-switch-thumb" />
-                  </span>
-                </button>
+                <>
+                  <span className="timeline-compose-divider" aria-hidden="true" />
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={workerSettingsState.settings.collaborationMode === "plan"}
+                    aria-label={`${planModeOption?.label ?? "Plan"} mode`}
+                    className={`timeline-worker-toggle timeline-worker-mode-button ${
+                      workerSettingsState.settings.collaborationMode === "plan"
+                        ? "timeline-worker-toggle-active"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      void onUpdateWorkerSettings({
+                        collaborationMode:
+                          workerSettingsState.settings.collaborationMode === "plan"
+                            ? "default"
+                            : "plan"
+                      })
+                    }
+                    disabled={!hasWorkspace || isUpdatingWorkerSettings || isStartingTurn}
+                    title={planModeOption?.name ?? "Plan"}
+                  >
+                    <span className="timeline-worker-toggle-label">{composerModeLabel}</span>
+                  </button>
+                </>
               ) : null}
+
+              <span className="timeline-compose-divider" aria-hidden="true" />
 
               <div className="timeline-model-picker timeline-model-picker-approval">
                 <button

@@ -158,6 +158,7 @@ describe("useRealtimeVoice", () => {
         updateAppSettings: vi.fn(),
         showDesktopNotification: vi.fn(),
         openUserDataDirectory: vi.fn(),
+        openInEditor: vi.fn(),
         getSessionState: vi.fn(),
         getWorkspaceState: vi.fn(),
         openWorkspace: vi.fn(),

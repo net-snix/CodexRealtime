@@ -1,13 +1,17 @@
 export * from "./ipc.js";
+export * from "./editor.js";
 export * from "./provider-runtime.js";
 export type { NativeApi } from "./native-api.js";
 export type { ServerApi } from "./server-api.js";
 export type { ShellApi } from "./shell-api.js";
 
+import type { EditorId } from "./editor.js";
+
 export interface AppInfo {
   name: string;
   version: string;
   platform: string;
+  availableEditors: EditorId[];
 }
 
 export type AppDensity = "comfortable" | "compact";

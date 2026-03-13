@@ -13,7 +13,8 @@ type ArchiveThreadHandler = (workspaceId: string, threadId: string) => void;
 const appInfo: AppInfo = {
   name: "Codex Realtime",
   version: "0.1.0",
-  platform: "darwin"
+  platform: "darwin",
+  availableEditors: []
 };
 
 const createThread = (

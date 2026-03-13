@@ -4,6 +4,7 @@ export const SHELL_API_CHANNELS = {
   appSettingsUpdate: "app-settings:update",
   appNotificationShow: "app-notification:show",
   appUserDataOpen: "app-user-data:open",
+  editorOpen: "editor:open",
   workspaceOpen: "workspace:open",
   workspaceOpenCurrent: "workspace:open-current",
   workerAttachmentsPick: "worker-attachments:pick",
