@@ -26,6 +26,11 @@ import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
 import { countDiffStats } from "./diff-stats";
 import { readPersistedState } from "./persisted-state";
+import {
+  getPastedImageFileExtension,
+  isPastedImageByteLengthWithinLimit,
+  MAX_PASTED_IMAGE_BYTES
+} from "../pasted-image-limits";
 import { buildAutoThreadName } from "./thread-auto-name";
 import {
   DEFAULT_WORKER_COLLABORATION_MODES,
@@ -138,17 +143,6 @@ const normalizeRuntimeMethod = (value: string) =>
     .replace(/[.\-/\s]+/g, "_")
     .replace(/__+/g, "_")
     .toLowerCase();
-const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-  "image/heic": ".heic",
-  "image/heif": ".heif",
-  "image/bmp": ".bmp",
-  "image/tiff": ".tiff"
-};
-const MAX_PASTED_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_PASTED_IMAGE_BASE64_LENGTH = Math.ceil(MAX_PASTED_IMAGE_BYTES / 3) * 4;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -1430,8 +1424,9 @@ export class WorkspaceService extends EventEmitter {
     }
 
     const mimeType = image.mimeType.trim().toLowerCase();
+    const extension = getPastedImageFileExtension(mimeType);
 
-    if (!mimeType.startsWith("image/")) {
+    if (!extension) {
       return null;
     }
 
@@ -1451,17 +1446,16 @@ export class WorkspaceService extends EventEmitter {
       return null;
     }
 
-    if (estimateBase64DecodedBytes(dataBase64) > MAX_PASTED_IMAGE_BYTES) {
+    if (!isPastedImageByteLengthWithinLimit(estimateBase64DecodedBytes(dataBase64))) {
       return null;
     }
 
     const data = Buffer.from(dataBase64, "base64");
 
-    if (data.byteLength === 0 || data.byteLength > MAX_PASTED_IMAGE_BYTES) {
+    if (!isPastedImageByteLengthWithinLimit(data.byteLength)) {
       return null;
     }
 
-    const extension = PASTED_IMAGE_EXTENSIONS[mimeType] ?? ".png";
     const sanitizedBaseName = image.name
       .trim()
       .replace(/[^A-Za-z0-9._-]+/g, "-")
