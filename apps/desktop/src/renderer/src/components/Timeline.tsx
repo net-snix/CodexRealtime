@@ -1,10 +1,10 @@
 import {
-  useCallback,
   type CSSProperties,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useCallback,
   type ClipboardEventHandler,
   type KeyboardEventHandler
 } from "react";
@@ -28,7 +28,7 @@ import {
   hasPastedAttachmentCandidates,
   readPastedAttachments
 } from "../pasted-attachments";
-import { getTimelineWorkingLabels } from "../timeline-event-stream";
+import { buildPresentedTimeline } from "../timeline-event-stream";
 import { useThinkingLabel } from "../timeline-working-status";
 import { TimelineEventStream } from "./TimelineEventStream";
 import { TimelineRequests } from "./TimelineRequests";
@@ -258,8 +258,8 @@ export function Timeline({
     isResolvingRequests ||
     timelineState.runState.phase === "starting";
   const thinkingLabel = useThinkingLabel(timelineState.isRunning && !isResolvingRequests);
-  const { latestWorkingStatus, currentWorkingLabel } = useMemo(
-    () => getTimelineWorkingLabels(orderedEntries, isWorkingLogMode),
+  const { entries: presentedEntries, latestWorkingStatus, currentWorkingLabel } = useMemo(
+    () => buildPresentedTimeline(orderedEntries, isWorkingLogMode),
     [orderedEntries, isWorkingLogMode]
   );
   const activeWorkingLabel = isResolvingRequests
@@ -602,6 +602,7 @@ export function Timeline({
         orderedEntries.length > 0 ? (
           <TimelineEventStream
             entries={orderedEntries}
+            presentedEntries={presentedEntries}
             isWorkingLogMode={isWorkingLogMode}
             isRunning={timelineState.isRunning}
             isResolvingRequests={isResolvingRequests}

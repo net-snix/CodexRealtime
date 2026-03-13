@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, Profiler, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "@shared";
+import { buildPresentedTimeline } from "../timeline-event-stream";
 
 const richTextRenderSpy = vi.fn();
 
@@ -34,6 +35,8 @@ const assistantMessageEntry: TimelineEntry = {
   isStreaming: false,
   providerLabel: null
 };
+
+const presentedEntries = buildPresentedTimeline([assistantMessageEntry], false).entries;
 
 describe("TimelineEventStream", () => {
   let root: Root | null = null;
@@ -68,6 +71,7 @@ describe("TimelineEventStream", () => {
       root?.render(
         <TimelineEventStream
           entries={[assistantMessageEntry]}
+          presentedEntries={presentedEntries}
           isWorkingLogMode={false}
           isRunning
           isResolvingRequests={false}
@@ -88,5 +92,50 @@ describe("TimelineEventStream", () => {
 
     expect(container?.textContent).toContain("Working for 2s");
     expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips stream commits when a parent rerenders with the same stream props", async () => {
+    const onRender = vi.fn();
+
+    function Harness() {
+      const [draft, setDraft] = useState("");
+      const streamRef = useRef<HTMLDivElement | null>(null);
+
+      return (
+        <div>
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+          <Profiler id="timeline-stream" onRender={onRender}>
+            <TimelineEventStream
+              entries={[assistantMessageEntry]}
+              presentedEntries={presentedEntries}
+              isWorkingLogMode={false}
+              isRunning={false}
+              isResolvingRequests={false}
+              activeWorkingLabel="Working"
+              latestWorkingStatus={null}
+              activeWorkStartedAt={null}
+              streamRef={streamRef}
+            />
+          </Profiler>
+        </div>
+      );
+    }
+
+    await act(async () => {
+      root?.render(<Harness />);
+    });
+
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    const input = container?.querySelector("input");
+
+    await act(async () => {
+      if (input instanceof HTMLInputElement) {
+        input.value = "follow-up";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+
+    expect(onRender).toHaveBeenCalledTimes(1);
   });
 });

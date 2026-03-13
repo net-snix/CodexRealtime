@@ -13,6 +13,7 @@ import type {
   WorkspaceState
 } from "@shared";
 import * as timelinePresenter from "../timeline-presenter";
+import * as timelineEventStream from "../timeline-event-stream";
 import { Timeline } from "./Timeline";
 
 const makeThreadSummary = (overrides: Partial<ThreadSummary> = {}): ThreadSummary => ({
@@ -495,6 +496,57 @@ describe("Timeline", () => {
     expect(cluster).not.toBeNull();
     expect(cluster?.textContent).toContain("3 commands");
     expect(nestedItems).toHaveLength(3);
+  });
+
+  it("builds timeline presentation once per render for populated timelines", async () => {
+    const buildPresentedTimelineSpy = vi.spyOn(timelineEventStream, "buildPresentedTimeline");
+
+    await act(async () => {
+      root?.render(
+        <Timeline
+          timelineState={{
+            ...timelineState,
+            entries: [
+              makeMessageEntry({
+                id: "assistant-1",
+                text: "Hello from the worker"
+              }),
+              makeWorkEntry({
+                id: "command-1",
+                label: "Ran /bin/zsh -lc pwd",
+                command: "pwd"
+              })
+            ]
+          }}
+          workspaceState={workspaceState}
+          isStartingTurn={false}
+          isResolvingRequests={false}
+          realtimeState={realtimeState}
+          voiceState="idle"
+          isVoiceActive={false}
+          liveTranscript={[]}
+          workerSettingsState={workerSettingsState}
+          workerAttachments={[]}
+          isUpdatingWorkerSettings={false}
+          isPickingAttachments={false}
+          submittingApprovals={{}}
+          approvalErrors={{}}
+          submittingUserInputs={{}}
+          userInputErrors={{}}
+          onStartTurn={vi.fn()}
+          onApproveRequest={vi.fn()}
+          onDenyRequest={vi.fn()}
+          onSubmitUserInput={vi.fn()}
+          onUpdateWorkerSettings={vi.fn().mockResolvedValue(workerSettingsState)}
+          onPickAttachments={vi.fn().mockResolvedValue([])}
+          onAddAttachments={vi.fn().mockResolvedValue([])}
+          onAddPastedImageAttachments={vi.fn().mockResolvedValue([])}
+          onRemoveAttachment={vi.fn()}
+        />
+      );
+    });
+
+    expect(buildPresentedTimelineSpy).toHaveBeenCalledTimes(1);
   });
 
   it("promotes live command rows into a cluster as soon as the second command arrives", async () => {
