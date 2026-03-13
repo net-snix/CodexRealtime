@@ -9,6 +9,7 @@ import type {
   TimelineState,
   TimelineUpdateListener,
   TurnStartRequest,
+  VoiceIntent,
   WorkerAttachment,
   WorkerExecutionSettings,
   WorkerSettingsState,
@@ -34,6 +35,7 @@ export interface ServerApi {
   addPastedImageAttachments: (images: PastedImageAttachment[]) => Promise<WorkerAttachment[]>;
   startTurn: (request: TurnStartRequest) => Promise<TimelineState>;
   dispatchVoicePrompt: (prompt: string) => Promise<TimelineState>;
+  dispatchVoiceIntent?: (intent: VoiceIntent) => Promise<TimelineState>;
   interruptActiveTurn: () => Promise<TimelineState>;
   respondToApproval: (requestId: string, decision: ApprovalDecision) => Promise<TimelineState>;
   submitUserInput: (
