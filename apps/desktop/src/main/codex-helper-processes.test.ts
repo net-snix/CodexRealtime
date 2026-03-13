@@ -14,6 +14,11 @@ describe("codex helper processes", () => {
     expect(parseElapsedSeconds("08-14:05:53")).toBe(741_953);
   });
 
+  it("rejects malformed elapsed times from ps output", () => {
+    expect(parseElapsedSeconds("01x:02")).toBeNull();
+    expect(parseElapsedSeconds("08x-14:05:53")).toBeNull();
+  });
+
   it("parses process snapshot lines", () => {
     expect(
       parseProcessSnapshotLine(
@@ -25,6 +30,11 @@ describe("codex helper processes", () => {
       elapsedSeconds: 158,
       command: "node /Users/espenmac/.codex/mcp-tools/node_modules/.bin/playwright-mcp"
     });
+  });
+
+  it("rejects malformed process snapshot lines", () => {
+    expect(parseProcessSnapshotLine("  945x  941  02:38 node helper")).toBeNull();
+    expect(parseProcessSnapshotLine("  945   941  02x:38 node helper")).toBeNull();
   });
 
   it("collects descendants recursively", () => {
