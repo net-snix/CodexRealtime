@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { memo, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { TimelineDiffEntry, TimelineEntry } from "@shared";
 import type { PresentedTimelineEntry, PresentedTimelineEvent } from "../timeline-event-stream";
-import { buildPresentedTimeline } from "../timeline-event-stream";
 import { TimelineRichText } from "./TimelineRichText";
 
 type TimelineEventStreamProps = {
   entries: TimelineEntry[];
+  presentedEntries: PresentedTimelineEntry[];
   isWorkingLogMode: boolean;
   isRunning: boolean;
   isResolvingRequests: boolean;
@@ -308,8 +308,9 @@ function TimelineEntryCard({
   );
 }
 
-export function TimelineEventStream({
+function TimelineEventStreamComponent({
   entries,
+  presentedEntries,
   isWorkingLogMode,
   isRunning,
   isResolvingRequests,
@@ -318,11 +319,6 @@ export function TimelineEventStream({
   activeWorkStartedAt,
   streamRef
 }: TimelineEventStreamProps) {
-  const { entries: groupedEntries } = useMemo(
-    () => buildPresentedTimeline(entries, isWorkingLogMode),
-    [entries, isWorkingLogMode]
-  );
-
   const diffState = useMemo(() => buildDiffMap(entries), [entries]);
 
   return (
@@ -332,7 +328,7 @@ export function TimelineEventStream({
         isWorkingLogMode ? "timeline-stream-log-active" : ""
       }`}
     >
-      {groupedEntries.map((entry) => {
+      {presentedEntries.map((entry) => {
         if (entry.kind === "activityCluster") {
           return <TimelineActivityCluster key={entry.id} {...entry} />;
         }
@@ -368,3 +364,6 @@ export function TimelineEventStream({
     </div>
   );
 }
+
+export const TimelineEventStream = memo(TimelineEventStreamComponent);
+TimelineEventStream.displayName = "TimelineEventStream";
