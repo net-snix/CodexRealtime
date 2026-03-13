@@ -73,9 +73,9 @@ T1 ──┬── T2 ──┐
 - **location**: `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/server-api.ts`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/ipc.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/preload/index.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/preload/global.d.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/ipc.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/realtime-service.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/workspace-service.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/renderer/src/App.tsx`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/renderer/src/use-realtime-voice.test.tsx`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/realtime-service.test.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/workspace-service.test.ts`, `/Users/espenmac/Code/CodexRealtime/voice-handoff-copilot-plan.md`
 - **description**: Delete the legacy `dispatchVoicePrompt` API surface and any remaining string-only call sites only after T2 and T3 tests are green. Converge the app onto the canonical structured `dispatchVoiceIntent` path and validate that no stale compile/runtime references remain.
 - **validation**: `rg -n \"dispatchVoicePrompt\" /Users/espenmac/Code/CodexRealtime/apps /Users/espenmac/Code/CodexRealtime/packages` returns no production call sites; focused desktop tests stay green after removal; plan task entry updated.
-- **status**: Not Completed
-- **log**:
-- **files edited/created**:
+- **status**: Completed
+- **log**: Removed the last legacy `dispatchVoicePrompt` contract/preload surface and the old prompt IPC channel so the desktop app now has one canonical voice dispatch lane. Also deleted the stale prompt constant from the unused shared IPC map, leaving grep-based validation clean across `apps` and `packages`.
+- **files edited/created**: `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/server-api.ts`, `/Users/espenmac/Code/CodexRealtime/packages/contracts/src/ipc.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/preload/index.ts`, `/Users/espenmac/Code/CodexRealtime/apps/desktop/src/main/workspace-service.test.ts`, `/Users/espenmac/Code/CodexRealtime/packages/shared/src/events.ts`, `/Users/espenmac/Code/CodexRealtime/voice-handoff-copilot-plan.md`
 
 ## Parallel Execution Groups
 
