@@ -166,6 +166,14 @@ export default function App() {
           const nextTimeline = await nativeApiRef.current!.dispatchVoiceIntent(intent);
           setTimelineState(nextTimeline);
 
+          if (intent.kind === "conversation") {
+            setVoiceFeedback({
+              tone: "neutral",
+              text: "Kept this in conversation"
+            });
+            return;
+          }
+
           if (nextTimeline.runState.phase === "steering") {
             setVoiceFeedback({
               tone: "success",
@@ -177,11 +185,14 @@ export default function App() {
           if (nextTimeline.isRunning) {
             setVoiceFeedback({
               tone: "success",
-              text: "Started turn from voice"
+              text:
+                intent.source.sourceType === "handoff_request"
+                  ? "Started Codex handoff from voice"
+                  : "Started Codex work from voice"
             });
           }
         } catch (error) {
-          console.error("Voice prompt dispatch failed", error);
+          console.error("Voice intent dispatch failed", error);
           setVoiceFeedback({
             tone: "error",
             text: toErrorMessage(error, "Voice handoff failed")

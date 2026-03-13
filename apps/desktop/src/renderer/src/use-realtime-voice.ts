@@ -554,6 +554,8 @@ export const useRealtimeVoice = ({
 
   useEffect(() => {
     void nativeApiRef.current!.getRealtimeState().then(setRealtimeState);
+    const voiceIntentRecords = dispatchedVoiceIntentsRef.current;
+    const voiceIntentAliases = dispatchedVoiceIntentAliasesRef.current;
     const unsubscribe = nativeApiRef.current!.subscribeRealtimeEvents((event) => {
       if (event.type === "state") {
         setRealtimeState(event.state);
@@ -725,10 +727,7 @@ export const useRealtimeVoice = ({
     });
 
     return () => {
-      clearDispatchRecords(
-        dispatchedVoiceIntentsRef.current,
-        dispatchedVoiceIntentAliasesRef.current
-      );
+      clearDispatchRecords(voiceIntentRecords, voiceIntentAliases);
       unsubscribe();
     };
   }, []);
