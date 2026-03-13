@@ -132,16 +132,61 @@ describe("createStructuredLogRecord", () => {
     });
 
     expect(record.data).toEqual({
-      accessToken: "[Redacted]",
-      nested: {
-        clientSecret: "[Redacted]",
-        values: [...Array.from({ length: 24 }, (_, index) => index + 1), "[+2 items]"],
-        fields: {
+        accessToken: "[Redacted]",
+        nested: {
+          clientSecret: "[Redacted]",
+          values: [...Array.from({ length: 24 }, (_, index) => index + 1), "[+2 items]"],
+          fields: {
           ...Object.fromEntries(
             Array.from({ length: 24 }, (_, index) => [`field${index + 1}`, index + 1])
           ),
           __truncatedKeys: 2
         }
+      }
+    });
+  });
+
+  it("redacts credential-style keys consistently across repeated payloads", () => {
+    const firstRecord = createStructuredLogRecord({
+      source: "server",
+      scope: "bootstrap",
+      level: "info",
+      message: "First payload received",
+      context: {
+        credentials: "top-secret",
+        apiToken: "token-1",
+        nested: {
+          sessionCredentials: "nested-secret"
+        }
+      }
+    });
+
+    const secondRecord = createStructuredLogRecord({
+      source: "server",
+      scope: "bootstrap",
+      level: "info",
+      message: "Second payload received",
+      context: {
+        credentials: "still-secret",
+        apiToken: "token-2",
+        nested: {
+          sessionCredentials: "nested-secret-2"
+        }
+      }
+    });
+
+    expect(firstRecord.data).toEqual({
+      credentials: "[Redacted]",
+      apiToken: "[Redacted]",
+      nested: {
+        sessionCredentials: "[Redacted]"
+      }
+    });
+    expect(secondRecord.data).toEqual({
+      credentials: "[Redacted]",
+      apiToken: "[Redacted]",
+      nested: {
+        sessionCredentials: "[Redacted]"
       }
     });
   });
