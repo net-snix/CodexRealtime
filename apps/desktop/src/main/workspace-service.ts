@@ -142,6 +142,8 @@ const PERSISTED_STATE_VALIDATORS = {
 
 const THREAD_CHANGE_SUMMARY_LIMIT = 6;
 const THREAD_CHANGE_CACHE_LIMIT = 128;
+const MAX_ATTACHMENT_PATH_CANDIDATES = 128;
+const MAX_ATTACHMENT_PATH_LENGTH = 4_096;
 
 const normalizeRuntimeMethod = (value: string) =>
   value
@@ -445,23 +447,11 @@ export class WorkspaceService extends EventEmitter {
       return [];
     }
 
-    return picked.filePaths.map(toWorkerAttachment);
+    return this.normalizeAttachmentPaths(picked.filePaths).map(toWorkerAttachment);
   }
 
   async addWorkerAttachments(paths: string[]): Promise<WorkerAttachment[]> {
-    const attachments = new Map<string, WorkerAttachment>();
-
-    for (const candidatePath of paths) {
-      const normalizedPath = this.normalizeAttachmentPath(candidatePath);
-
-      if (!normalizedPath) {
-        continue;
-      }
-
-      attachments.set(normalizedPath, toWorkerAttachment(normalizedPath));
-    }
-
-    return [...attachments.values()];
+    return this.normalizeAttachmentPaths(paths).map(toWorkerAttachment);
   }
 
   async addPastedImageAttachments(
@@ -1530,6 +1520,43 @@ export class WorkspaceService extends EventEmitter {
     } catch {
       return null;
     }
+  }
+
+  private normalizeAttachmentPaths(inputPaths: readonly unknown[]) {
+    const normalizedPaths = new Set<string>();
+    const seenCandidates = new Set<string>();
+
+    for (const inputPath of inputPaths) {
+      if (seenCandidates.size >= MAX_ATTACHMENT_PATH_CANDIDATES) {
+        break;
+      }
+
+      if (typeof inputPath !== "string") {
+        continue;
+      }
+
+      const trimmedPath = inputPath.trim();
+
+      if (
+        !trimmedPath ||
+        trimmedPath.length > MAX_ATTACHMENT_PATH_LENGTH ||
+        seenCandidates.has(trimmedPath)
+      ) {
+        continue;
+      }
+
+      seenCandidates.add(trimmedPath);
+
+      const normalizedPath = this.normalizeAttachmentPath(trimmedPath);
+
+      if (!normalizedPath) {
+        continue;
+      }
+
+      normalizedPaths.add(normalizedPath);
+    }
+
+    return [...normalizedPaths];
   }
 
   private normalizePastedImageAttachment(image: PastedImageAttachment) {
