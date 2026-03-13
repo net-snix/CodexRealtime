@@ -177,6 +177,43 @@ function TimelineDiffFiles({ diff }: { diff: TimelineDiffEntry }) {
   );
 }
 
+function TimelineWorkingNote({
+  isRunning,
+  isResolvingRequests,
+  latestWorkingStatus,
+  activeWorkStartedAt
+}: {
+  isRunning: boolean;
+  isResolvingRequests: boolean;
+  latestWorkingStatus: string | null;
+  activeWorkStartedAt: string | null;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isRunning || isResolvingRequests || !activeWorkStartedAt) {
+      return;
+    }
+
+    setNow(Date.now());
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeWorkStartedAt, isResolvingRequests, isRunning]);
+
+  if (isResolvingRequests) {
+    return "Needs your decision to continue";
+  }
+
+  if (activeWorkStartedAt) {
+    return `Working for ${formatElapsed(activeWorkStartedAt, now) ?? "0s"}`;
+  }
+
+  return latestWorkingStatus ?? "Working";
+}
+
 function TimelineEntryCard({
   item,
   attachedDiff
@@ -281,25 +318,12 @@ export function TimelineEventStream({
   activeWorkStartedAt,
   streamRef
 }: TimelineEventStreamProps) {
-  const [now, setNow] = useState(() => Date.now());
   const { entries: groupedEntries } = useMemo(
     () => buildPresentedTimeline(entries, isWorkingLogMode),
     [entries, isWorkingLogMode]
   );
 
   const diffState = useMemo(() => buildDiffMap(entries), [entries]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
-  }, [isRunning]);
 
   return (
     <div
@@ -332,11 +356,12 @@ export function TimelineEventStream({
         <div className="timeline-thinking">
           <span className="timeline-thinking-chip">{activeWorkingLabel}</span>
           <p className="timeline-thinking-note">
-            {isResolvingRequests
-              ? "Needs your decision to continue"
-              : activeWorkStartedAt
-                ? `Working for ${formatElapsed(activeWorkStartedAt, now) ?? "0s"}`
-                : latestWorkingStatus ?? "Working"}
+            <TimelineWorkingNote
+              isRunning={isRunning}
+              isResolvingRequests={isResolvingRequests}
+              latestWorkingStatus={latestWorkingStatus}
+              activeWorkStartedAt={activeWorkStartedAt}
+            />
           </p>
         </div>
       ) : null}
