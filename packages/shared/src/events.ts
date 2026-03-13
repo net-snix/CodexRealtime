@@ -16,6 +16,5 @@ export const IPC_CHANNELS = {
   realtimeStop: "realtime:stop",
   realtimeAppendAudio: "realtime:append-audio",
   realtimeAppendText: "realtime:append-text",
-  realtimeDispatchPrompt: "realtime:dispatch-prompt",
   realtimeEvent: "realtime:event",
 } as const;
