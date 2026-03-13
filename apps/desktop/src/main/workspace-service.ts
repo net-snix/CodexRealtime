@@ -1409,7 +1409,6 @@ export class WorkspaceService extends EventEmitter {
     }
 
     const mimeType = image.mimeType.trim().toLowerCase();
-
     if (!getPastedImageFileExtension(mimeType)) {
       return null;
     }
