@@ -1,4 +1,5 @@
 export const MAX_PASTED_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_PASTED_IMAGE_BASE64_LENGTH = Math.ceil(MAX_PASTED_IMAGE_BYTES / 3) * 4;
 
 const PASTED_IMAGE_EXTENSION_BY_MIME_TYPE = {
   "image/png": ".png",
@@ -31,4 +32,35 @@ export const getPastedImageFileExtension = (mimeType: string) => {
   }
 
   return PASTED_IMAGE_EXTENSION_BY_MIME_TYPE[normalizedMimeType];
+};
+
+export const estimateBase64DecodedBytes = (value: string) => {
+  if (!value) {
+    return 0;
+  }
+
+  let paddingBytes = 0;
+
+  if (value.endsWith("==")) {
+    paddingBytes = 2;
+  } else if (value.endsWith("=")) {
+    paddingBytes = 1;
+  }
+
+  return Math.floor((value.length * 3) / 4) - paddingBytes;
+};
+
+export const buildPastedImageFileName = (name: string, mimeType: string) => {
+  const extension = getPastedImageFileExtension(mimeType) ?? ".png";
+  const sanitizedBaseName = name
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/\.+/g, ".");
+  const baseNameWithoutExtension = sanitizedBaseName
+    .replace(/\.[A-Za-z0-9]+$/, "")
+    .replace(/[.-]+$/g, "");
+  const fileNameBase = baseNameWithoutExtension || "pasted-image";
+
+  return `${fileNameBase}${extension}`;
 };
