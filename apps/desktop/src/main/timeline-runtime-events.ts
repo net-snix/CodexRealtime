@@ -39,6 +39,7 @@ import type {
   TimelineUserInputQuestion,
   TimelineUserInputRequest
 } from "@shared";
+import { countDiffStats } from "./diff-stats";
 import { summarizeActivityText, summarizeCommand } from "./timeline-event-summary";
 
 export type ThreadItem = Record<string, unknown> & {
@@ -96,19 +97,6 @@ type ProjectedTurn = {
   latestProposedPlan: TimelinePlan | null;
   diffEntries: TimelineDiffEntry[];
 };
-
-const DIFF_METADATA_PREFIXES = [
-  "diff --git",
-  "index ",
-  "@@",
-  "---",
-  "+++",
-  "new file mode",
-  "deleted file mode",
-  "rename from",
-  "rename to",
-  "similarity index"
-] as const;
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
@@ -197,32 +185,6 @@ const normalizeCommandValue = (value: unknown): string | null => {
 
 const normalizeTimestamp = (value: unknown, fallback: string) =>
   typeof value === "string" && value.trim() ? value : fallback;
-
-const countDiffStats = (diff: string) => {
-  let additions = 0;
-  let deletions = 0;
-
-  for (const line of diff.split("\n")) {
-    if (!line) {
-      continue;
-    }
-
-    if (DIFF_METADATA_PREFIXES.some((prefix) => line.startsWith(prefix))) {
-      continue;
-    }
-
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-
-  return { additions, deletions };
-};
 
 const buildChangedFile = (change: unknown): TimelineChangedFile | null => {
   if (!isRecord(change)) {

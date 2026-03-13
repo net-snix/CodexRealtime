@@ -24,6 +24,7 @@ import type {
 } from "@shared";
 import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
+import { countDiffStats } from "./diff-stats";
 import { readPersistedState } from "./persisted-state";
 import { buildAutoThreadName } from "./thread-auto-name";
 import {
@@ -219,45 +220,6 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: 
   }
 };
 
-const DIFF_METADATA_PREFIXES = [
-  "diff --git",
-  "index ",
-  "@@",
-  "---",
-  "+++",
-  "new file mode",
-  "deleted file mode",
-  "rename from",
-  "rename to",
-  "similarity index"
-];
-
-const countDiffLines = (diff: string): ThreadChangeSummary => {
-  let additions = 0;
-  let deletions = 0;
-
-  for (const line of diff.split("\n")) {
-    if (!line) {
-      continue;
-    }
-
-    if (DIFF_METADATA_PREFIXES.some((prefix) => line.startsWith(prefix))) {
-      continue;
-    }
-
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-
-  return { additions, deletions };
-};
-
 const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null => {
   const isFileChangeItem = (
     item: unknown
@@ -284,7 +246,7 @@ const summarizeThreadChanges = (turns: TurnRecord[]): ThreadChangeSummary | null
 
       for (const change of item.changes) {
         const diff = typeof change.diff === "string" ? change.diff : "";
-        const counts = countDiffLines(diff);
+        const counts = countDiffStats(diff);
         additions += counts.additions;
         deletions += counts.deletions;
       }
