@@ -3,7 +3,7 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RealtimeState, VoicePreferences } from "@shared";
+import type { RealtimeState, VoiceIntent, VoicePreferences } from "@shared";
 import type { NativeApi } from "./native-api";
 import { useRealtimeVoice } from "./use-realtime-voice";
 
@@ -33,12 +33,12 @@ let latestHook: HookState | null = null;
 
 function Harness({
   enabled = false,
-  onVoicePrompt
+  onVoiceIntent
 }: {
   enabled?: boolean;
-  onVoicePrompt?: (prompt: string) => void | Promise<void>;
+  onVoiceIntent?: (intent: VoiceIntent) => void | Promise<void>;
 }) {
-  latestHook = useRealtimeVoice({ enabled, onVoicePrompt });
+  latestHook = useRealtimeVoice({ enabled, onVoiceIntent });
   return <div>voice hook probe</div>;
 }
 
@@ -176,7 +176,7 @@ describe("useRealtimeVoice", () => {
         addWorkerAttachments: vi.fn(),
         addPastedImageAttachments: vi.fn(),
         startTurn: vi.fn(),
-        dispatchVoicePrompt: vi.fn(),
+        dispatchVoiceIntent: vi.fn(),
         interruptActiveTurn: vi.fn(),
         respondToApproval: vi.fn(),
         submitUserInput: vi.fn(),
@@ -217,6 +217,7 @@ describe("useRealtimeVoice", () => {
     latestHook = null;
     realtimeEventHandler = null;
     lastProcessor = null;
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -367,11 +368,243 @@ describe("useRealtimeVoice", () => {
 
     expect(latestHook?.liveTranscript).toEqual([
       expect.objectContaining({
-        id: "user-1",
+        id: "item:user-1",
         speaker: "user",
         text: "hello\nworld"
       })
     ]);
+  });
+
+  it("dispatches structured work requests for repo-work user transcripts", async () => {
+    const onVoiceIntent = vi.fn();
+
+    await act(async () => {
+      root?.render(<Harness onVoiceIntent={onVoiceIntent} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(realtimeEventHandler).not.toBeNull();
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "message",
+          id: "user-work-1",
+          role: "user",
+          status: "completed",
+          text: "Inspect src/App.tsx and fix the failing test"
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "work_request",
+        source: expect.objectContaining({
+          sourceType: "message",
+          itemId: "user-work-1",
+          transcript: "Inspect src/App.tsx and fix the failing test"
+        }),
+        taskEnvelope: expect.objectContaining({
+          userGoal: "Inspect src/App.tsx and fix the failing test",
+          distilledPrompt: "Inspect src/App.tsx and fix the failing test",
+          clarificationPolicy: "request_user_input"
+        })
+      })
+    );
+  });
+
+  it("upgrades a matching message into a handoff transcript without redispatching work", async () => {
+    vi.useFakeTimers();
+    const onVoiceIntent = vi.fn();
+
+    await act(async () => {
+      root?.render(<Harness onVoiceIntent={onVoiceIntent} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(realtimeEventHandler).not.toBeNull();
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "message",
+          id: "user-work-2",
+          role: "user",
+          status: "completed",
+          text: "Inspect src/App.tsx and fix the failing test"
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "handoff_request",
+          handoff_id: "handoff-1",
+          input_transcript: "Inspect src/App.tsx and fix the failing test",
+          messages: [{ text: "Inspect src/App.tsx and fix the failing test" }],
+          target: "codex"
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledTimes(1);
+    expect(latestHook?.liveTranscript).toEqual([
+      expect.objectContaining({
+        id: "handoff:handoff-1",
+        speaker: "user",
+        text: "Inspect src/App.tsx and fix the failing test"
+      })
+    ]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves handoff metadata when dispatching structured voice intents", async () => {
+    const onVoiceIntent = vi.fn();
+
+    await act(async () => {
+      root?.render(<Harness onVoiceIntent={onVoiceIntent} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(realtimeEventHandler).not.toBeNull();
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "handoff_request",
+          handoff_id: "handoff-2",
+          messages: [{ text: "Run pnpm test and inspect failing specs" }],
+          target: "codex",
+          request: {
+            kind: "tool"
+          }
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "work_request",
+        source: expect.objectContaining({
+          sourceType: "handoff_request",
+          handoffId: "handoff-2",
+          transcript: "Run pnpm test and inspect failing specs",
+          metadata: expect.objectContaining({
+            target: "codex",
+            request: expect.objectContaining({
+              kind: "tool"
+            })
+          })
+        }),
+        taskEnvelope: expect.objectContaining({
+          source: "handoff_request",
+          handoffId: "handoff-2",
+          sourceMessageIds: []
+        })
+      })
+    );
+  });
+
+  it("suppresses a late plain-message downgrade after a handoff already dispatched", async () => {
+    vi.useFakeTimers();
+    const onVoiceIntent = vi.fn();
+
+    await act(async () => {
+      root?.render(<Harness onVoiceIntent={onVoiceIntent} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "handoff_request",
+          handoff_id: "handoff-3",
+          input_transcript: "Inspect src/App.tsx and fix the failing test",
+          messages: [{ id: "user-work-3", text: "Inspect src/App.tsx and fix the failing test" }]
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "message",
+          id: "user-work-3",
+          role: "user",
+          status: "completed",
+          text: "Inspect src/App.tsx"
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(onVoiceIntent).toHaveBeenCalledTimes(1);
+    expect(latestHook?.liveTranscript).toEqual([
+      expect.objectContaining({
+        id: "handoff:handoff-3",
+        text: "Inspect src/App.tsx and fix the failing test"
+      })
+    ]);
+  });
+
+  it("ignores handoff requests that never produce transcript text", async () => {
+    const onVoiceIntent = vi.fn();
+
+    await act(async () => {
+      root?.render(<Harness onVoiceIntent={onVoiceIntent} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      realtimeEventHandler?.({
+        type: "item",
+        item: {
+          type: "handoff_request",
+          handoff_id: "handoff-empty",
+          messages: [{ id: "user-empty-1" }]
+        }
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onVoiceIntent).not.toHaveBeenCalled();
+    expect(latestHook?.liveTranscript).toEqual([]);
   });
 
   it("ignores malformed realtime audio chunks", async () => {

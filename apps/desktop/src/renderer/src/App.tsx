@@ -161,9 +161,9 @@ export default function App() {
   } =
     useRealtimeVoice({
       enabled: realtimeEnabled,
-      onVoicePrompt: async (prompt) => {
+      onVoiceIntent: async (intent) => {
         try {
-          const nextTimeline = await nativeApiRef.current!.dispatchVoicePrompt(prompt);
+          const nextTimeline = await nativeApiRef.current!.dispatchVoiceIntent(intent);
           setTimelineState(nextTimeline);
 
           if (nextTimeline.runState.phase === "steering") {

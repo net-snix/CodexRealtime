@@ -1,5 +1,6 @@
 import { basename, extname } from "node:path";
 import type {
+  VoiceTaskEnvelope,
   WorkerAttachment,
   WorkerApprovalPolicy,
   WorkerCollaborationMode,
@@ -242,6 +243,38 @@ export const buildWorkerInputs = (
     }
   ];
 };
+
+export const buildVoiceTaskPrompt = (envelope: VoiceTaskEnvelope) => {
+  const sections = [
+    "Structured voice handoff",
+    `Source: ${envelope.source}`,
+    `Source item id: ${envelope.sourceItemId ?? "unknown"}`,
+    `Handoff id: ${envelope.handoffId ?? "unknown"}`,
+    `Transcript: ${envelope.transcript}`,
+    `User goal: ${envelope.userGoal}`,
+    `Distilled prompt: ${envelope.distilledPrompt}`,
+    envelope.constraints.length > 0
+      ? `Constraints:\n${envelope.constraints.map((constraint) => `- ${constraint}`).join("\n")}`
+      : null,
+    envelope.acceptanceCriteria.length > 0
+      ? `Acceptance criteria:\n${envelope.acceptanceCriteria
+          .map((criterion) => `- ${criterion}`)
+          .join("\n")}`
+      : null,
+    `Clarification policy: ${envelope.clarificationPolicy}`,
+    `Reply style: ${envelope.replyStyle}`,
+    `Workspace id: ${envelope.workspaceId ?? "unknown"}`,
+    `Thread id: ${envelope.threadId ?? "unknown"}`
+  ];
+
+  return sections.filter((section): section is string => Boolean(section)).join("\n\n");
+};
+
+export const buildVoiceTaskInputs = (
+  envelope: VoiceTaskEnvelope,
+  attachments: WorkerAttachment[],
+  canSendImages: boolean
+) => buildWorkerInputs(buildVoiceTaskPrompt(envelope), attachments, canSendImages);
 
 export const toWorkerAttachment = (path: string): WorkerAttachment => ({
   id: path,
