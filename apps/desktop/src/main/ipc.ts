@@ -129,9 +129,9 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IPC_CHANNELS.realtimeAppendText, (_event, text: string) =>
     realtimeService.appendText(text)
   );
-  ipcMain.removeHandler(IPC_CHANNELS.realtimeDispatchPrompt);
-  ipcMain.handle(IPC_CHANNELS.realtimeDispatchPrompt, (_event, prompt: string) =>
-    realtimeService.dispatchVoicePrompt(prompt)
+  ipcMain.removeHandler(IPC_CHANNELS.realtimeDispatchIntent);
+  ipcMain.handle(IPC_CHANNELS.realtimeDispatchIntent, (_event, intent) =>
+    realtimeService.dispatchVoiceIntent(intent)
   );
   ipcMain.removeHandler(IPC_CHANNELS.voicePreferencesGet);
   ipcMain.handle(IPC_CHANNELS.voicePreferencesGet, () => voicePreferencesService.getPreferences());
