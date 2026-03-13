@@ -591,11 +591,15 @@ describe("WorkspaceService", () => {
     const writeFileSync = vi.fn();
     const startTurn = vi.fn(
       async (
-        _threadId: string,
-        _input: unknown[],
-        _settings: unknown,
-        _resolvedModel: string | null
+        threadId: string,
+        input: unknown[],
+        settings: unknown,
+        resolvedModel: string | null
       ) => ({
+        threadId,
+        input,
+        settings,
+        resolvedModel,
         turn: {
           id: "turn-started"
         }
@@ -604,10 +608,13 @@ describe("WorkspaceService", () => {
     const steerTurn = vi.fn(
       steerTurnImpl ??
         (async (
-          _threadId: string,
-          _expectedTurnId: string,
-          _prompt: string
+          threadId: string,
+          expectedTurnId: string,
+          prompt: string
         ) => ({
+          threadId,
+          expectedTurnId,
+          prompt,
           turn: {
             id: activeTurnId ?? "turn-active"
           }
