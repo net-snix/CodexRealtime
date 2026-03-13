@@ -38,6 +38,7 @@ describe("WorkspaceService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync,
       readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
       writeFileSync,
       realpathSync: vi.fn((value: string) => value)
     }));
@@ -76,10 +77,60 @@ describe("WorkspaceService", () => {
     expect(on).toHaveBeenCalledTimes(4);
   });
 
+  it("skips oversized persisted workspace state files before reading them", async () => {
+    const readFileSync = vi.fn();
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      statSync: vi.fn(() => ({ size: 70 * 1024 })),
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn()
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const readState = (
+      service as unknown as {
+        readState: () => { currentWorkspaceId: string | null; workspaces: Record<string, unknown> };
+      }
+    ).readState.bind(service);
+
+    expect(readState()).toEqual({
+      currentWorkspaceId: null,
+      workspaces: {}
+    });
+    expect(readFileSync).not.toHaveBeenCalled();
+  });
+
   it("bounds the thread change cache", async () => {
     vi.doMock("node:fs", () => ({
       mkdirSync: vi.fn(),
       readFileSync: vi.fn(() => JSON.stringify({ currentWorkspaceId: null, workspaces: {} })),
+      statSync: vi.fn(() => ({ size: 1_024 })),
       writeFileSync: vi.fn(),
       realpathSync: vi.fn((value: string) => value)
     }));
@@ -269,6 +320,7 @@ describe("WorkspaceService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync: vi.fn(),
       readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
       writeFileSync: vi.fn(),
       realpathSync: vi.fn((value: string) => value)
     }));
@@ -315,6 +367,7 @@ describe("WorkspaceService", () => {
     vi.doMock("node:fs", () => ({
       mkdirSync: vi.fn(),
       readFileSync: vi.fn(() => JSON.stringify({ currentWorkspaceId: null, workspaces: {} })),
+      statSync: vi.fn(() => ({ size: 1_024 })),
       writeFileSync: vi.fn(),
       realpathSync: vi.fn((value: string) => value)
     }));
@@ -636,6 +689,7 @@ describe("WorkspaceService", () => {
           }
         })
       ),
+      statSync: vi.fn(() => ({ size: 1_024 })),
       writeFileSync: vi.fn(),
       realpathSync: vi.fn((value: string) => value)
     }));

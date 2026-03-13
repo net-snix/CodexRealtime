@@ -2,9 +2,8 @@ import { app, BrowserWindow, dialog } from "electron";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { realpathSync } from "node:fs";
 import type {
   ArchiveThreadResult,
   ApprovalDecision,
@@ -26,7 +25,7 @@ import type {
 import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
 import { countDiffStats } from "./diff-stats";
-import { readPersistedState } from "./persisted-state";
+import { readPersistedStateFile, writePersistedStateFile } from "./persisted-state";
 import {
   buildPastedImageFileName,
   estimateBase64DecodedBytes,
@@ -1452,16 +1451,9 @@ export class WorkspaceService extends EventEmitter {
       return this.persistedState;
     }
 
-    try {
-      const raw = readFileSync(this.statePath, "utf8");
-      const parsed = readPersistedState(raw, EMPTY_STATE, PERSISTED_STATE_VALIDATORS);
-      this.persistedState = clonePersistedState(parsed);
-    } catch {
-      this.persistedState = clonePersistedState({
-        currentWorkspaceId: EMPTY_STATE.currentWorkspaceId,
-        workspaces: {}
-      });
-    }
+    this.persistedState = clonePersistedState(
+      readPersistedStateFile(this.statePath, EMPTY_STATE, PERSISTED_STATE_VALIDATORS)
+    );
 
     return this.persistedState;
   }
@@ -1469,8 +1461,7 @@ export class WorkspaceService extends EventEmitter {
   private writeState(state: PersistedState) {
     const nextState = clonePersistedState(state);
     this.persistedState = nextState;
-    mkdirSync(app.getPath("userData"), { recursive: true });
-    writeFileSync(this.statePath, JSON.stringify(nextState, null, 2));
+    writePersistedStateFile(this.statePath, nextState);
   }
 
   private cacheThreadChangeSummary(threadId: string, summary: ThreadChangeSummary | null) {
