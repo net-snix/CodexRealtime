@@ -41,8 +41,6 @@ const nativeApi: NativeApi = {
   stopRealtime: () => ipcRenderer.invoke(IPC_CHANNELS.realtimeStop),
   appendRealtimeAudio: (audio) => ipcRenderer.invoke(IPC_CHANNELS.realtimeAppendAudio, audio),
   appendRealtimeText: (text) => ipcRenderer.invoke(IPC_CHANNELS.realtimeAppendText, text),
-  dispatchVoicePrompt: (prompt) =>
-    ipcRenderer.invoke(IPC_CHANNELS.realtimeDispatchPrompt, prompt),
   dispatchVoiceIntent: (intent) =>
     ipcRenderer.invoke(IPC_CHANNELS.realtimeDispatchIntent, intent),
   getVoicePreferences: () => ipcRenderer.invoke(IPC_CHANNELS.voicePreferencesGet),
