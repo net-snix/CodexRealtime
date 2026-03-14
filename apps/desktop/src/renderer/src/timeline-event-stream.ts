@@ -29,12 +29,18 @@ export type PresentedTimelineEntry =
       items: PresentedTimelineEvent[];
     };
 
+export type PresentedTimeline = {
+  entries: PresentedTimelineEntry[];
+  latestWorkingStatus: string | null;
+  currentWorkingLabel: string | null;
+};
+
 const isActivityEntry = (item: PresentedTimelineEvent) => item.entry.kind === "activity";
 
 export const buildPresentedTimeline = (
   entries: TimelineEntry[],
   isWorkingLogMode: boolean
-) => {
+): PresentedTimeline => {
   const presentedEntries = entries.map((entry) => ({
     entry,
     presentation: presentTimelineEvent(entry, isWorkingLogMode)
@@ -103,21 +109,6 @@ export const buildPresentedTimeline = (
 
   return {
     entries: groupedEntries,
-    latestWorkingStatus,
-    currentWorkingLabel
-  };
-};
-
-export const getTimelineWorkingLabels = (
-  entries: TimelineEntry[],
-  isWorkingLogMode: boolean
-) => {
-  const { latestWorkingStatus, currentWorkingLabel } = buildPresentedTimeline(
-    entries,
-    isWorkingLogMode
-  );
-
-  return {
     latestWorkingStatus,
     currentWorkingLabel
   };

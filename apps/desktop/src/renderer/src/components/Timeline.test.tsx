@@ -13,6 +13,7 @@ import type {
   WorkspaceState
 } from "@shared";
 import * as timelinePresenter from "../timeline-presenter";
+import * as timelineEventStream from "../timeline-event-stream";
 import { Timeline } from "./Timeline";
 
 const makeThreadSummary = (overrides: Partial<ThreadSummary> = {}): ThreadSummary => ({
@@ -603,6 +604,7 @@ describe("Timeline", () => {
 
   it("does not recompute event presentations when unrelated props change", async () => {
     const presentSpy = vi.spyOn(timelinePresenter, "presentTimelineEvent");
+    const buildPresentedSpy = vi.spyOn(timelineEventStream, "buildPresentedTimeline");
     const populatedTimelineState: TimelineState = {
       ...timelineState,
       isRunning: true,
@@ -656,6 +658,7 @@ describe("Timeline", () => {
     });
 
     const initialCallCount = presentSpy.mock.calls.length;
+    const initialBuildCount = buildPresentedSpy.mock.calls.length;
 
     await act(async () => {
       root?.render(
@@ -691,6 +694,8 @@ describe("Timeline", () => {
 
     expect(presentSpy).toHaveBeenCalled();
     expect(presentSpy.mock.calls).toHaveLength(initialCallCount);
+    expect(initialBuildCount).toBe(1);
+    expect(buildPresentedSpy.mock.calls).toHaveLength(initialBuildCount);
   });
 
   it("turns pasted local file links into attachments", async () => {
