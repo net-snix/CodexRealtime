@@ -23,6 +23,13 @@ export type TimelinePresentation = {
 };
 
 const getMetaLabel = (createdAt: string) => (createdAt === "Thread history" ? null : createdAt);
+const normalizeWhitespace = (value: string) => value.replace(/\s+/g, " ").trim();
+const truncate = (value: string, maxLength = 96) =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 1).trimEnd()}…` : value;
+const summarizeCommandLabel = (command: string) => {
+  const trimmed = normalizeWhitespace(command);
+  return trimmed ? truncate(`Ran ${trimmed}`) : "Ran command";
+};
 
 const getChangedFileLabel = (files: TimelineChangedFile[]) => {
   if (files.length === 0) {
@@ -109,12 +116,18 @@ export const presentTimelineEvent = (
 
   if (entry.kind === "activity") {
     if (entry.command) {
+      const normalizedLabel = entry.label.trim();
+      const commandTitle =
+        normalizedLabel.length === 0 || /^ran command$/i.test(normalizedLabel)
+          ? summarizeCommandLabel(entry.command)
+          : entry.label;
+
       return {
         variant: "activity",
         badge: ACTIVITY_BADGES[entry.activityType],
         tone: activityTone(entry),
-        title: entry.label,
-        body: entry.detail,
+        title: commandTitle,
+        body: null,
         monospace: true,
         metaLabel: getMetaLabel(entry.createdAt)
       };

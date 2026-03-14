@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { memo, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import type { EditorId } from "@codex-realtime/contracts";
 import type { TimelineDiffEntry, TimelineEntry } from "@shared";
 import type { PresentedTimelineEntry, PresentedTimelineEvent } from "../timeline-event-stream";
 import { buildPresentedTimeline } from "../timeline-event-stream";
+import { openInPreferredEditor } from "../editor-preferences";
+import { readNativeApi } from "../native-api";
+import { resolvePathLinkTarget } from "../terminal-links";
 import { TimelineRichText } from "./TimelineRichText";
 
 type TimelineEventStreamProps = {
@@ -13,6 +17,8 @@ type TimelineEventStreamProps = {
   latestWorkingStatus: string | null;
   activeWorkStartedAt: string | null;
   streamRef: MutableRefObject<HTMLDivElement | null>;
+  cwd?: string;
+  availableEditors?: readonly EditorId[];
 };
 
 const MAX_VISIBLE_CLUSTER_ITEMS = 6;
@@ -158,7 +164,15 @@ function TimelineActivityCluster({
   );
 }
 
-function TimelineDiffFiles({ diff }: { diff: TimelineDiffEntry }) {
+function TimelineDiffFiles({
+  diff,
+  cwd,
+  availableEditors = []
+}: {
+  diff: TimelineDiffEntry;
+  cwd?: string;
+  availableEditors?: readonly EditorId[];
+}) {
   if (diff.files.length === 0) {
     return null;
   }
@@ -167,7 +181,32 @@ function TimelineDiffFiles({ diff }: { diff: TimelineDiffEntry }) {
     <div className="timeline-diff-files">
       {diff.files.map((file) => (
         <div key={`${diff.id}-${file.path}`} className="timeline-diff-file">
-          <span className="timeline-diff-file-path">{file.path}</span>
+          {cwd && availableEditors.length > 0 ? (
+            <button
+              type="button"
+              className="timeline-diff-file-path timeline-diff-file-path-button"
+              onClick={() => {
+                const api = readNativeApi();
+
+                if (!api) {
+                  console.warn("Native API not found. Unable to open diff file in editor.");
+                  return;
+                }
+
+                void openInPreferredEditor(
+                  api,
+                  resolvePathLinkTarget(file.path, cwd),
+                  availableEditors
+                ).catch((error) => {
+                  console.warn("Unable to open diff file in preferred editor.", error);
+                });
+              }}
+            >
+              {file.path}
+            </button>
+          ) : (
+            <span className="timeline-diff-file-path">{file.path}</span>
+          )}
           <span className="timeline-diff-file-stats">
             +{file.additions} -{file.deletions}
           </span>
@@ -216,10 +255,14 @@ function TimelineWorkingNote({
 
 function TimelineEntryCard({
   item,
-  attachedDiff
+  attachedDiff,
+  cwd,
+  availableEditors = []
 }: {
   item: PresentedTimelineEvent;
   attachedDiff?: TimelineDiffEntry | null;
+  cwd?: string;
+  availableEditors?: readonly EditorId[];
 }) {
   const { presentation } = item;
 
@@ -253,6 +296,8 @@ function TimelineEntryCard({
               additions: presentation.additions ?? 0,
               deletions: presentation.deletions ?? 0
             }}
+            cwd={cwd}
+            availableEditors={availableEditors}
           />
         </div>
       </article>
@@ -262,7 +307,12 @@ function TimelineEntryCard({
   if (item.entry.kind === "message" && item.entry.role === "assistant") {
     return (
       <article className="timeline-message timeline-message-assistant">
-        <TimelineRichText className="timeline-message-copy" text={item.entry.text} />
+        <TimelineRichText
+          className="timeline-message-copy"
+          text={item.entry.text}
+          cwd={cwd}
+          availableEditors={availableEditors}
+        />
         {attachedDiff ? (
           <div className="timeline-diff-entry-copy">
             <div className="timeline-message-head">
@@ -271,7 +321,7 @@ function TimelineEntryCard({
                 +{attachedDiff.additions} -{attachedDiff.deletions}
               </span>
             </div>
-            <TimelineDiffFiles diff={attachedDiff} />
+            <TimelineDiffFiles diff={attachedDiff} cwd={cwd} availableEditors={availableEditors} />
           </div>
         ) : null}
       </article>
@@ -281,7 +331,12 @@ function TimelineEntryCard({
   if (item.entry.kind === "message" && item.entry.role === "user") {
     return (
       <article className="timeline-message timeline-message-user">
-        <TimelineRichText className="timeline-message-copy" text={item.entry.text} />
+        <TimelineRichText
+          className="timeline-message-copy"
+          text={item.entry.text}
+          cwd={cwd}
+          availableEditors={availableEditors}
+        />
       </article>
     );
   }
@@ -303,12 +358,17 @@ function TimelineEntryCard({
           ) : null}
         </div>
       ) : null}
-      <TimelineRichText className="timeline-message-copy" text={presentation.body ?? presentation.title} />
+      <TimelineRichText
+        className="timeline-message-copy"
+        text={presentation.body ?? presentation.title}
+        cwd={cwd}
+        availableEditors={availableEditors}
+      />
     </article>
   );
 }
 
-export function TimelineEventStream({
+function TimelineEventStreamComponent({
   entries,
   isWorkingLogMode,
   isRunning,
@@ -316,7 +376,9 @@ export function TimelineEventStream({
   activeWorkingLabel,
   latestWorkingStatus,
   activeWorkStartedAt,
-  streamRef
+  streamRef,
+  cwd,
+  availableEditors = []
 }: TimelineEventStreamProps) {
   const { entries: groupedEntries } = useMemo(
     () => buildPresentedTimeline(entries, isWorkingLogMode),
@@ -349,7 +411,15 @@ export function TimelineEventStream({
             ? diffState.diffsByMessageId.get(entry.item.entry.id) ?? null
             : null;
 
-        return <TimelineEntryCard key={entry.item.entry.id} item={entry.item} attachedDiff={attachedDiff} />;
+        return (
+          <TimelineEntryCard
+            key={entry.item.entry.id}
+            item={entry.item}
+            attachedDiff={attachedDiff}
+            cwd={cwd}
+            availableEditors={availableEditors}
+          />
+        );
       })}
 
       {isRunning || isResolvingRequests ? (
@@ -368,3 +438,7 @@ export function TimelineEventStream({
     </div>
   );
 }
+
+TimelineEventStreamComponent.displayName = "TimelineEventStream";
+
+export const TimelineEventStream = memo(TimelineEventStreamComponent);

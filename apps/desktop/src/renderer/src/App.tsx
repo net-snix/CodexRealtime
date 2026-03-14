@@ -247,7 +247,8 @@ export default function App() {
         setAppInfo({
           name: "Codex Realtime",
           version: "0.1.0",
-          platform: "darwin"
+          platform: "darwin",
+          availableEditors: []
         });
       }
 
@@ -863,6 +864,7 @@ export default function App() {
               isOpeningWorkspace={isOpeningWorkspace}
               activePane={activePane}
               isRightPaneOpen={isRightPaneOpen}
+              availableEditors={appInfo?.availableEditors ?? []}
               onStartTurn={handleStartTurn}
               onOpenWorkspace={handleOpenWorkspace}
               onToggleRightPane={() => setIsRightPaneOpen((current) => !current)}

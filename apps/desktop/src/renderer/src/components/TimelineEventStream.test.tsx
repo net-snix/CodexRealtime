@@ -35,6 +35,26 @@ const assistantMessageEntry: TimelineEntry = {
   providerLabel: null
 };
 
+const makeCommandEntry = (
+  entry: Partial<Extract<TimelineEntry, { kind: "activity" }>>
+): TimelineEntry =>
+  ({
+    id: "command-1",
+    kind: "activity",
+    activityType: "command_execution",
+    createdAt: "2026-03-13T20:00:00.000Z",
+    turnId: "turn-1",
+    tone: "tool",
+    label: "Ran pwd",
+    detail: "/Users/espenmac/Code/CodexRealtime",
+    command: "pwd",
+    changedFiles: [],
+    status: "completed",
+    toolName: null,
+    agentLabel: null,
+    ...entry
+  }) as TimelineEntry;
+
 describe("TimelineEventStream", () => {
   let root: Root | null = null;
   let container: HTMLDivElement | null = null;
@@ -88,5 +108,133 @@ describe("TimelineEventStream", () => {
 
     expect(container?.textContent).toContain("Working for 2s");
     expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips re-rendering message rows when a parent re-renders with the same stream props", async () => {
+    const entries = [assistantMessageEntry];
+    const streamRef = { current: null };
+
+    await act(async () => {
+      root?.render(
+        <div>
+          <span data-parent-version="1">parent one</span>
+          <TimelineEventStream
+            entries={entries}
+            isWorkingLogMode={false}
+            isRunning={false}
+            isResolvingRequests={false}
+            activeWorkingLabel="Working"
+            latestWorkingStatus="Working"
+            activeWorkStartedAt={null}
+            streamRef={streamRef}
+          />
+        </div>
+      );
+    });
+
+    expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root?.render(
+        <div>
+          <span data-parent-version="2">parent two</span>
+          <TimelineEventStream
+            entries={entries}
+            isWorkingLogMode={false}
+            isRunning={false}
+            isResolvingRequests={false}
+            activeWorkingLabel="Working"
+            latestWorkingStatus="Working"
+            activeWorkStartedAt={null}
+            streamRef={streamRef}
+          />
+        </div>
+      );
+    });
+
+    expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("clusters consecutive command rows into a compact command summary", async () => {
+    await act(async () => {
+      root?.render(
+        <TimelineEventStream
+          entries={[
+            makeCommandEntry({
+              id: "command-1",
+              label: "Ran command",
+              command: "pwd",
+              detail: "/Users/espenmac/Code/CodexRealtime"
+            }),
+            makeCommandEntry({
+              id: "command-2",
+              label: "Ran command",
+              command: "ls",
+              detail: "AGENTS.md\napps\npackages",
+            })
+          ]}
+          isWorkingLogMode={false}
+          isRunning={false}
+          isResolvingRequests={false}
+          activeWorkingLabel="Working"
+          latestWorkingStatus="Working"
+          activeWorkStartedAt={null}
+          streamRef={{ current: null }}
+        />
+      );
+    });
+
+    const cluster = container?.querySelector<HTMLDetailsElement>(".timeline-command-cluster");
+    const nestedItems = container?.querySelectorAll(".timeline-command-cluster-item");
+    const nestedBadges = container?.querySelectorAll(
+      ".timeline-command-cluster-item .timeline-activity-badge"
+    );
+    const commandCopies = Array.from(
+      container?.querySelectorAll(".timeline-command-cluster-item .timeline-activity-copy-code") ?? []
+    ).map((node) => node.textContent);
+    const commandOutputs = container?.querySelectorAll(".timeline-command-cluster-item .timeline-activity-output");
+
+    expect(cluster?.textContent).toContain("2 commands");
+    expect(nestedItems).toHaveLength(2);
+    expect(nestedBadges).toHaveLength(0);
+    expect(commandCopies).toEqual(["Ran pwd", "Ran ls"]);
+    expect(commandOutputs).toHaveLength(0);
+    expect(container?.textContent).not.toContain("AGENTS.md");
+    expect(richTextRenderSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows only the latest six command rows inside an overflow cluster", async () => {
+    const entries = Array.from({ length: 7 }, (_, index) =>
+      makeCommandEntry({
+        id: `command-${index + 1}`,
+        label: "Ran command",
+        detail: `output ${index + 1}`,
+        command: `command-${index + 1}`
+      })
+    );
+
+    await act(async () => {
+      root?.render(
+        <TimelineEventStream
+          entries={entries}
+          isWorkingLogMode={false}
+          isRunning={false}
+          isResolvingRequests={false}
+          activeWorkingLabel="Working"
+          latestWorkingStatus="Working"
+          activeWorkStartedAt={null}
+          streamRef={{ current: null }}
+        />
+      );
+    });
+
+    const cluster = container?.querySelector<HTMLDetailsElement>(".timeline-command-cluster");
+    const nestedItems = container?.querySelectorAll(".timeline-command-cluster-item");
+
+    expect(cluster?.textContent).toContain("7 commands");
+    expect(container?.textContent).toContain("Showing latest 6 items");
+    expect(nestedItems).toHaveLength(6);
+    expect(container?.textContent).not.toContain("output 1");
+    expect(container?.textContent).toContain("Ran command-7");
   });
 });

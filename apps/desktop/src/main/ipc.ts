@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain } from "electron";
-import type { AppInfo } from "@codex-realtime/contracts";
+import type { AppInfo, EditorId } from "@codex-realtime/contracts";
 import { IPC_CHANNELS } from "@codex-realtime/contracts/ipc";
 import { appNotificationService } from "./notification-service";
 import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
+import { openInEditor, resolveAvailableEditors } from "./editor-launch";
 import { realtimeService } from "./realtime-service";
 import { voicePreferencesService } from "./voice-preferences-service";
 import { workspaceService } from "./workspace-service";
@@ -12,6 +13,7 @@ const readAppInfo = (): AppInfo => ({
   name: app.getName(),
   version: app.getVersion(),
   platform: process.platform,
+  availableEditors: resolveAvailableEditors()
 });
 
 export const registerIpcHandlers = () => {
@@ -45,6 +47,10 @@ export const registerIpcHandlers = () => {
     const { shell } = await import("electron");
     await shell.openPath(app.getPath("userData"));
   });
+  ipcMain.removeHandler(IPC_CHANNELS.editorOpen);
+  ipcMain.handle(IPC_CHANNELS.editorOpen, (_event, targetPath: string, editor: EditorId) =>
+    openInEditor(targetPath, editor)
+  );
   ipcMain.removeHandler(IPC_CHANNELS.sessionGetState);
   ipcMain.handle(IPC_CHANNELS.sessionGetState, () => codexBridge.refreshState());
   ipcMain.removeHandler(IPC_CHANNELS.workspaceGetState);

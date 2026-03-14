@@ -9,6 +9,7 @@ const nativeApi: NativeApi = {
   showDesktopNotification: (request) =>
     ipcRenderer.invoke(IPC_CHANNELS.appNotificationShow, request),
   openUserDataDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.appUserDataOpen),
+  openInEditor: (targetPath, editor) => ipcRenderer.invoke(IPC_CHANNELS.editorOpen, targetPath, editor),
   getSessionState: () => ipcRenderer.invoke(IPC_CHANNELS.sessionGetState),
   getWorkspaceState: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceGetState),
   openWorkspace: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceOpen),
