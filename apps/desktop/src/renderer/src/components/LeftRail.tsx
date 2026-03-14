@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { AppInfo, ThreadSummary, WorkspaceState } from "@shared";
 
 interface LeftRailProps {
@@ -115,6 +115,7 @@ function MoreActionsIcon() {
 }
 
 const THREAD_PREVIEW_LIMIT = 6;
+type ProjectSummary = WorkspaceState["projects"][number];
 
 type ThreadStatusTone = "running" | "approval" | "input";
 
@@ -137,7 +138,7 @@ function resolveThreadStatus(
   return null;
 }
 
-function visibleThreadsForProject(project: WorkspaceState["projects"][number], expanded: boolean) {
+function visibleThreadsForProject(project: ProjectSummary, expanded: boolean) {
   if (expanded || project.threads.length <= THREAD_PREVIEW_LIMIT) {
     return project.threads;
   }
@@ -163,6 +164,121 @@ function visibleThreadsForProject(project: WorkspaceState["projects"][number], e
   ];
 }
 
+interface ProjectThreadRowProps {
+  projectId: string;
+  currentThreadId: string | null;
+  thread: ThreadSummary;
+  archivingThreadId: string | null;
+  confirmThreadId: string | null;
+  runningThreadId: string | null;
+  setConfirmThreadId: Dispatch<SetStateAction<string | null>>;
+  setOpenProjectMenuId: Dispatch<SetStateAction<string | null>>;
+  onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
+  onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
+}
+
+function ProjectThreadRow({
+  projectId,
+  currentThreadId,
+  thread,
+  archivingThreadId,
+  confirmThreadId,
+  runningThreadId,
+  setConfirmThreadId,
+  setOpenProjectMenuId,
+  onSelectThread,
+  onArchiveThread
+}: ProjectThreadRowProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const threadStatus = resolveThreadStatus(thread, runningThreadId);
+  const isActiveThread = currentThreadId === thread.id;
+  const threadRowClassNames = ["project-thread-row"];
+
+  if (isActiveThread) {
+    threadRowClassNames.push("project-thread-button-active");
+  }
+
+  if (isHovered) {
+    threadRowClassNames.push("project-thread-row-hovered");
+  }
+
+  if (threadStatus) {
+    threadRowClassNames.push(`project-thread-row-${threadStatus.tone}`);
+  }
+
+  return (
+    <li>
+      <div
+        className={threadRowClassNames.join(" ")}
+        data-thread-id={thread.id}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <button
+          type="button"
+          className="project-thread-button"
+          onClick={() => {
+            setConfirmThreadId(null);
+            setOpenProjectMenuId(null);
+            void onSelectThread(projectId, thread.id);
+          }}
+          title={thread.title}
+        >
+          <span className="project-thread-line">
+            <span className="project-thread-title">{thread.title}</span>
+            {threadStatus ? (
+              <span
+                className={`project-thread-status-pill project-thread-status-pill-${threadStatus.tone}`}
+              >
+                {threadStatus.label}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        <span className="project-thread-meta">
+          <span className="project-thread-time-slot">
+            {confirmThreadId === thread.id ? (
+              <button
+                type="button"
+                className="project-thread-confirm-button"
+                onClick={() => void onArchiveThread(projectId, thread.id)}
+                disabled={archivingThreadId === thread.id}
+                aria-label={`Confirm archive ${thread.title}`}
+              >
+                {archivingThreadId === thread.id ? "..." : "Confirm"}
+              </button>
+            ) : (
+              <>
+                <span className="project-thread-time">{thread.updatedAt}</span>
+                <button
+                  type="button"
+                  className="project-thread-archive-button"
+                  onClick={() =>
+                    setConfirmThreadId((current) => (current === thread.id ? null : thread.id))
+                  }
+                  disabled={
+                    archivingThreadId !== null ||
+                    thread.isRunning ||
+                    runningThreadId === thread.id
+                  }
+                  aria-label={`Archive ${thread.title}`}
+                  title={
+                    thread.isRunning || runningThreadId === thread.id
+                      ? "Stop active work before archiving"
+                      : `Archive ${thread.title}`
+                  }
+                >
+                  <ArchiveIcon />
+                </button>
+              </>
+            )}
+          </span>
+        </span>
+      </div>
+    </li>
+  );
+}
+
 export function LeftRail({
   appInfo,
   workspaceState,
@@ -182,20 +298,25 @@ export function LeftRail({
 }: LeftRailProps) {
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [expandedThreadLists, setExpandedThreadLists] = useState<Record<string, boolean>>({});
-  const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
   const [confirmThreadId, setConfirmThreadId] = useState<string | null>(null);
   const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
   const currentProject = workspaceState.projects.find((project) => project.isCurrent) ?? null;
+  const currentProjectId = currentProject?.id ?? null;
+
   useEffect(() => {
-    if (!currentProject) {
+    if (!currentProjectId) {
       return;
     }
 
-    setExpandedProjects((current) => ({
-      ...current,
-      [currentProject.id]: true
-    }));
-  }, [currentProject]);
+    setExpandedProjects((current) =>
+      current[currentProjectId]
+        ? current
+        : {
+            ...current,
+            [currentProjectId]: true
+          }
+    );
+  }, [currentProjectId, workspaceState.projects]);
 
   const toggleProject = (workspaceId: string) => {
     setExpandedProjects((current) => ({
@@ -368,101 +489,21 @@ export function LeftRail({
               {expanded ? (
                 hasThreads ? (
                   <ul className="project-thread-list">
-                    {visibleThreads.map((thread) => {
-                      const threadStatus = resolveThreadStatus(thread, runningThreadId);
-                      const isActiveThread = project.currentThreadId === thread.id;
-                      const threadRowClassNames = ["project-thread-row"];
-
-                      if (isActiveThread) {
-                        threadRowClassNames.push("project-thread-button-active");
-                      }
-
-                      if (hoveredThreadId === thread.id) {
-                        threadRowClassNames.push("project-thread-row-hovered");
-                      }
-
-                      if (threadStatus) {
-                        threadRowClassNames.push(`project-thread-row-${threadStatus.tone}`);
-                      }
-
-                      return (
-                        <li key={thread.id}>
-                          <div
-                            className={threadRowClassNames.join(" ")}
-                            data-thread-id={thread.id}
-                            onMouseEnter={() => setHoveredThreadId(thread.id)}
-                            onMouseLeave={() =>
-                              setHoveredThreadId((current) =>
-                                current === thread.id ? null : current
-                              )
-                            }
-                          >
-                            <button
-                              type="button"
-                              className="project-thread-button"
-                              onClick={() => {
-                                setConfirmThreadId(null);
-                                setOpenProjectMenuId(null);
-                                void onSelectThread(project.id, thread.id);
-                              }}
-                              title={thread.title}
-                            >
-                              <span className="project-thread-line">
-                                <span className="project-thread-title">{thread.title}</span>
-                                {threadStatus ? (
-                                  <span
-                                    className={`project-thread-status-pill project-thread-status-pill-${threadStatus.tone}`}
-                                  >
-                                    {threadStatus.label}
-                                  </span>
-                                ) : null}
-                              </span>
-                            </button>
-                            <span className="project-thread-meta">
-                              <span className="project-thread-time-slot">
-                                {confirmThreadId === thread.id ? (
-                                  <button
-                                    type="button"
-                                    className="project-thread-confirm-button"
-                                    onClick={() => void onArchiveThread(project.id, thread.id)}
-                                    disabled={archivingThreadId === thread.id}
-                                    aria-label={`Confirm archive ${thread.title}`}
-                                  >
-                                    {archivingThreadId === thread.id ? "..." : "Confirm"}
-                                  </button>
-                                ) : (
-                                  <>
-                                    <span className="project-thread-time">{thread.updatedAt}</span>
-                                    <button
-                                      type="button"
-                                      className="project-thread-archive-button"
-                                      onClick={() =>
-                                        setConfirmThreadId((current) =>
-                                          current === thread.id ? null : thread.id
-                                        )
-                                      }
-                                      disabled={
-                                        archivingThreadId !== null ||
-                                        thread.isRunning ||
-                                        runningThreadId === thread.id
-                                      }
-                                      aria-label={`Archive ${thread.title}`}
-                                      title={
-                                        thread.isRunning || runningThreadId === thread.id
-                                          ? "Stop active work before archiving"
-                                          : `Archive ${thread.title}`
-                                      }
-                                    >
-                                      <ArchiveIcon />
-                                    </button>
-                                  </>
-                                )}
-                              </span>
-                            </span>
-                          </div>
-                        </li>
-                      );
-                    })}
+                    {visibleThreads.map((thread) => (
+                      <ProjectThreadRow
+                        key={thread.id}
+                        projectId={project.id}
+                        currentThreadId={project.currentThreadId}
+                        thread={thread}
+                        archivingThreadId={archivingThreadId}
+                        confirmThreadId={confirmThreadId}
+                        runningThreadId={runningThreadId}
+                        setConfirmThreadId={setConfirmThreadId}
+                        setOpenProjectMenuId={setOpenProjectMenuId}
+                        onSelectThread={onSelectThread}
+                        onArchiveThread={onArchiveThread}
+                      />
+                    ))}
                     {hasHiddenThreads ? (
                       <li>
                         <button
