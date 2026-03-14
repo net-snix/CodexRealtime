@@ -29,7 +29,7 @@ import {
   hasPastedAttachmentCandidates,
   readPastedAttachments
 } from "../pasted-attachments";
-import { getTimelineWorkingLabels } from "../timeline-event-stream";
+import { buildPresentedTimeline } from "../timeline-event-stream";
 import { useThinkingLabel } from "../timeline-working-status";
 import { TimelineEventStream } from "./TimelineEventStream";
 import { TimelineOpenInPicker } from "./TimelineOpenInPicker";
@@ -262,10 +262,11 @@ export function Timeline({
     isResolvingRequests ||
     timelineState.runState.phase === "starting";
   const thinkingLabel = useThinkingLabel(timelineState.isRunning && !isResolvingRequests);
-  const { latestWorkingStatus, currentWorkingLabel } = useMemo(
-    () => getTimelineWorkingLabels(orderedEntries, isWorkingLogMode),
+  const presentedTimeline = useMemo(
+    () => buildPresentedTimeline(orderedEntries, isWorkingLogMode),
     [orderedEntries, isWorkingLogMode]
   );
+  const { latestWorkingStatus, currentWorkingLabel } = presentedTimeline;
   const activeWorkingLabel = isResolvingRequests
     ? "Waiting"
     : currentWorkingLabel ?? timelineState.runState.label ?? (thinkingLabel || "Thinking");
@@ -626,11 +627,11 @@ export function Timeline({
         orderedEntries.length > 0 ? (
           <TimelineEventStream
             entries={orderedEntries}
+            presentedTimeline={presentedTimeline}
             isWorkingLogMode={isWorkingLogMode}
             isRunning={timelineState.isRunning}
             isResolvingRequests={isResolvingRequests}
             activeWorkingLabel={activeWorkingLabel}
-            latestWorkingStatus={latestWorkingStatus}
             activeWorkStartedAt={timelineState.activeWorkStartedAt}
             streamRef={streamRef}
             cwd={currentProject?.path}

@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "@shared";
+import { buildPresentedTimeline } from "../timeline-event-stream";
 
 const richTextRenderSpy = vi.fn();
 
@@ -84,15 +85,17 @@ describe("TimelineEventStream", () => {
   });
 
   it("updates the working timer without re-rendering timeline message rows", async () => {
+    const entries = [assistantMessageEntry];
+
     await act(async () => {
       root?.render(
         <TimelineEventStream
-          entries={[assistantMessageEntry]}
+          entries={entries}
+          presentedTimeline={buildPresentedTimeline(entries, false)}
           isWorkingLogMode={false}
           isRunning
           isResolvingRequests={false}
           activeWorkingLabel="Working"
-          latestWorkingStatus="Working"
           activeWorkStartedAt="2026-03-13T20:00:00.000Z"
           streamRef={{ current: null }}
         />
@@ -113,6 +116,7 @@ describe("TimelineEventStream", () => {
   it("skips re-rendering message rows when a parent re-renders with the same stream props", async () => {
     const entries = [assistantMessageEntry];
     const streamRef = { current: null };
+    const presentedTimeline = buildPresentedTimeline(entries, false);
 
     await act(async () => {
       root?.render(
@@ -120,11 +124,11 @@ describe("TimelineEventStream", () => {
           <span data-parent-version="1">parent one</span>
           <TimelineEventStream
             entries={entries}
+            presentedTimeline={presentedTimeline}
             isWorkingLogMode={false}
             isRunning={false}
             isResolvingRequests={false}
             activeWorkingLabel="Working"
-            latestWorkingStatus="Working"
             activeWorkStartedAt={null}
             streamRef={streamRef}
           />
@@ -140,11 +144,11 @@ describe("TimelineEventStream", () => {
           <span data-parent-version="2">parent two</span>
           <TimelineEventStream
             entries={entries}
+            presentedTimeline={presentedTimeline}
             isWorkingLogMode={false}
             isRunning={false}
             isResolvingRequests={false}
             activeWorkingLabel="Working"
-            latestWorkingStatus="Working"
             activeWorkStartedAt={null}
             streamRef={streamRef}
           />
@@ -156,28 +160,30 @@ describe("TimelineEventStream", () => {
   });
 
   it("clusters consecutive command rows into a compact command summary", async () => {
+    const entries = [
+      makeCommandEntry({
+        id: "command-1",
+        label: "Ran command",
+        command: "pwd",
+        detail: "/Users/espenmac/Code/CodexRealtime"
+      }),
+      makeCommandEntry({
+        id: "command-2",
+        label: "Ran command",
+        command: "ls",
+        detail: "AGENTS.md\napps\npackages",
+      })
+    ];
+
     await act(async () => {
       root?.render(
         <TimelineEventStream
-          entries={[
-            makeCommandEntry({
-              id: "command-1",
-              label: "Ran command",
-              command: "pwd",
-              detail: "/Users/espenmac/Code/CodexRealtime"
-            }),
-            makeCommandEntry({
-              id: "command-2",
-              label: "Ran command",
-              command: "ls",
-              detail: "AGENTS.md\napps\npackages",
-            })
-          ]}
+          entries={entries}
+          presentedTimeline={buildPresentedTimeline(entries, false)}
           isWorkingLogMode={false}
           isRunning={false}
           isResolvingRequests={false}
           activeWorkingLabel="Working"
-          latestWorkingStatus="Working"
           activeWorkStartedAt={null}
           streamRef={{ current: null }}
         />
@@ -217,11 +223,11 @@ describe("TimelineEventStream", () => {
       root?.render(
         <TimelineEventStream
           entries={entries}
+          presentedTimeline={buildPresentedTimeline(entries, false)}
           isWorkingLogMode={false}
           isRunning={false}
           isResolvingRequests={false}
           activeWorkingLabel="Working"
-          latestWorkingStatus="Working"
           activeWorkStartedAt={null}
           streamRef={{ current: null }}
         />

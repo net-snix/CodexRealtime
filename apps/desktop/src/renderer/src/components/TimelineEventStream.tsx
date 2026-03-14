@@ -1,8 +1,11 @@
 import { memo, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { EditorId } from "@codex-realtime/contracts";
 import type { TimelineDiffEntry, TimelineEntry } from "@shared";
-import type { PresentedTimelineEntry, PresentedTimelineEvent } from "../timeline-event-stream";
-import { buildPresentedTimeline } from "../timeline-event-stream";
+import type {
+  PresentedTimeline,
+  PresentedTimelineEntry,
+  PresentedTimelineEvent
+} from "../timeline-event-stream";
 import { openInPreferredEditor } from "../editor-preferences";
 import { readNativeApi } from "../native-api";
 import { resolvePathLinkTarget } from "../terminal-links";
@@ -10,11 +13,11 @@ import { TimelineRichText } from "./TimelineRichText";
 
 type TimelineEventStreamProps = {
   entries: TimelineEntry[];
+  presentedTimeline: PresentedTimeline;
   isWorkingLogMode: boolean;
   isRunning: boolean;
   isResolvingRequests: boolean;
   activeWorkingLabel: string;
-  latestWorkingStatus: string | null;
   activeWorkStartedAt: string | null;
   streamRef: MutableRefObject<HTMLDivElement | null>;
   cwd?: string;
@@ -370,22 +373,18 @@ function TimelineEntryCard({
 
 function TimelineEventStreamComponent({
   entries,
+  presentedTimeline,
   isWorkingLogMode,
   isRunning,
   isResolvingRequests,
   activeWorkingLabel,
-  latestWorkingStatus,
   activeWorkStartedAt,
   streamRef,
   cwd,
   availableEditors = []
 }: TimelineEventStreamProps) {
-  const { entries: groupedEntries } = useMemo(
-    () => buildPresentedTimeline(entries, isWorkingLogMode),
-    [entries, isWorkingLogMode]
-  );
-
   const diffState = useMemo(() => buildDiffMap(entries), [entries]);
+  const { entries: groupedEntries, latestWorkingStatus } = presentedTimeline;
 
   return (
     <div
