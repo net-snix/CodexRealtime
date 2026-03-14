@@ -4,6 +4,10 @@ import type { VoicePreferences } from "@shared";
 import { readPersistedStateFile, writePersistedStateFile } from "./persisted-state";
 
 const DEFAULT_PREFERENCES: VoicePreferences = {
+  mode: "transcription",
+  speakAgentActivity: true,
+  speakToolCalls: true,
+  speakPlanUpdates: true,
   selectedInputDeviceId: "",
   selectedOutputDeviceId: "",
   deviceHintDismissed: false,
@@ -15,6 +19,11 @@ const clonePreferences = (preferences: VoicePreferences): VoicePreferences => ({
 });
 
 const VOICE_PREFERENCES_VALIDATORS = {
+  mode: (value: unknown): value is VoicePreferences["mode"] =>
+    value === "transcription" || value === "realtime",
+  speakAgentActivity: (value: unknown): value is boolean => typeof value === "boolean",
+  speakToolCalls: (value: unknown): value is boolean => typeof value === "boolean",
+  speakPlanUpdates: (value: unknown): value is boolean => typeof value === "boolean",
   selectedInputDeviceId: (value: unknown): value is string => typeof value === "string",
   selectedOutputDeviceId: (value: unknown): value is string => typeof value === "string",
   deviceHintDismissed: (value: unknown): value is boolean => typeof value === "boolean",

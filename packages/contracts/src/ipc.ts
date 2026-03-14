@@ -11,6 +11,10 @@ export const SHELL_API_CHANNELS = {
   voicePreferencesGet: "voice-preferences:get",
   voicePreferencesUpdate: "voice-preferences:update",
   voicePreferencesReset: "voice-preferences:reset",
+  voiceApiKeyGetState: "voice-api-key:get-state",
+  voiceApiKeySet: "voice-api-key:set",
+  voiceApiKeyClear: "voice-api-key:clear",
+  voiceApiKeyTest: "voice-api-key:test",
 } as const;
 
 export const SERVER_API_CHANNELS = {

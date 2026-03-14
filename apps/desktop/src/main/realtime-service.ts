@@ -1,25 +1,34 @@
 import { EventEmitter } from "node:events";
+import { createVoiceIntentFromTranscript } from "@shared/voice-intents";
 import type {
   RealtimeAudioChunk,
   RealtimeEvent,
   RealtimeState,
+  RealtimeTranscriptEntry,
   TimelineState,
   VoiceIntent
 } from "@shared";
-import { codexBridge } from "./codex-bridge";
+import { openAiRealtimeEngine } from "./openai-realtime-engine";
+import { openAiVoiceClient } from "./openai-voice-client";
+import { createWavFileFromAudioChunks } from "./voice-audio";
+import { createVoiceNarrationCue } from "./voice-narration";
+import { voicePreferencesService } from "./voice-preferences-service";
 import { workspaceService } from "./workspace-service";
-import { isRecord, type NotificationPayload } from "./workspace-timeline";
 
 const DEFAULT_REALTIME_PROMPT =
   "You are a voice-native software engineering assistant. Keep replies concise, useful, and grounded in the current repo thread.";
 
 const cloneRealtimeState = (state: RealtimeState): RealtimeState => ({ ...state });
-const isRealtimeAudioChunk = (value: unknown): value is RealtimeAudioChunk =>
-  isRecord(value) &&
-  typeof value.data === "string" &&
-  typeof value.sampleRate === "number" &&
-  typeof value.numChannels === "number" &&
-  (typeof value.samplesPerChannel === "number" || value.samplesPerChannel === null);
+const makeSessionId = (mode: "realtime" | "transcription") =>
+  `${mode}:${Date.now().toString(36)}`;
+
+type VoiceSession = {
+  mode: "realtime" | "transcription";
+  threadId: string;
+  audioChunks: RealtimeAudioChunk[];
+  lastTimeline: TimelineState | null;
+  lastCueKey: string | null;
+};
 
 export class RealtimeService extends EventEmitter {
   private state: RealtimeState = {
@@ -28,12 +37,51 @@ export class RealtimeService extends EventEmitter {
     sessionId: null,
     error: null
   };
+  private activeMode: "realtime" | "transcription" | null = null;
+  private voiceSession: VoiceSession | null = null;
+  private narrationQueue = Promise.resolve();
 
   constructor() {
     super();
 
-    codexBridge.on("notification", (payload: NotificationPayload) => {
-      this.handleNotification(payload);
+    openAiRealtimeEngine.on("audio", (audio) => {
+      this.emit("event", {
+        type: "audio",
+        audio
+      } satisfies RealtimeEvent);
+    });
+    openAiRealtimeEngine.on("transcript", (entry) => {
+      void this.handleRealtimeTranscript(entry).catch((error) => {
+        this.emitRealtimeError(
+          error instanceof Error ? error.message : "Realtime transcript handling failed"
+        );
+      });
+    });
+    openAiRealtimeEngine.on("error", (message) => {
+      this.emitRealtimeError(message);
+    });
+    openAiRealtimeEngine.on("closed", (reason) => {
+      if (reason) {
+        this.emitRealtimeError(reason);
+        return;
+      }
+
+      if (this.activeMode !== "realtime" && this.state.status === "idle") {
+        return;
+      }
+
+      this.activeMode = null;
+      this.clearRealtimeDispatchState();
+      this.state = {
+        status: "idle",
+        threadId: this.state.threadId,
+        sessionId: null,
+        error: null
+      };
+      this.emitState();
+    });
+    workspaceService.on("timeline", (timeline: TimelineState) => {
+      void this.handleTimelineUpdate(timeline);
     });
   }
 
@@ -42,21 +90,45 @@ export class RealtimeService extends EventEmitter {
   }
 
   async start(prompt = DEFAULT_REALTIME_PROMPT) {
+    const preferences = voicePreferencesService.getPreferences();
+    this.clearRealtimeDispatchState();
+
+    if (preferences.mode === "transcription") {
+      return this.startTranscriptionSession();
+    }
+
     const threadId = await workspaceService.getCurrentThreadId();
-    const sessionId = this.state.threadId === threadId ? this.state.sessionId : null;
+    const baselineTimeline = await workspaceService.getTimelineState();
+    this.activeMode = "realtime";
+    this.voiceSession = {
+      mode: "realtime",
+      threadId,
+      audioChunks: [],
+      lastTimeline: baselineTimeline.threadId === threadId ? baselineTimeline : null,
+      lastCueKey: null
+    };
 
     this.state = {
       status: "connecting",
       threadId,
-      sessionId,
+      sessionId: null,
       error: null
     };
     this.emitState();
 
     try {
-      await codexBridge.startRealtime(threadId, prompt, sessionId);
+      const sessionId = await openAiRealtimeEngine.start(prompt);
+      this.state = {
+        status: "live",
+        threadId,
+        sessionId,
+        error: null
+      };
+      this.emitState();
       return this.getState();
     } catch (error) {
+      this.activeMode = null;
+      this.voiceSession = null;
       this.state = {
         ...this.state,
         status: "error",
@@ -69,15 +141,32 @@ export class RealtimeService extends EventEmitter {
 
   async stop() {
     if (!this.state.threadId) {
+      await openAiRealtimeEngine.dispose();
+      this.voiceSession = null;
+      this.clearRealtimeDispatchState();
       return this.getState();
     }
 
+    if (this.activeMode === "transcription") {
+      return this.stopTranscriptionSession();
+    }
+
+    const threadId = this.state.threadId;
+    this.state = {
+      ...this.state,
+      status: "connecting",
+      error: null
+    };
+    this.emitState();
+
     try {
-      await codexBridge.stopRealtime(this.state.threadId);
+      await openAiRealtimeEngine.completeTurnAndStop();
     } finally {
+      this.activeMode = null;
+      this.clearRealtimeDispatchState();
       this.state = {
         status: "idle",
-        threadId: this.state.threadId,
+        threadId,
         sessionId: null,
         error: null
       };
@@ -88,11 +177,16 @@ export class RealtimeService extends EventEmitter {
   }
 
   async appendAudio(audio: RealtimeAudioChunk) {
-    if (!this.state.threadId) {
+    if (!this.state.threadId || this.state.status !== "live") {
       throw new Error("Realtime is not started.");
     }
 
-    await codexBridge.appendRealtimeAudio(this.state.threadId, audio);
+    if (this.activeMode === "transcription") {
+      this.voiceSession?.audioChunks.push(audio);
+      return;
+    }
+
+    await openAiRealtimeEngine.appendAudio(audio);
   }
 
   async appendText(text: string) {
@@ -100,7 +194,28 @@ export class RealtimeService extends EventEmitter {
       throw new Error("Realtime is not started.");
     }
 
-    await codexBridge.appendRealtimeText(this.state.threadId, text);
+    if (this.activeMode === "transcription") {
+      const transcript = text.trim();
+
+      if (!transcript) {
+        return;
+      }
+
+      const parsedTranscript = createVoiceIntentFromTranscript({
+        transcript,
+        id: `transcript:${Date.now().toString(36)}`
+      });
+
+      if (!parsedTranscript) {
+        return;
+      }
+
+      this.emitTranscript(parsedTranscript.transcriptEntry, true);
+      await this.dispatchParsedTranscriptIntent(parsedTranscript.intent);
+      return;
+    }
+
+    await openAiRealtimeEngine.appendText(text);
   }
 
   async dispatchVoiceIntent(intent: VoiceIntent): Promise<TimelineState> {
@@ -115,79 +230,138 @@ export class RealtimeService extends EventEmitter {
     return workspaceService.dispatchVoiceIntent(intent);
   }
 
-  private handleNotification(payload: NotificationPayload) {
-    const params = isRecord(payload.params) ? payload.params : {};
-    const threadId = typeof params.threadId === "string" ? params.threadId : null;
+  private async startTranscriptionSession() {
+    const threadId = await workspaceService.getCurrentThreadId();
+    const baselineTimeline = await workspaceService.getTimelineState();
+    this.activeMode = "transcription";
+    this.voiceSession = {
+      mode: "transcription",
+      threadId,
+      audioChunks: [],
+      lastTimeline: baselineTimeline.threadId === threadId ? baselineTimeline : null,
+      lastCueKey: null
+    };
+    this.state = {
+      status: "live",
+      threadId,
+      sessionId: makeSessionId("transcription"),
+      error: null
+    };
+    this.emitState();
+    return this.getState();
+  }
 
-    if (!threadId || threadId !== this.state.threadId) {
-      return;
+  private async stopTranscriptionSession() {
+    const session =
+      this.voiceSession?.mode === "transcription" ? this.voiceSession : null;
+    const threadId = this.state.threadId;
+
+    if (!session || !threadId) {
+      this.activeMode = null;
+      this.voiceSession = null;
+      this.clearRealtimeDispatchState();
+      this.state = {
+        status: "idle",
+        threadId: null,
+        sessionId: null,
+        error: null
+      };
+      this.emitState();
+      return this.getState();
     }
 
-    switch (payload.method) {
-      case "thread/realtime/started": {
-        this.state = {
-          status: "live",
-          threadId,
-          sessionId: typeof params.sessionId === "string" ? params.sessionId : null,
-          error: null
-        };
-        this.emitState();
-        return;
+    const audioChunks = session.audioChunks.slice();
+    session.audioChunks = [];
+
+    if (audioChunks.length === 0) {
+      this.activeMode = null;
+      this.voiceSession = null;
+      this.clearRealtimeDispatchState();
+      this.state = {
+        status: "idle",
+        threadId,
+        sessionId: null,
+        error: null
+      };
+      this.emitState();
+      return this.getState();
+    }
+
+    this.state = {
+      ...this.state,
+      status: "connecting",
+      error: null
+    };
+    this.emitState();
+
+    try {
+      const transcript = await openAiVoiceClient.transcribeWavAudio(
+        createWavFileFromAudioChunks(audioChunks)
+      );
+      const parsedTranscript = createVoiceIntentFromTranscript({
+        transcript,
+        id: `transcript:${Date.now().toString(36)}`
+      });
+
+      if (!parsedTranscript) {
+        throw new Error("Transcription returned no text.");
       }
 
-      case "thread/realtime/outputAudio/delta": {
-        const audio = isRealtimeAudioChunk(params.audio) ? params.audio : null;
+      this.emitTranscript(parsedTranscript.transcriptEntry, true);
+      await this.dispatchParsedTranscriptIntent(parsedTranscript.intent);
 
-        if (!audio) {
-          return;
-        }
+      this.activeMode = null;
+      this.state = {
+        status: "idle",
+        threadId,
+        sessionId: null,
+        error: null
+      };
+      this.emitState();
+      return this.getState();
+    } catch (error) {
+      this.activeMode = null;
+      this.voiceSession = null;
+      this.clearRealtimeDispatchState();
+      this.state = {
+        status: "error",
+        threadId,
+        sessionId: null,
+        error: error instanceof Error ? error.message : "Voice transcription failed"
+      };
+      this.emitState();
+      throw error;
+    }
+  }
 
-        this.emit("event", {
-          type: "audio",
-          audio
-        } satisfies RealtimeEvent);
-        return;
-      }
+  private emitRealtimeError(message: string) {
+    this.activeMode = null;
+    this.voiceSession = null;
+    this.clearRealtimeDispatchState();
+    this.state = {
+      ...this.state,
+      status: "error",
+      error: message
+    };
+    this.emitState();
+    this.emit("event", {
+      type: "error",
+      message
+    } satisfies RealtimeEvent);
+  }
 
-      case "thread/realtime/itemAdded":
-        this.emit("event", {
-          type: "item",
-          item: params.item
-        } satisfies RealtimeEvent);
-        return;
+  private clearRealtimeDispatchState() {
+    // Canonical OpenAI voice path dispatches final intents immediately in main.
+  }
 
-      case "thread/realtime/error": {
-        const message =
-          typeof params.message === "string" ? params.message : "Realtime transport error";
-
-        this.state = {
-          ...this.state,
-          status: "error",
-          error: message
-        };
-        this.emitState();
-        this.emit("event", {
-          type: "error",
-          message
-        } satisfies RealtimeEvent);
-        return;
-      }
-
-      case "thread/realtime/closed": {
-        const reason = typeof params.reason === "string" ? params.reason : null;
-
-        this.state = {
-          status: "idle",
-          threadId,
-          sessionId: null,
-          error: reason
-        };
-        this.emitState();
-        return;
-      }
-
-      default:
-        return;
+  private async executeVoiceIntentDispatch(intent: VoiceIntent) {
+    try {
+      await this.dispatchVoiceIntent(intent);
+    } catch (error) {
+      this.emitRealtimeError(
+        error instanceof Error ? error.message : "Voice intent dispatch failed"
+      );
+      throw error;
     }
   }
 
@@ -196,6 +370,85 @@ export class RealtimeService extends EventEmitter {
       type: "state",
       state: this.getState()
     } satisfies RealtimeEvent);
+  }
+
+  private emitTranscript(entry: RealtimeTranscriptEntry, intentHandled: boolean) {
+    this.emit("event", {
+      type: "transcript",
+      entry,
+      intentHandled
+    } satisfies RealtimeEvent);
+  }
+
+  private async dispatchParsedTranscriptIntent(intent: VoiceIntent | null) {
+    if (!intent) {
+      return;
+    }
+
+    await this.executeVoiceIntentDispatch(intent);
+  }
+
+  private async handleRealtimeTranscript(entry: RealtimeTranscriptEntry) {
+    let intentHandled = false;
+
+    if (
+      this.activeMode === "realtime" &&
+      entry.speaker === "user" &&
+      entry.status === "final"
+    ) {
+      const parsedTranscript = createVoiceIntentFromTranscript({
+        transcript: entry.text,
+        id: entry.id,
+        createdAt: entry.createdAt
+      });
+
+      if (parsedTranscript?.intent) {
+        await this.dispatchParsedTranscriptIntent(parsedTranscript.intent);
+        intentHandled = true;
+      }
+    }
+
+    this.emitTranscript(entry, intentHandled);
+  }
+
+  private async handleTimelineUpdate(timeline: TimelineState) {
+    const session = this.voiceSession;
+
+    if (!session || timeline.threadId !== session.threadId) {
+      return;
+    }
+
+    const preferences = voicePreferencesService.getPreferences();
+    const cue = createVoiceNarrationCue({
+      previousTimeline: session.lastTimeline,
+      nextTimeline: timeline,
+      preferences
+    });
+    session.lastTimeline = timeline;
+
+    if (!cue || cue.key === session.lastCueKey) {
+      return;
+    }
+
+    session.lastCueKey = cue.key;
+    this.narrationQueue = this.narrationQueue
+      .catch(() => undefined)
+      .then(async () => {
+        const audio = await openAiVoiceClient.synthesizeSpeech(cue.text);
+        this.emit("event", {
+          type: "audio",
+          audio
+        } satisfies RealtimeEvent);
+      })
+      .catch((error) => {
+        this.emitRealtimeError(
+          error instanceof Error ? error.message : "Voice narration failed"
+        );
+      });
+
+    if (cue.terminal && this.activeMode === null) {
+      this.voiceSession = null;
+    }
   }
 }
 

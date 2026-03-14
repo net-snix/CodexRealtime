@@ -48,6 +48,10 @@ const nativeApi: NativeApi = {
   updateVoicePreferences: (preferences) =>
     ipcRenderer.invoke(IPC_CHANNELS.voicePreferencesUpdate, preferences),
   resetVoicePreferences: () => ipcRenderer.invoke(IPC_CHANNELS.voicePreferencesReset),
+  getVoiceApiKeyState: () => ipcRenderer.invoke(IPC_CHANNELS.voiceApiKeyGetState),
+  setVoiceApiKey: (apiKey) => ipcRenderer.invoke(IPC_CHANNELS.voiceApiKeySet, apiKey),
+  clearVoiceApiKey: () => ipcRenderer.invoke(IPC_CHANNELS.voiceApiKeyClear),
+  testVoiceApiKey: () => ipcRenderer.invoke(IPC_CHANNELS.voiceApiKeyTest),
   subscribeRealtimeEvents: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]) =>
       listener(payload);

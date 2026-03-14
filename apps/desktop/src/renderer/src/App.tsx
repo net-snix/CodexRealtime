@@ -13,6 +13,7 @@ import { RightPane } from "./components/RightPane";
 import { SettingsPage } from "./components/SettingsPage";
 import { Timeline } from "./components/Timeline";
 import { useAppSettings } from "./use-app-settings";
+import { useVoiceApiKey } from "./use-voice-api-key";
 import { useRealtimeVoice } from "./use-realtime-voice";
 import { useWorkerSettings } from "./use-worker-settings";
 import { VoiceBar } from "./components/VoiceBar";
@@ -97,6 +98,15 @@ export default function App() {
     updateSettings: updateAppSettings
   } = useAppSettings();
   const {
+    state: voiceApiKeyState,
+    isSaving: isSavingVoiceApiKey,
+    isTesting: isTestingVoiceApiKey,
+    isClearing: isClearingVoiceApiKey,
+    saveApiKey,
+    clearApiKey,
+    testApiKey
+  } = useVoiceApiKey();
+  const {
     settingsState: workerSettingsState,
     attachments: workerAttachments,
     isUpdating: isUpdatingWorkerSettings,
@@ -136,23 +146,24 @@ export default function App() {
   if (!nativeApiRef.current) {
     nativeApiRef.current = ensureNativeApi();
   }
-  const realtimeEnabled = Boolean(
-    sessionState?.status === "connected" &&
-      sessionState.features.realtimeConversation &&
-      currentProject
-  );
+  const voiceContextReady = Boolean(sessionState?.status === "connected" && currentProject);
   const {
     voiceState,
     realtimeState,
     liveTranscript,
     inputDevices,
     outputDevices,
+    voiceMode,
+    speakAgentActivity,
+    speakToolCalls,
+    speakPlanUpdates,
     selectedInputDeviceId,
     selectedOutputDeviceId,
     supportsOutputSelection,
     shouldShowDeviceHint,
     dismissDeviceHint,
     resetVoicePreferences,
+    updateVoicePreferences,
     setSelectedInputDeviceId,
     setSelectedOutputDeviceId,
     isActive: isVoiceActive,
@@ -160,7 +171,7 @@ export default function App() {
     stop: stopVoice
   } =
     useRealtimeVoice({
-      enabled: realtimeEnabled,
+      enabled: voiceContextReady,
       onVoiceIntent: async (intent) => {
         try {
           const nextTimeline = await nativeApiRef.current!.dispatchVoiceIntent(intent);
@@ -200,6 +211,11 @@ export default function App() {
         }
       }
     });
+  const voiceEnabled = Boolean(
+    sessionState?.status === "connected" &&
+      currentProject &&
+      voiceApiKeyState.status === "valid"
+  );
   const approvalCount = timelineState.approvals?.length ?? 0;
   const userInputCount = timelineState.userInputs?.length ?? 0;
   const appSettings = appSettingsState.settings;
@@ -609,7 +625,7 @@ export default function App() {
   }, [timelineState.approvals, timelineState.userInputs]);
 
   useEffect(() => {
-    if (!appSettings.autoStartVoice || !realtimeEnabled || isVoiceActive || mainView !== "thread") {
+    if (!appSettings.autoStartVoice || !voiceEnabled || isVoiceActive || mainView !== "thread") {
       return;
     }
 
@@ -634,7 +650,7 @@ export default function App() {
     currentThreadId,
     isVoiceActive,
     mainView,
-    realtimeEnabled,
+    voiceEnabled,
     startVoice
   ]);
 
@@ -716,6 +732,17 @@ export default function App() {
 
   const handleResetVoicePreferences = async () => {
     await resetVoicePreferences();
+  };
+
+  const handleUpdateVoicePreferences = async (
+    patch: Partial<{
+      mode: typeof voiceMode;
+      speakAgentActivity: boolean;
+      speakToolCalls: boolean;
+      speakPlanUpdates: boolean;
+    }>
+  ) => {
+    await updateVoicePreferences(patch);
   };
 
   const handleApproveRequest = async (id: string, decision: ApprovalDecision = "accept") => {
@@ -838,6 +865,17 @@ export default function App() {
             workerSettingsState={workerSettingsState}
             isUpdatingWorkerSettings={isUpdatingWorkerSettings}
             onUpdateWorkerSettings={handleUpdateWorkerSettings}
+            voiceMode={voiceMode}
+            speakAgentActivity={speakAgentActivity}
+            speakToolCalls={speakToolCalls}
+            speakPlanUpdates={speakPlanUpdates}
+            onUpdateVoicePreferences={handleUpdateVoicePreferences}
+            voiceApiKeyState={voiceApiKeyState}
+            isSavingVoiceApiKey={isSavingVoiceApiKey || isClearingVoiceApiKey}
+            isTestingVoiceApiKey={isTestingVoiceApiKey}
+            onSaveVoiceApiKey={saveApiKey}
+            onClearVoiceApiKey={clearApiKey}
+            onTestVoiceApiKey={testApiKey}
             inputDevices={inputDevices}
             outputDevices={outputDevices}
             selectedInputDeviceId={selectedInputDeviceId}
@@ -909,9 +947,11 @@ export default function App() {
       <VoiceBar
         isOpen={isVoicePanelOpen}
         sessionState={sessionState}
+        voiceMode={voiceMode}
+        voiceApiKeyState={voiceApiKeyState}
         state={voiceState}
         realtimeState={realtimeState}
-        disabled={!realtimeEnabled}
+        disabled={!voiceEnabled}
         isActive={isVoiceActive}
         isStopping={isStoppingVoice}
         feedback={voiceFeedback}

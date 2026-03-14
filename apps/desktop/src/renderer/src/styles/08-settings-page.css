@@ -218,7 +218,8 @@
 
 .settings-row-toggle,
 .settings-row-action,
-.settings-row-select {
+.settings-row-select,
+.settings-row-input {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
@@ -273,7 +274,8 @@
 
 .settings-switch:disabled,
 .settings-button:disabled,
-.settings-select:disabled {
+.settings-select:disabled,
+.settings-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -282,6 +284,17 @@
   position: relative;
   display: inline-flex;
   min-width: 0;
+}
+
+.settings-input-stack {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.settings-inline-actions {
+  display: inline-flex;
+  gap: 8px;
 }
 
 .settings-select-wrap::after {
@@ -311,6 +324,18 @@
   appearance: none;
 }
 
+.settings-input {
+  min-width: 240px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(24, 23, 20, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 253, 250, 0.96);
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .settings-button {
   display: inline-flex;
   align-items: center;
@@ -331,9 +356,15 @@
 }
 
 .settings-button:hover:not(:disabled),
-.settings-select:hover:not(:disabled) {
+.settings-select:hover:not(:disabled),
+.settings-input:hover:not(:disabled),
+.settings-input:focus {
   transform: translateY(-1px);
   border-color: rgba(24, 23, 20, 0.14);
+}
+
+.settings-input:focus {
+  outline: none;
 }
 
 .settings-button-danger {
@@ -467,6 +498,7 @@
   .settings-row-toggle,
   .settings-row-action,
   .settings-row-select,
+  .settings-row-input,
   .settings-archive-thread-row {
     grid-template-columns: 1fr;
   }
@@ -482,5 +514,18 @@
   .settings-select {
     width: 100%;
     min-width: 0;
+  }
+
+  .settings-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settings-input-stack {
+    justify-items: stretch;
+  }
+
+  .settings-inline-actions {
+    justify-content: flex-start;
   }
 }

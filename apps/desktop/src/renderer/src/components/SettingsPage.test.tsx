@@ -9,6 +9,7 @@ import type {
   SessionState,
   ThreadSummary,
   TimelineState,
+  VoiceApiKeyState,
   WorkerSettingsState,
   WorkspaceState
 } from "@shared";
@@ -172,6 +173,13 @@ const workerSettingsState: WorkerSettingsState = {
   ]
 };
 
+const voiceApiKeyState: VoiceApiKeyState = {
+  configured: false,
+  status: "missing",
+  lastValidatedAt: null,
+  error: null
+};
+
 describe("SettingsPage", () => {
   let root: Root | null = null;
   let container: HTMLDivElement | null = null;
@@ -215,6 +223,17 @@ describe("SettingsPage", () => {
           workerSettingsState={workerSettingsState}
           isUpdatingWorkerSettings={false}
           onUpdateWorkerSettings={vi.fn()}
+          voiceMode="transcription"
+          speakAgentActivity={true}
+          speakToolCalls={true}
+          speakPlanUpdates={true}
+          onUpdateVoicePreferences={vi.fn()}
+          voiceApiKeyState={voiceApiKeyState}
+          isSavingVoiceApiKey={false}
+          isTestingVoiceApiKey={false}
+          onSaveVoiceApiKey={vi.fn()}
+          onClearVoiceApiKey={vi.fn()}
+          onTestVoiceApiKey={vi.fn()}
           inputDevices={[{ id: "", label: "System default input" }]}
           outputDevices={[{ id: "", label: "System default output" }]}
           selectedInputDeviceId=""

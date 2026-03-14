@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type {
   AudioDeviceOption,
+  VoiceApiKeyState,
+  VoiceMode,
   RealtimeState,
   RealtimeTranscriptEntry,
   SessionState,
@@ -10,6 +12,8 @@ import type {
 interface VoiceBarProps {
   isOpen: boolean;
   sessionState: SessionState | null;
+  voiceMode: VoiceMode;
+  voiceApiKeyState: VoiceApiKeyState;
   state: VoiceState;
   realtimeState: RealtimeState;
   disabled: boolean;
@@ -36,6 +40,8 @@ interface VoiceBarProps {
 
 const helperCopy = (
   sessionState: SessionState | null,
+  voiceMode: VoiceMode,
+  voiceApiKeyState: VoiceApiKeyState,
   realtimeState: RealtimeState,
   isStopping: boolean
 ) => {
@@ -48,23 +54,27 @@ const helperCopy = (
   }
 
   if (realtimeState.status === "live") {
-    return "Voice connected.";
+    return voiceMode === "transcription" ? "Voice session ready." : "Voice connected.";
   }
 
   if (realtimeState.status === "connecting") {
-    return "Connecting voice...";
+    return voiceMode === "transcription"
+      ? "Transcribing and handing off..."
+      : "Connecting voice...";
   }
 
   if (!sessionState) {
     return "Loading session...";
   }
 
-  if (sessionState.status === "connected" && sessionState.features.realtimeConversation) {
-    return "Voice ready.";
+  if (!voiceApiKeyState.configured || voiceApiKeyState.status !== "valid") {
+    return voiceMode === "transcription"
+      ? "Transcription voice requires a valid OpenAI API key."
+      : "Realtime voice requires a valid OpenAI API key.";
   }
 
   if (sessionState.status === "connected") {
-    return "Connected. Voice unavailable.";
+    return "Voice agent ready.";
   }
 
   if (sessionState.status === "connecting") {
@@ -77,6 +87,8 @@ const helperCopy = (
 export function VoiceBar({
   isOpen,
   sessionState,
+  voiceMode,
+  voiceApiKeyState,
   state,
   realtimeState,
   disabled,
@@ -137,7 +149,7 @@ export function VoiceBar({
 
         <div className="voice-status voice-bar-panel-section">
           <strong>{isStopping ? "stopping" : state}</strong>
-          <small>{helperCopy(sessionState, realtimeState, isStopping)}</small>
+          <small>{helperCopy(sessionState, voiceMode, voiceApiKeyState, realtimeState, isStopping)}</small>
           {feedback ? (
             <p className={`voice-feedback voice-feedback-${feedback.tone}`}>{feedback.text}</p>
           ) : null}

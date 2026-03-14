@@ -1,4 +1,4 @@
-import type { RealtimeTranscriptEntry, VoiceIntent, VoiceTaskEnvelope } from "@shared";
+import type { RealtimeTranscriptEntry, VoiceIntent, VoiceTaskEnvelope } from "@codex-realtime/contracts";
 
 const ACTION_VERBS = [
   "inspect",
@@ -102,6 +102,12 @@ const joinText = (...values: unknown[]) => {
 
   return parts.join("\n").trim();
 };
+
+const defaultCreatedAt = () =>
+  new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 
 const normalizeIntentTextKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
 export const normalizeVoiceDispatchKey = normalizeIntentTextKey;
@@ -405,6 +411,55 @@ const parseHandoffRequest = (
 export const shouldDelayVoiceIntent = (intent: VoiceIntent) =>
   intent.kind === "work_request" && intent.source.sourceType === "message";
 
+export const createVoiceIntentFromTranscript = ({
+  transcript,
+  id,
+  createdAt
+}: {
+  transcript: string;
+  id?: string | null;
+  createdAt?: string;
+}): ParsedRealtimeVoiceItem | null => {
+  const trimmedTranscript = transcript.trim();
+
+  if (!trimmedTranscript) {
+    return null;
+  }
+
+  const normalizedTranscript = normalizeIntentTextKey(trimmedTranscript);
+  const transcriptId = id?.trim() || `transcript:${normalizedTranscript}`;
+  const safeCreatedAt = createdAt ?? defaultCreatedAt();
+
+  return {
+    transcriptEntry: {
+      id: transcriptId,
+      speaker: "user",
+      text: trimmedTranscript,
+      status: "final",
+      createdAt: safeCreatedAt
+    },
+    intent: createIntent({
+      sourceType: "message",
+      sourceItemId: transcriptId,
+      handoffId: null,
+      transcript: trimmedTranscript,
+      rawPayload: {
+        type: "transcript",
+        id: transcriptId,
+        text: trimmedTranscript
+      },
+      sourceMessageIds: [transcriptId]
+    }),
+    dedupeKeys: buildDedupeKeys({
+      handoffId: null,
+      sourceMessageIds: [transcriptId],
+      itemId: transcriptId,
+      transcript: trimmedTranscript
+    }),
+    richness: 1
+  };
+};
+
 export const parseRealtimeVoiceItem = (
   item: unknown,
   fallbackIndex: number
@@ -413,10 +468,7 @@ export const parseRealtimeVoiceItem = (
     return null;
   }
 
-  const createdAt = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  const createdAt = defaultCreatedAt();
   const type = typeof item.type === "string" ? item.type : "unknown";
 
   switch (type) {

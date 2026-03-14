@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AudioDeviceOption, RealtimeState, SessionState } from "@shared";
+import type { AudioDeviceOption, RealtimeState, SessionState, VoiceApiKeyState } from "@shared";
 import { VoiceBar } from "./VoiceBar";
 
 const sessionState: SessionState = {
@@ -22,10 +22,23 @@ const sessionState: SessionState = {
   requiresOpenaiAuth: false
 };
 
+const apiKeySessionState: SessionState = {
+  ...sessionState,
+  account: {
+    type: "apiKey"
+  }
+};
+
 const realtimeState: RealtimeState = {
   status: "idle",
   threadId: null,
   sessionId: null,
+  error: null
+};
+const validVoiceApiKeyState: VoiceApiKeyState = {
+  configured: true,
+  status: "valid",
+  lastValidatedAt: "2026-03-14T10:00:00.000Z",
   error: null
 };
 
@@ -65,7 +78,9 @@ describe("VoiceBar", () => {
         root?.render(
           <VoiceBar
             isOpen={isOpen}
-            sessionState={sessionState}
+            sessionState={apiKeySessionState}
+            voiceMode="transcription"
+            voiceApiKeyState={validVoiceApiKeyState}
             state="idle"
             realtimeState={realtimeState}
             disabled={false}
@@ -97,6 +112,8 @@ describe("VoiceBar", () => {
 
     await renderVoiceBar(true);
 
+    expect(container?.textContent).toContain("Voice agent ready.");
+
     const devicesButton = Array.from(container?.querySelectorAll("button") ?? []).find(
       (button) => button.textContent === "Devices"
     );
@@ -112,5 +129,44 @@ describe("VoiceBar", () => {
     expect(container?.querySelector(".voice-bar-collapsed")).not.toBeNull();
     expect(container?.querySelector(".voice-device-panel")).toBeNull();
     expect(container?.textContent).not.toContain("State");
+  });
+
+  it("explains that realtime voice needs a valid OpenAI API key", async () => {
+    await act(async () => {
+      root?.render(
+        <VoiceBar
+          isOpen={true}
+          sessionState={sessionState}
+          voiceMode="realtime"
+          voiceApiKeyState={{
+            configured: false,
+            status: "missing",
+            lastValidatedAt: null,
+            error: null
+          }}
+          state="idle"
+          realtimeState={realtimeState}
+          disabled={true}
+          isActive={false}
+          isStopping={false}
+          feedback={null}
+          canStop={false}
+          liveTranscript={[]}
+          inputDevices={devices}
+          outputDevices={devices}
+          selectedInputDeviceId=""
+          selectedOutputDeviceId=""
+          supportsOutputSelection={true}
+          shouldShowDeviceHint={false}
+          onDismissDeviceHint={vi.fn()}
+          onInputDeviceChange={vi.fn()}
+          onOutputDeviceChange={vi.fn()}
+          onToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+    });
+
+    expect(container?.textContent).toContain("Realtime voice requires a valid OpenAI API key.");
   });
 });

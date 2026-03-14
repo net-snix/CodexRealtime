@@ -1,4 +1,8 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  createVoiceIntentFromTranscript,
+  normalizeVoiceDispatchKey
+} from "@shared/voice-intents";
 import type {
   AudioDeviceOption,
   RealtimeAudioChunk,
@@ -8,11 +12,6 @@ import type {
   VoiceState
 } from "@shared";
 import { ensureNativeApi, type NativeApi } from "./native-api";
-import {
-  normalizeVoiceDispatchKey,
-  parseRealtimeVoiceItem,
-  shouldDelayVoiceIntent
-} from "./realtime-voice-intents";
 
 const initialRealtimeState: RealtimeState = {
   status: "idle",
@@ -23,14 +22,12 @@ const initialRealtimeState: RealtimeState = {
 
 const TRANSCRIPT_LIMIT = 6;
 const MAX_QUEUED_AUDIO_CHUNKS = 4;
-const MAX_VOICE_INTENT_RECORDS = 128;
 const PCM16_BASE64_CHUNK_SIZE = 0x8000;
 const MIN_AUDIO_SAMPLE_RATE = 8_000;
 const MAX_AUDIO_SAMPLE_RATE = 192_000;
 const MAX_AUDIO_CHANNELS = 8;
 const MAX_PCM16_BYTES_PER_CHUNK = 8 * 1024 * 1024;
 const MAX_SAMPLES_PER_CHANNEL = 262_144;
-const MESSAGE_WORK_REQUEST_DELAY_MS = 160;
 
 type PersistedVoicePreferences = Awaited<ReturnType<NativeApi["getVoicePreferences"]>>;
 type AudioOutputElement = HTMLAudioElement & {
@@ -78,101 +75,6 @@ const upsertTranscriptEntry = (
   }
 
   return [...entries, nextEntry].slice(-TRANSCRIPT_LIMIT);
-};
-
-type VoiceIntentDispatchRecord = {
-  primaryKey: string;
-  aliases: Set<string>;
-  intent: VoiceIntent;
-  transcriptEntry: RealtimeTranscriptEntry;
-  richness: number;
-  dispatched: boolean;
-  timeoutId: ReturnType<typeof window.setTimeout> | null;
-};
-
-const findDispatchRecord = (
-  records: Map<string, VoiceIntentDispatchRecord>,
-  aliasToPrimary: Map<string, string>,
-  keys: string[]
-) => {
-  for (const key of keys) {
-    const primaryKey = aliasToPrimary.get(key) ?? key;
-    const record = records.get(primaryKey);
-
-    if (record) {
-      return record;
-    }
-  }
-
-  return null;
-};
-
-const registerRecordAliases = (
-  aliasToPrimary: Map<string, string>,
-  record: VoiceIntentDispatchRecord,
-  keys: string[]
-) => {
-  for (const key of keys) {
-    aliasToPrimary.set(key, record.primaryKey);
-    record.aliases.add(key);
-  }
-};
-
-const promoteDispatchRecordPrimaryKey = (
-  records: Map<string, VoiceIntentDispatchRecord>,
-  aliasToPrimary: Map<string, string>,
-  record: VoiceIntentDispatchRecord,
-  nextPrimaryKey: string
-) => {
-  if (record.primaryKey === nextPrimaryKey) {
-    return;
-  }
-
-  records.delete(record.primaryKey);
-  record.primaryKey = nextPrimaryKey;
-  records.set(nextPrimaryKey, record);
-
-  for (const alias of record.aliases) {
-    aliasToPrimary.set(alias, nextPrimaryKey);
-  }
-};
-
-const clearDispatchRecords = (
-  records: Map<string, VoiceIntentDispatchRecord>,
-  aliasToPrimary: Map<string, string>
-) => {
-  for (const record of records.values()) {
-    if (record.timeoutId !== null) {
-      clearTimeout(record.timeoutId);
-    }
-  }
-
-  records.clear();
-  aliasToPrimary.clear();
-};
-
-const trimDispatchRecords = (
-  records: Map<string, VoiceIntentDispatchRecord>,
-  aliasToPrimary: Map<string, string>
-) => {
-  while (records.size > MAX_VOICE_INTENT_RECORDS) {
-    const oldestPrimaryKey = records.keys().next().value;
-
-    if (typeof oldestPrimaryKey !== "string") {
-      return;
-    }
-
-    const record = records.get(oldestPrimaryKey);
-    if (record?.timeoutId != null) {
-      clearTimeout(record.timeoutId);
-    }
-
-    records.delete(oldestPrimaryKey);
-
-    for (const alias of record?.aliases ?? []) {
-      aliasToPrimary.delete(alias);
-    }
-  }
 };
 
 const encodePcm16 = (samples: Float32Array) => {
@@ -317,6 +219,10 @@ export const useRealtimeVoice = ({
   const [outputDevices, setOutputDevices] = useState<AudioDeviceOption[]>([
     { id: "", label: "System default output" }
   ]);
+  const [voiceMode, setVoiceMode] = useState<PersistedVoicePreferences["mode"]>("transcription");
+  const [speakAgentActivity, setSpeakAgentActivity] = useState(true);
+  const [speakToolCalls, setSpeakToolCalls] = useState(true);
+  const [speakPlanUpdates, setSpeakPlanUpdates] = useState(true);
   const [selectedInputDeviceId, setSelectedInputDeviceId] = useState("");
   const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState("");
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
@@ -335,9 +241,19 @@ export const useRealtimeVoice = ({
   const queuedAudioChunksRef = useRef<RealtimeAudioChunk[]>([]);
   const isSendingAudioRef = useRef(false);
   const audioSendGenerationRef = useRef(0);
-  const dispatchedVoiceIntentsRef = useRef(new Map<string, VoiceIntentDispatchRecord>());
-  const dispatchedVoiceIntentAliasesRef = useRef(new Map<string, string>());
   const onVoiceIntentRef = useRef(onVoiceIntent);
+  const activeSessionModeRef = useRef<PersistedVoicePreferences["mode"] | null>(null);
+
+  const applyVoicePreferences = (preferences: PersistedVoicePreferences) => {
+    setVoiceMode(preferences.mode);
+    setSpeakAgentActivity(preferences.speakAgentActivity);
+    setSpeakToolCalls(preferences.speakToolCalls);
+    setSpeakPlanUpdates(preferences.speakPlanUpdates);
+    setSelectedInputDeviceId(preferences.selectedInputDeviceId);
+    setSelectedOutputDeviceId(preferences.selectedOutputDeviceId);
+    setIsDeviceHintDismissed(preferences.deviceHintDismissed);
+    setHasCompletedDeviceSetup(preferences.deviceSetupComplete);
+  };
 
   const flushQueuedAudio = async () => {
     if (isSendingAudioRef.current) {
@@ -432,13 +348,6 @@ export const useRealtimeVoice = ({
   useEffect(() => {
     let isCancelled = false;
 
-    const applyVoicePreferences = (preferences: PersistedVoicePreferences) => {
-      setSelectedInputDeviceId(preferences.selectedInputDeviceId);
-      setSelectedOutputDeviceId(preferences.selectedOutputDeviceId);
-      setIsDeviceHintDismissed(preferences.deviceHintDismissed);
-      setHasCompletedDeviceSetup(preferences.deviceSetupComplete);
-    };
-
     void nativeApiRef.current!
       .getVoicePreferences()
       .then((preferences) => {
@@ -469,6 +378,10 @@ export const useRealtimeVoice = ({
 
     void nativeApiRef.current!
       .updateVoicePreferences({
+        mode: voiceMode,
+        speakAgentActivity,
+        speakToolCalls,
+        speakPlanUpdates,
         selectedInputDeviceId,
         selectedOutputDeviceId,
         deviceHintDismissed: isDeviceHintDismissed,
@@ -481,8 +394,12 @@ export const useRealtimeVoice = ({
     hasCompletedDeviceSetup,
     hasLoadedPreferences,
     isDeviceHintDismissed,
+    speakAgentActivity,
+    speakPlanUpdates,
+    speakToolCalls,
     selectedInputDeviceId,
-    selectedOutputDeviceId
+    selectedOutputDeviceId,
+    voiceMode
   ]);
 
   useEffect(() => {
@@ -554,8 +471,6 @@ export const useRealtimeVoice = ({
 
   useEffect(() => {
     void nativeApiRef.current!.getRealtimeState().then(setRealtimeState);
-    const voiceIntentRecords = dispatchedVoiceIntentsRef.current;
-    const voiceIntentAliases = dispatchedVoiceIntentAliasesRef.current;
     const unsubscribe = nativeApiRef.current!.subscribeRealtimeEvents((event) => {
       if (event.type === "state") {
         setRealtimeState(event.state);
@@ -580,143 +495,33 @@ export const useRealtimeVoice = ({
         return;
       }
 
-      if (event.type === "item") {
-        let nextEntrySpeaker: RealtimeTranscriptEntry["speaker"] | null = null;
-        const nextItem = parseRealtimeVoiceItem(event.item, liveTranscriptRef.current.length + 1);
-        let transcriptMatchEntryIds: string[] = [];
-        let transcriptMatchNormalizedText: string | null = null;
-        let allowTranscriptReplace = true;
+      if (event.type === "transcript") {
+        const nextTranscriptItem = createVoiceIntentFromTranscript({
+          transcript: event.entry.text,
+          id: event.entry.id,
+          createdAt: event.entry.createdAt
+        });
 
-        if (!nextItem) {
+        if (!nextTranscriptItem) {
           return;
         }
 
-        let dispatchIntent: VoiceIntent | null = null;
-        let nextTranscriptEntry = nextItem.transcriptEntry;
-        nextEntrySpeaker = nextItem.transcriptEntry.speaker;
-
-        if (nextItem.intent && nextItem.dedupeKeys.length > 0) {
-          const existing = findDispatchRecord(
-            dispatchedVoiceIntentsRef.current,
-            dispatchedVoiceIntentAliasesRef.current,
-            nextItem.dedupeKeys
-          );
-          const primaryKey = existing?.primaryKey ?? nextItem.dedupeKeys[0]!;
-          transcriptMatchEntryIds = Array.from(new Set([primaryKey, ...nextItem.dedupeKeys]));
-
-          if (existing) {
-            const previousRichness = existing.richness;
-            const isTranscriptUpgrade = nextItem.richness > previousRichness;
-            const isTranscriptDowngrade = nextItem.richness < previousRichness;
-
-            if (!isTranscriptUpgrade) {
-              nextTranscriptEntry = {
-                ...nextItem.transcriptEntry,
-                id: primaryKey
-              };
-            }
-
-            allowTranscriptReplace = !isTranscriptDowngrade;
-            registerRecordAliases(
-              dispatchedVoiceIntentAliasesRef.current,
-              existing,
-              nextItem.dedupeKeys
-            );
-            if (nextItem.richness > previousRichness) {
-              promoteDispatchRecordPrimaryKey(
-                dispatchedVoiceIntentsRef.current,
-                dispatchedVoiceIntentAliasesRef.current,
-                existing,
-                nextItem.dedupeKeys[0] ?? existing.primaryKey
-              );
-              nextTranscriptEntry = {
-                ...nextItem.transcriptEntry,
-                id: existing.primaryKey
-              };
-              existing.intent = nextItem.intent;
-              existing.transcriptEntry = nextTranscriptEntry;
-              existing.richness = nextItem.richness;
-            } else if (nextItem.richness < previousRichness) {
-              nextTranscriptEntry = existing.transcriptEntry;
-            } else {
-              existing.intent = nextItem.intent;
-              existing.transcriptEntry = nextTranscriptEntry;
-            }
-
-            if (
-              !existing.dispatched &&
-              nextItem.richness > previousRichness &&
-              existing.timeoutId !== null
-            ) {
-              clearTimeout(existing.timeoutId);
-              existing.timeoutId = null;
-              existing.dispatched = true;
-              dispatchIntent = nextItem.intent;
-            }
-          } else {
-            const record: VoiceIntentDispatchRecord = {
-              primaryKey,
-              aliases: new Set(),
-              intent: nextItem.intent,
-              transcriptEntry: nextTranscriptEntry,
-              richness: nextItem.richness,
-              dispatched: false,
-              timeoutId: null
-            };
-            registerRecordAliases(
-              dispatchedVoiceIntentAliasesRef.current,
-              record,
-              nextItem.dedupeKeys
-            );
-            dispatchedVoiceIntentsRef.current.set(primaryKey, record);
-            trimDispatchRecords(
-              dispatchedVoiceIntentsRef.current,
-              dispatchedVoiceIntentAliasesRef.current
-            );
-
-            if (shouldDelayVoiceIntent(nextItem.intent)) {
-              record.timeoutId = window.setTimeout(() => {
-                record.timeoutId = null;
-                if (record.dispatched) {
-                  return;
-                }
-
-                record.dispatched = true;
-                void onVoiceIntentRef.current?.(record.intent);
-              }, MESSAGE_WORK_REQUEST_DELAY_MS);
-            } else {
-              record.dispatched = true;
-              dispatchIntent = nextItem.intent;
-            }
-          }
-
-          if (nextItem.intent.source.sourceType === "handoff_request") {
-            transcriptMatchNormalizedText = normalizeVoiceDispatchKey(
-              nextItem.intent.source.transcript
-            );
-          }
-        }
-
         setLiveTranscript((current) => {
-          const nextTranscript = upsertTranscriptEntry(
-            current,
-            nextTranscriptEntry,
-            {
-              allowReplace: allowTranscriptReplace,
-              matchEntryIds: transcriptMatchEntryIds,
-              matchNormalizedText: transcriptMatchNormalizedText
-            }
-          );
+          const nextTranscript = upsertTranscriptEntry(current, event.entry, {
+            matchEntryIds: nextTranscriptItem.dedupeKeys,
+            matchNormalizedText: normalizeVoiceDispatchKey(event.entry.text)
+          });
           liveTranscriptRef.current = nextTranscript;
           return nextTranscript;
         });
-
-        if (nextEntrySpeaker) {
-          setVoiceState(nextEntrySpeaker === "assistant" ? "working" : "thinking");
-        }
-
-        if (dispatchIntent) {
-          void onVoiceIntentRef.current?.(dispatchIntent);
+        setVoiceState(event.entry.speaker === "assistant" ? "working" : "thinking");
+        if (
+          event.entry.speaker === "user" &&
+          event.entry.status === "final" &&
+          !event.intentHandled &&
+          nextTranscriptItem.intent
+        ) {
+          void onVoiceIntentRef.current?.(nextTranscriptItem.intent);
         }
         return;
       }
@@ -727,7 +532,6 @@ export const useRealtimeVoice = ({
     });
 
     return () => {
-      clearDispatchRecords(voiceIntentRecords, voiceIntentAliases);
       unsubscribe();
     };
   }, []);
@@ -738,14 +542,17 @@ export const useRealtimeVoice = ({
     }
 
     setVoiceState("thinking");
+    setLiveTranscript([]);
     audioSendGenerationRef.current += 1;
     queuedAudioChunksRef.current = [];
     isSendingAudioRef.current = false;
-    clearDispatchRecords(
-      dispatchedVoiceIntentsRef.current,
-      dispatchedVoiceIntentAliasesRef.current
-    );
-    await nativeApiRef.current!.startRealtime();
+    activeSessionModeRef.current = voiceMode;
+    try {
+      await nativeApiRef.current!.startRealtime();
+    } catch (error) {
+      activeSessionModeRef.current = null;
+      throw error;
+    }
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -801,35 +608,52 @@ export const useRealtimeVoice = ({
     isSendingAudioRef.current = false;
     await closeAudioContext(captureContextRef.current);
     captureContextRef.current = null;
-    playbackElementRef.current?.pause();
-    playbackElementRef.current = null;
-    playbackDestinationRef.current = null;
-    await closeAudioContext(playbackContextRef.current);
-    playbackContextRef.current = null;
-    nextPlaybackTimeRef.current = 0;
     setIsActive(false);
-    setLiveTranscript([]);
-    clearDispatchRecords(
-      dispatchedVoiceIntentsRef.current,
-      dispatchedVoiceIntentAliasesRef.current
-    );
-    setVoiceState("idle");
+    setVoiceState("thinking");
 
     try {
       await nativeApiRef.current!.stopRealtime();
     } catch {
       // Keep local teardown best-effort for prototype mode.
+    } finally {
+      activeSessionModeRef.current = null;
+      playbackElementRef.current?.pause();
+      playbackElementRef.current = null;
+      playbackDestinationRef.current = null;
+      await closeAudioContext(playbackContextRef.current);
+      playbackContextRef.current = null;
+      nextPlaybackTimeRef.current = 0;
+      setVoiceState((current) => (current === "error" ? current : "idle"));
     }
   };
+
+  const syncActiveSessionConfig = useEffectEvent(async () => {
+    const activeSessionMode = activeSessionModeRef.current;
+
+    if (!activeSessionMode) {
+      return;
+    }
+
+    if (!enabled || activeSessionMode !== voiceMode) {
+      await stop();
+    }
+  });
+
+  useEffect(() => {
+    void syncActiveSessionConfig();
+  }, [enabled, syncActiveSessionConfig, voiceMode]);
 
   const shouldShowDeviceHint = !isDeviceHintDismissed && !hasCompletedDeviceSetup;
 
   const resetVoicePreferences = async () => {
     const nextPreferences = await nativeApiRef.current!.resetVoicePreferences();
-    setSelectedInputDeviceId(nextPreferences.selectedInputDeviceId);
-    setSelectedOutputDeviceId(nextPreferences.selectedOutputDeviceId);
-    setIsDeviceHintDismissed(nextPreferences.deviceHintDismissed);
-    setHasCompletedDeviceSetup(nextPreferences.deviceSetupComplete);
+    applyVoicePreferences(nextPreferences);
+    return nextPreferences;
+  };
+
+  const updateVoicePreferences = async (patch: Partial<PersistedVoicePreferences>) => {
+    const nextPreferences = await nativeApiRef.current!.updateVoicePreferences(patch);
+    applyVoicePreferences(nextPreferences);
     return nextPreferences;
   };
 
@@ -839,12 +663,17 @@ export const useRealtimeVoice = ({
     liveTranscript,
     inputDevices,
     outputDevices,
+    voiceMode,
+    speakAgentActivity,
+    speakToolCalls,
+    speakPlanUpdates,
     selectedInputDeviceId,
     selectedOutputDeviceId,
     supportsOutputSelection,
     shouldShowDeviceHint,
     dismissDeviceHint: () => setIsDeviceHintDismissed(true),
     resetVoicePreferences,
+    updateVoicePreferences,
     setSelectedInputDeviceId,
     setSelectedOutputDeviceId,
     isActive,

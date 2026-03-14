@@ -50,6 +50,7 @@ const attachChild = (bridge: CodexBridge, child: MockChild) => {
 describe("CodexBridge", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("guards malformed JSON from stdout", () => {
@@ -178,15 +179,64 @@ describe("CodexBridge", () => {
 
   it("clears pending requests when the child exits", async () => {
     const bridge = new CodexBridge({ requestTimeoutMs: 1_000 });
-    attachChild(bridge, new MockChild());
+    const child = attachChild(bridge, new MockChild());
     const request = (
       bridge as unknown as { request: (method: string, params: unknown) => Promise<unknown> }
     ).request("thread/read", {});
 
-    (bridge as unknown as { handleChildExit: () => void }).handleChildExit();
+    (bridge as unknown as { stderrTail: string }).stderrTail =
+      "2026-03-14T15:00:00Z ERROR codex_core::startup: failed to read runtime profile\n";
+    (bridge as unknown as {
+      handleChildExit: (
+        child: MockChild,
+        code?: number | null,
+        signal?: NodeJS.Signals | null
+      ) => void;
+    }).handleChildExit(child, 1, null);
 
-    await expect(request).rejects.toThrow("Codex app-server exited before responding: thread/read");
+    await expect(request).rejects.toThrow(
+      "Codex app-server exited before responding (code 1, stderr tail: 2026-03-14T15:00:00Z ERROR codex_core::startup: failed to read runtime profile): thread/read"
+    );
     expect(bridge.getState().status).toBe("error");
+  });
+
+  it("clears pending requests when the child emits a process error", async () => {
+    const bridge = new CodexBridge({ requestTimeoutMs: 1_000 });
+    const child = attachChild(bridge, new MockChild());
+    const request = (
+      bridge as unknown as { request: (method: string, params: unknown) => Promise<unknown> }
+    ).request("initialize", {});
+
+    (bridge as unknown as { handleChildError: (child: MockChild, error: Error) => void })
+      .handleChildError(child, new Error("spawn codex EACCES"));
+
+    await expect(request).rejects.toThrow("spawn codex EACCES: initialize");
+    expect(bridge.getState().status).toBe("error");
+    expect(bridge.getState().error).toBe("spawn codex EACCES");
+  });
+
+  it("ignores stale child exits after a newer child becomes current", async () => {
+    const bridge = new CodexBridge({ requestTimeoutMs: 1_000 });
+    const staleChild = attachChild(bridge, new MockChild());
+    const currentChild = attachChild(bridge, new MockChild());
+    const request = (
+      bridge as unknown as { request: (method: string, params: unknown) => Promise<unknown> }
+    ).request("thread/read", {});
+
+    (bridge as unknown as {
+      handleChildExit: (
+        child: MockChild,
+        code?: number | null,
+        signal?: NodeJS.Signals | null
+      ) => void;
+    }).handleChildExit(staleChild, 0, null);
+
+    expect((bridge as unknown as { pending: Map<string, unknown> }).pending.size).toBe(1);
+    expect(bridge.getState().status).toBe("connecting");
+    expect((bridge as unknown as { child: MockChild | null }).child).toBe(currentChild);
+
+    (bridge as unknown as { rejectAllPending: (message: string) => void }).rejectAllPending("cleanup");
+    await expect(request).rejects.toThrow("cleanup: thread/read");
   });
 
   it("waits for drain before completing a backpressured write", async () => {

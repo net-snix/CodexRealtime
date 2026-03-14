@@ -50,10 +50,25 @@ export interface AudioDeviceOption {
 }
 
 export interface VoicePreferences {
+  mode: VoiceMode;
+  speakAgentActivity: boolean;
+  speakToolCalls: boolean;
+  speakPlanUpdates: boolean;
   selectedInputDeviceId: string;
   selectedOutputDeviceId: string;
   deviceHintDismissed: boolean;
   deviceSetupComplete: boolean;
+}
+
+export type VoiceMode = "transcription" | "realtime";
+
+export type VoiceApiKeyStatus = "missing" | "valid" | "invalid";
+
+export interface VoiceApiKeyState {
+  configured: boolean;
+  status: VoiceApiKeyStatus;
+  lastValidatedAt: string | null;
+  error: string | null;
 }
 
 export interface CodexAccountSummary {
@@ -431,7 +446,7 @@ export interface RealtimeTranscriptEntry {
 export type RealtimeEvent =
   | { type: "state"; state: RealtimeState }
   | { type: "audio"; audio: RealtimeAudioChunk }
-  | { type: "item"; item: unknown }
+  | { type: "transcript"; entry: RealtimeTranscriptEntry; intentHandled: boolean }
   | { type: "error"; message: string };
 
 export type RealtimeEventListener = (event: RealtimeEvent) => void;

@@ -146,7 +146,7 @@ describe("LeftRail", () => {
 
     expect(openRepoButton?.textContent).toContain("Open repo");
     expect(container?.textContent).toContain("Threads");
-    expect(container?.textContent).toContain("Voice");
+    expect(container?.textContent).toContain("Realtime");
     expect(container?.textContent).toContain("Settings");
     expect(container?.textContent).not.toContain("Projects");
     expect(container?.textContent).not.toContain("1 thread");
@@ -252,12 +252,14 @@ describe("LeftRail", () => {
             removingWorkspaceId={null}
             runningThreadId={null}
             isSettingsView={false}
+            isVoicePanelOpen={false}
             onOpenWorkspace={vi.fn()}
             onCreateThread={vi.fn<CreateThreadHandler>()}
             onRemoveWorkspace={vi.fn<RemoveWorkspaceHandler>()}
             onOpenSettings={vi.fn()}
             onSelectWorkspace={vi.fn()}
             onSelectThread={vi.fn()}
+            onToggleVoicePanel={vi.fn()}
             onArchiveThread={vi.fn<ArchiveThreadHandler>()}
           />
         </Profiler>
@@ -283,12 +285,14 @@ describe("LeftRail", () => {
             removingWorkspaceId={null}
             runningThreadId={null}
             isSettingsView={false}
+            isVoicePanelOpen={false}
             onOpenWorkspace={vi.fn()}
             onCreateThread={vi.fn<CreateThreadHandler>()}
             onRemoveWorkspace={vi.fn<RemoveWorkspaceHandler>()}
             onOpenSettings={vi.fn()}
             onSelectWorkspace={vi.fn()}
             onSelectThread={vi.fn()}
+            onToggleVoicePanel={vi.fn()}
             onArchiveThread={vi.fn<ArchiveThreadHandler>()}
           />
         </Profiler>

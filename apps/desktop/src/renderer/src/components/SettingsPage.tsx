@@ -1,4 +1,4 @@
-import { useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AppInfo,
   AppSettings,
@@ -6,6 +6,8 @@ import type {
   AudioDeviceOption,
   SessionState,
   TimelineState,
+  VoiceApiKeyState,
+  VoiceMode,
   WorkerApprovalPolicy,
   WorkerReasoningEffort,
   WorkerSettingsState,
@@ -39,6 +41,24 @@ type SettingsPageProps = {
       approvalPolicy: WorkerApprovalPolicy;
     }>
   ) => void | Promise<void>;
+  voiceMode: VoiceMode;
+  speakAgentActivity: boolean;
+  speakToolCalls: boolean;
+  speakPlanUpdates: boolean;
+  onUpdateVoicePreferences: (
+    patch: Partial<{
+      mode: VoiceMode;
+      speakAgentActivity: boolean;
+      speakToolCalls: boolean;
+      speakPlanUpdates: boolean;
+    }>
+  ) => void | Promise<void>;
+  voiceApiKeyState: VoiceApiKeyState;
+  isSavingVoiceApiKey: boolean;
+  isTestingVoiceApiKey: boolean;
+  onSaveVoiceApiKey: (apiKey: string) => void | Promise<VoiceApiKeyState>;
+  onClearVoiceApiKey: () => void | Promise<VoiceApiKeyState>;
+  onTestVoiceApiKey: () => void | Promise<VoiceApiKeyState>;
   inputDevices: AudioDeviceOption[];
   outputDevices: AudioDeviceOption[];
   selectedInputDeviceId: string;
@@ -192,7 +212,7 @@ function ActionRow({
   actionLabel: string;
   disabled?: boolean;
   tone?: "default" | "danger";
-  onAction: () => void | Promise<void>;
+  onAction: () => void | Promise<unknown>;
 }) {
   return (
     <div className="settings-row settings-row-action">
@@ -211,6 +231,86 @@ function ActionRow({
     </div>
   );
 }
+
+function InputActionRow({
+  label,
+  description,
+  value,
+  placeholder,
+  disabled,
+  actionLabel,
+  secondaryActionLabel,
+  note,
+  onChange,
+  onAction,
+  onSecondaryAction
+}: {
+  label: string;
+  description: string;
+  value: string;
+  placeholder?: string;
+  disabled?: boolean;
+  actionLabel: string;
+  secondaryActionLabel?: string;
+  note?: string;
+  onChange: (value: string) => void;
+  onAction: () => void | Promise<unknown>;
+  onSecondaryAction?: () => void | Promise<unknown>;
+}) {
+  return (
+    <div className="settings-row settings-row-input">
+      <div className="settings-row-copy">
+        <strong>{label}</strong>
+        <span>{description}</span>
+        {note ? <small>{note}</small> : null}
+      </div>
+      <div className="settings-input-stack">
+        <input
+          className="settings-input"
+          type="password"
+          value={value}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+        />
+        <div className="settings-inline-actions">
+          <button
+            type="button"
+            className="settings-button"
+            onClick={() => void onAction()}
+            disabled={disabled}
+          >
+            {actionLabel}
+          </button>
+          {secondaryActionLabel && onSecondaryAction ? (
+            <button
+              type="button"
+              className="settings-button settings-button-ghost"
+              onClick={() => void onSecondaryAction()}
+              disabled={disabled}
+            >
+              {secondaryActionLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const formatVoiceApiKeyStatus = (state: VoiceApiKeyState) => {
+  if (state.status === "valid") {
+    return "Valid";
+  }
+
+  if (state.status === "invalid") {
+    return "Invalid";
+  }
+
+  return state.configured ? "Saved" : "Missing";
+};
 
 function BackArrowIcon() {
   return (
@@ -237,6 +337,17 @@ export function SettingsPage({
   workerSettingsState,
   isUpdatingWorkerSettings,
   onUpdateWorkerSettings,
+  voiceMode,
+  speakAgentActivity,
+  speakToolCalls,
+  speakPlanUpdates,
+  onUpdateVoicePreferences,
+  voiceApiKeyState,
+  isSavingVoiceApiKey,
+  isTestingVoiceApiKey,
+  onSaveVoiceApiKey,
+  onClearVoiceApiKey,
+  onTestVoiceApiKey,
   inputDevices,
   outputDevices,
   selectedInputDeviceId,
@@ -285,6 +396,13 @@ export function SettingsPage({
       ),
     [workspaceState.archivedProjects]
   );
+  const [voiceApiKeyDraft, setVoiceApiKeyDraft] = useState("");
+
+  useEffect(() => {
+    if (!voiceApiKeyState.configured) {
+      setVoiceApiKeyDraft("");
+    }
+  }, [voiceApiKeyState.configured]);
 
   const scrollToSection = (key: SettingsSectionKey) => {
     settingsRefs.current[key]?.scrollIntoView({
@@ -423,9 +541,80 @@ export function SettingsPage({
             </div>
             <div className="settings-card-grid">
               <SectionCard
-                title="Realtime voice"
-                description="Tune the voice assistant without touching worker defaults."
+                title="Voice backend"
+                description="Choose the OpenAI voice path and keep narration behavior predictable."
               >
+                <SelectRow
+                  label="Voice mode"
+                  description="Transcription is best for Codex-style work; realtime is for lower-latency conversation."
+                  value={voiceMode}
+                  onChange={(value) =>
+                    void onUpdateVoicePreferences({
+                      mode: value as VoiceMode
+                    })
+                  }
+                >
+                  <option value="transcription">Transcription (recommended)</option>
+                  <option value="realtime">Realtime</option>
+                </SelectRow>
+                <InputActionRow
+                  label="OpenAI API key"
+                  description="Stored locally in main process only. Required for both voice modes."
+                  value={voiceApiKeyDraft}
+                  placeholder="sk-..."
+                  disabled={isSavingVoiceApiKey}
+                  actionLabel={isSavingVoiceApiKey ? "Saving..." : "Save"}
+                  secondaryActionLabel={voiceApiKeyState.configured ? "Clear" : undefined}
+                  note={
+                    voiceApiKeyState.error
+                      ? `${formatVoiceApiKeyStatus(voiceApiKeyState)}: ${voiceApiKeyState.error}`
+                      : `${formatVoiceApiKeyStatus(voiceApiKeyState)}${
+                          voiceApiKeyState.lastValidatedAt
+                            ? ` • checked ${new Date(voiceApiKeyState.lastValidatedAt).toLocaleString()}`
+                            : ""
+                        }`
+                  }
+                  onChange={setVoiceApiKeyDraft}
+                  onAction={() => onSaveVoiceApiKey(voiceApiKeyDraft)}
+                  onSecondaryAction={voiceApiKeyState.configured ? onClearVoiceApiKey : undefined}
+                />
+                <ActionRow
+                  label="Test connection"
+                  description="Verify the currently saved key can talk to OpenAI."
+                  actionLabel={isTestingVoiceApiKey ? "Testing..." : "Test"}
+                  disabled={isTestingVoiceApiKey || isSavingVoiceApiKey || !voiceApiKeyState.configured}
+                  onAction={onTestVoiceApiKey}
+                />
+                <ToggleRow
+                  label="Speak agent activity"
+                  description="Read short summaries when Codex starts, finishes, or changes state."
+                  checked={speakAgentActivity}
+                  onChange={(checked) =>
+                    void onUpdateVoicePreferences({
+                      speakAgentActivity: checked
+                    })
+                  }
+                />
+                <ToggleRow
+                  label="Speak tool calls"
+                  description="Read compact updates for commands and tool activity."
+                  checked={speakToolCalls}
+                  onChange={(checked) =>
+                    void onUpdateVoicePreferences({
+                      speakToolCalls: checked
+                    })
+                  }
+                />
+                <ToggleRow
+                  label="Speak plan updates"
+                  description="Announce plan changes and checklist progress."
+                  checked={speakPlanUpdates}
+                  onChange={(checked) =>
+                    void onUpdateVoicePreferences({
+                      speakPlanUpdates: checked
+                    })
+                  }
+                />
                 <ToggleRow
                   label="Auto-start voice"
                   description="Start the voice assistant when a repo is ready."
@@ -837,20 +1026,20 @@ export function SettingsPage({
               </SectionCard>
 
               <SectionCard
-                title="Feature flags"
-                description="Live availability from app-server."
+                title="Voice runtime"
+                description="Separate OpenAI voice lane status."
               >
                 <div className="settings-feature-grid">
                   <div className="settings-feature-pill">
-                    <strong>Realtime</strong>
-                    <span>{sessionState?.features.realtimeConversation ? "Enabled" : "Unavailable"}</span>
+                    <strong>Mode</strong>
+                    <span>{voiceMode === "transcription" ? "Transcription" : "Realtime"}</span>
                   </div>
                   <div className="settings-feature-pill">
-                    <strong>Voice transcription</strong>
-                    <span>{sessionState?.features.voiceTranscription ? "Enabled" : "Unavailable"}</span>
+                    <strong>API key</strong>
+                    <span>{formatVoiceApiKeyStatus(voiceApiKeyState)}</span>
                   </div>
                   <div className="settings-feature-pill">
-                    <strong>Clarify mode</strong>
+                    <strong>Codex clarify mode</strong>
                     <span>
                       {sessionState?.features.defaultModeRequestUserInput ? "Enabled" : "Unavailable"}
                     </span>

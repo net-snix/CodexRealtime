@@ -4,6 +4,7 @@ import type {
   AppSettingsState,
   DesktopNotificationRequest,
   EditorId,
+  VoiceApiKeyState,
   VoicePreferences,
   WorkerAttachment,
   WorkspaceState,
@@ -22,4 +23,8 @@ export interface ShellApi {
   getVoicePreferences: () => Promise<VoicePreferences>;
   updateVoicePreferences: (preferences: Partial<VoicePreferences>) => Promise<VoicePreferences>;
   resetVoicePreferences: () => Promise<VoicePreferences>;
+  getVoiceApiKeyState: () => Promise<VoiceApiKeyState>;
+  setVoiceApiKey: (apiKey: string) => Promise<VoiceApiKeyState>;
+  clearVoiceApiKey: () => Promise<VoiceApiKeyState>;
+  testVoiceApiKey: () => Promise<VoiceApiKeyState>;
 }

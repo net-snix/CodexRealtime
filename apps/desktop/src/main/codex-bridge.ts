@@ -51,6 +51,7 @@ const now = () => new Date().toISOString();
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_STDOUT_BUFFER_BYTES = 1_048_576;
 const DEFAULT_MAX_STDOUT_LINE_BYTES = 262_144;
+const DEFAULT_MAX_STDERR_TAIL_BYTES = 8_192;
 const THREAD_LIST_LIMIT = 500;
 const MALFORMED_MESSAGE_ERROR = "Codex app-server sent malformed JSON";
 const OVERSIZED_STDOUT_BUFFER_ERROR =
@@ -60,6 +61,50 @@ const OVERSIZED_STDOUT_LINE_ERROR = "Codex app-server sent oversized stdout line
 const normalizeError = (error: unknown, fallback: string) =>
   error instanceof Error ? error : new Error(fallback);
 const utf8ByteLength = (value: string) => Buffer.byteLength(value, "utf8");
+const retainUtf8Tail = (value: string, maxBytes: number) => {
+  if (!value || maxBytes <= 0) {
+    return "";
+  }
+
+  let retainedBytes = 0;
+  let retainedStartIndex = value.length;
+
+  for (const codePoint of Array.from(value).reverse()) {
+    const codePointBytes = utf8ByteLength(codePoint);
+
+    if (retainedBytes + codePointBytes > maxBytes) {
+      break;
+    }
+
+    retainedBytes += codePointBytes;
+    retainedStartIndex -= codePoint.length;
+  }
+
+  return value.slice(retainedStartIndex);
+};
+const formatChildTerminationDetails = (
+  code: number | null | undefined,
+  signal: NodeJS.Signals | null | undefined,
+  stderrTail: string
+) => {
+  const details: string[] = [];
+
+  if (typeof code === "number") {
+    details.push(`code ${code}`);
+  }
+
+  if (signal) {
+    details.push(`signal ${signal}`);
+  }
+
+  const trimmedStderrTail = stderrTail.trim();
+
+  if (trimmedStderrTail) {
+    details.push(`stderr tail: ${trimmedStderrTail}`);
+  }
+
+  return details.length > 0 ? ` (${details.join(", ")})` : "";
+};
 
 export class CodexBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -74,6 +119,8 @@ export class CodexBridge extends EventEmitter {
   private readonly requestTimeoutMs: number;
   private readonly maxStdoutBufferBytes: number;
   private readonly maxStdoutLineBytes: number;
+  private readonly maxStderrTailBytes: number;
+  private stderrTail = "";
   private state: SessionState = {
     status: "connecting",
     account: null,
@@ -87,6 +134,7 @@ export class CodexBridge extends EventEmitter {
     requestTimeoutMs?: number;
     maxStdoutBufferBytes?: number;
     maxStdoutLineBytes?: number;
+    maxStderrTailBytes?: number;
   }) {
     super();
     this.requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
@@ -95,6 +143,7 @@ export class CodexBridge extends EventEmitter {
       options?.maxStdoutLineBytes ?? DEFAULT_MAX_STDOUT_LINE_BYTES,
       this.maxStdoutBufferBytes
     );
+    this.maxStderrTailBytes = options?.maxStderrTailBytes ?? DEFAULT_MAX_STDERR_TAIL_BYTES;
   }
 
   async start() {
@@ -485,17 +534,31 @@ export class CodexBridge extends EventEmitter {
     }
 
     this.clearBuffer();
+    this.clearStderrTail();
     this.stdinWriteChain = Promise.resolve();
     this.child = spawn("codex", ["app-server"], {
       stdio: ["pipe", "pipe", "pipe"],
       env: process.env
     });
 
-    this.child.stdout.setEncoding("utf8");
-    this.child.stdout.on("data", (chunk: string) => this.handleStdout(chunk));
+    const child = this.child;
 
-    this.child.stderr.setEncoding("utf8");
-    this.child.stderr.on("data", (chunk: string) => {
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      if (this.child !== child) {
+        return;
+      }
+
+      this.handleStdout(chunk);
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      if (this.child !== child) {
+        return;
+      }
+
+      this.appendStderrTail(chunk);
       const message = chunk.trim();
       if (!message) {
         return;
@@ -509,7 +572,8 @@ export class CodexBridge extends EventEmitter {
       this.emit("stateChanged", this.state);
     });
 
-    this.child.on("exit", () => this.handleChildExit());
+    child.on("error", (error) => this.handleChildError(child, error));
+    child.on("exit", (code, signal) => this.handleChildExit(child, code, signal));
 
     await this.request("initialize", {
       clientInfo: {
@@ -519,6 +583,11 @@ export class CodexBridge extends EventEmitter {
       capabilities: {
         experimentalApi: true
       }
+    });
+    await this.writeMessage({
+      jsonrpc: "2.0",
+      method: "initialized",
+      params: {}
     });
   }
 
@@ -630,16 +699,52 @@ export class CodexBridge extends EventEmitter {
     });
   }
 
-  private handleChildExit() {
+  private handleChildExit(
+    child: ChildProcessWithoutNullStreams,
+    code?: number | null,
+    signal?: NodeJS.Signals | null
+  ) {
+    if (this.child !== child) {
+      return;
+    }
+
+    const message = `Codex app-server exited before responding${formatChildTerminationDetails(
+      code,
+      signal,
+      this.stderrTail
+    )}`;
     this.child = null;
     this.clearBuffer();
+    this.clearStderrTail();
     this.stdinWriteChain = Promise.resolve();
     this.startPromise = null;
-    this.rejectAllPending("Codex app-server exited before responding");
+    this.rejectAllPending(message);
     this.state = {
       ...this.state,
       status: "error",
-      error: this.state.error ?? "Codex app-server exited unexpectedly",
+      error: this.state.error ?? message,
+      lastUpdatedAt: now()
+    };
+    this.emit("stateChanged", this.state);
+  }
+
+  private handleChildError(child: ChildProcessWithoutNullStreams, error: Error) {
+    if (this.child !== child) {
+      return;
+    }
+
+    const message = normalizeError(error, "Codex app-server process error").message;
+
+    this.child = null;
+    this.clearBuffer();
+    this.clearStderrTail();
+    this.stdinWriteChain = Promise.resolve();
+    this.startPromise = null;
+    this.rejectAllPending(message);
+    this.state = {
+      ...this.state,
+      status: "error",
+      error: message,
       lastUpdatedAt: now()
     };
     this.emit("stateChanged", this.state);
@@ -750,6 +855,14 @@ export class CodexBridge extends EventEmitter {
   private clearBuffer() {
     this.buffer = "";
     this.bufferByteLength = 0;
+  }
+
+  private appendStderrTail(chunk: string) {
+    this.stderrTail = retainUtf8Tail(`${this.stderrTail}${chunk}`, this.maxStderrTailBytes);
+  }
+
+  private clearStderrTail() {
+    this.stderrTail = "";
   }
 
   private failStdoutProtocol(message: string) {

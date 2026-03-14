@@ -6,6 +6,7 @@ import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
 import { openInEditor, resolveAvailableEditors } from "./editor-launch";
 import { realtimeService } from "./realtime-service";
+import { voiceApiKeyService } from "./voice-api-key-service";
 import { voicePreferencesService } from "./voice-preferences-service";
 import { workspaceService } from "./workspace-service";
 
@@ -149,4 +150,14 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IPC_CHANNELS.voicePreferencesReset, () =>
     voicePreferencesService.resetPreferences()
   );
+  ipcMain.removeHandler(IPC_CHANNELS.voiceApiKeyGetState);
+  ipcMain.handle(IPC_CHANNELS.voiceApiKeyGetState, () => voiceApiKeyService.getState());
+  ipcMain.removeHandler(IPC_CHANNELS.voiceApiKeySet);
+  ipcMain.handle(IPC_CHANNELS.voiceApiKeySet, (_event, apiKey: string) =>
+    voiceApiKeyService.setApiKey(apiKey)
+  );
+  ipcMain.removeHandler(IPC_CHANNELS.voiceApiKeyClear);
+  ipcMain.handle(IPC_CHANNELS.voiceApiKeyClear, () => voiceApiKeyService.clearApiKey());
+  ipcMain.removeHandler(IPC_CHANNELS.voiceApiKeyTest);
+  ipcMain.handle(IPC_CHANNELS.voiceApiKeyTest, () => voiceApiKeyService.testApiKey());
 };

@@ -582,11 +582,11 @@ export function LeftRail({
           type="button"
           className={isVoicePanelOpen ? "rail-footer-button rail-footer-button-active" : "rail-footer-button"}
           onClick={() => void onToggleVoicePanel()}
-          aria-label={isVoicePanelOpen ? "Hide voice panel" : "Show voice panel"}
-          title="Voice"
+          aria-label={isVoicePanelOpen ? "Hide realtime panel" : "Show realtime panel"}
+          title="Realtime"
         >
           <VoiceIcon />
-          <span>Voice</span>
+          <span>Realtime</span>
         </button>
         <button
           type="button"

@@ -8,7 +8,7 @@ Voice-native Codex desktop.
 [![React](https://img.shields.io/badge/react-19.2.4-7fa7b5)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.9.3-6e92a3)](https://www.typescriptlang.org/)
 
-Electron app. React renderer. Local Codex app-server bridge. Realtime voice loop. Workspace threads, approvals, settings, archives, worker controls.
+Electron app. React renderer. Local Codex app-server bridge for coding work. OpenAI-backed voice modes for transcription and realtime speech. Workspace threads, approvals, settings, archives, worker controls.
 
 ## Status
 
@@ -20,6 +20,7 @@ Current surface:
 - live thread timeline with commands, plans, diffs, approvals, and worker activity
 - inline approvals + clarification
 - voice bar + device selection
+- OpenAI voice settings: transcription / realtime mode + separate API key
 - settings page + archived chats
 - worker model / reasoning / plan / approval controls
 - Electron E2E regression coverage
@@ -55,4 +56,4 @@ pnpm build
 
 - app code: `/apps/desktop`
 - shared contracts: `/packages/shared`
-- product spec: `/swe-voice-codex-product-spec.md`
+- voice ADR: `/docs/architecture/voice-agent-redesign.md`
