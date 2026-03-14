@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInfo, ThreadSummary, WorkspaceState } from "@shared";
@@ -218,6 +218,80 @@ describe("LeftRail", () => {
 
     expect(onCreateThread).toHaveBeenCalledTimes(1);
     expect(onCreateThread).toHaveBeenCalledWith("workspace-1");
+  });
+
+  it("does not schedule an extra commit when the current project is already expanded", async () => {
+    const commitPhases: string[] = [];
+    const refreshedWorkspaceState: WorkspaceState = {
+      ...workspaceState,
+      threads: workspaceState.threads.map((thread) => ({ ...thread })),
+      projects: workspaceState.projects.map((project) => ({
+        ...project,
+        threads: project.threads.map((thread) => ({ ...thread }))
+      }))
+    };
+
+    await act(async () => {
+      root?.render(
+        <Profiler
+          id="left-rail"
+          onRender={(_id, phase) => {
+            commitPhases.push(phase);
+          }}
+        >
+          <LeftRail
+            appInfo={appInfo}
+            workspaceState={workspaceState}
+            isOpeningWorkspace={false}
+            isCreatingThread={false}
+            archivingThreadId={null}
+            removingWorkspaceId={null}
+            runningThreadId={null}
+            isSettingsView={false}
+            onOpenWorkspace={vi.fn()}
+            onCreateThread={vi.fn<CreateThreadHandler>()}
+            onRemoveWorkspace={vi.fn<RemoveWorkspaceHandler>()}
+            onOpenSettings={vi.fn()}
+            onSelectWorkspace={vi.fn()}
+            onSelectThread={vi.fn()}
+            onArchiveThread={vi.fn<ArchiveThreadHandler>()}
+          />
+        </Profiler>
+      );
+    });
+
+    const baselineCommitCount = commitPhases.length;
+
+    await act(async () => {
+      root?.render(
+        <Profiler
+          id="left-rail"
+          onRender={(_id, phase) => {
+            commitPhases.push(phase);
+          }}
+        >
+          <LeftRail
+            appInfo={appInfo}
+            workspaceState={refreshedWorkspaceState}
+            isOpeningWorkspace={false}
+            isCreatingThread={false}
+            archivingThreadId={null}
+            removingWorkspaceId={null}
+            runningThreadId={null}
+            isSettingsView={false}
+            onOpenWorkspace={vi.fn()}
+            onCreateThread={vi.fn<CreateThreadHandler>()}
+            onRemoveWorkspace={vi.fn<RemoveWorkspaceHandler>()}
+            onOpenSettings={vi.fn()}
+            onSelectWorkspace={vi.fn()}
+            onSelectThread={vi.fn()}
+            onArchiveThread={vi.fn<ArchiveThreadHandler>()}
+          />
+        </Profiler>
+      );
+    });
+
+    expect(commitPhases.length - baselineCommitCount).toBe(1);
   });
 
   it("opens the project menu and removes the project", async () => {
