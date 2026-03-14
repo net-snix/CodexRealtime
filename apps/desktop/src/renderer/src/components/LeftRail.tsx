@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import type { AppInfo, ThreadSummary, WorkspaceState } from "@shared";
 
 interface LeftRailProps {
@@ -166,32 +166,34 @@ function visibleThreadsForProject(project: ProjectSummary, expanded: boolean) {
 
 interface ProjectThreadRowProps {
   projectId: string;
-  currentThreadId: string | null;
   thread: ThreadSummary;
-  archivingThreadId: string | null;
-  confirmThreadId: string | null;
-  runningThreadId: string | null;
-  setConfirmThreadId: Dispatch<SetStateAction<string | null>>;
-  setOpenProjectMenuId: Dispatch<SetStateAction<string | null>>;
-  onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
-  onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
+  isActiveThread: boolean;
+  isConfirmingArchive: boolean;
+  isArchivingThread: boolean;
+  isArchiveDisabled: boolean;
+  archiveTitle: string;
+  statusLabel: string | null;
+  statusTone: ThreadStatusTone | null;
+  onSelectThread: (workspaceId: string, threadId: string) => void;
+  onArchiveThread: (workspaceId: string, threadId: string) => void;
+  onToggleArchiveConfirm: (threadId: string) => void;
 }
 
-function ProjectThreadRow({
+const ProjectThreadRow = memo(function ProjectThreadRow({
   projectId,
-  currentThreadId,
   thread,
-  archivingThreadId,
-  confirmThreadId,
-  runningThreadId,
-  setConfirmThreadId,
-  setOpenProjectMenuId,
+  isActiveThread,
+  isConfirmingArchive,
+  isArchivingThread,
+  isArchiveDisabled,
+  archiveTitle,
+  statusLabel,
+  statusTone,
   onSelectThread,
-  onArchiveThread
+  onArchiveThread,
+  onToggleArchiveConfirm
 }: ProjectThreadRowProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const threadStatus = resolveThreadStatus(thread, runningThreadId);
-  const isActiveThread = currentThreadId === thread.id;
   const threadRowClassNames = ["project-thread-row"];
 
   if (isActiveThread) {
@@ -202,8 +204,8 @@ function ProjectThreadRow({
     threadRowClassNames.push("project-thread-row-hovered");
   }
 
-  if (threadStatus) {
-    threadRowClassNames.push(`project-thread-row-${threadStatus.tone}`);
+  if (statusTone) {
+    threadRowClassNames.push(`project-thread-row-${statusTone}`);
   }
 
   return (
@@ -217,35 +219,29 @@ function ProjectThreadRow({
         <button
           type="button"
           className="project-thread-button"
-          onClick={() => {
-            setConfirmThreadId(null);
-            setOpenProjectMenuId(null);
-            void onSelectThread(projectId, thread.id);
-          }}
+          onClick={() => onSelectThread(projectId, thread.id)}
           title={thread.title}
         >
           <span className="project-thread-line">
             <span className="project-thread-title">{thread.title}</span>
-            {threadStatus ? (
-              <span
-                className={`project-thread-status-pill project-thread-status-pill-${threadStatus.tone}`}
-              >
-                {threadStatus.label}
+            {statusLabel && statusTone ? (
+              <span className={`project-thread-status-pill project-thread-status-pill-${statusTone}`}>
+                {statusLabel}
               </span>
             ) : null}
           </span>
         </button>
         <span className="project-thread-meta">
           <span className="project-thread-time-slot">
-            {confirmThreadId === thread.id ? (
+            {isConfirmingArchive ? (
               <button
                 type="button"
                 className="project-thread-confirm-button"
-                onClick={() => void onArchiveThread(projectId, thread.id)}
-                disabled={archivingThreadId === thread.id}
+                onClick={() => onArchiveThread(projectId, thread.id)}
+                disabled={isArchivingThread}
                 aria-label={`Confirm archive ${thread.title}`}
               >
-                {archivingThreadId === thread.id ? "..." : "Confirm"}
+                {isArchivingThread ? "..." : "Confirm"}
               </button>
             ) : (
               <>
@@ -253,20 +249,10 @@ function ProjectThreadRow({
                 <button
                   type="button"
                   className="project-thread-archive-button"
-                  onClick={() =>
-                    setConfirmThreadId((current) => (current === thread.id ? null : thread.id))
-                  }
-                  disabled={
-                    archivingThreadId !== null ||
-                    thread.isRunning ||
-                    runningThreadId === thread.id
-                  }
+                  onClick={() => onToggleArchiveConfirm(thread.id)}
+                  disabled={isArchiveDisabled}
                   aria-label={`Archive ${thread.title}`}
-                  title={
-                    thread.isRunning || runningThreadId === thread.id
-                      ? "Stop active work before archiving"
-                      : `Archive ${thread.title}`
-                  }
+                  title={archiveTitle}
                 >
                   <ArchiveIcon />
                 </button>
@@ -277,7 +263,7 @@ function ProjectThreadRow({
       </div>
     </li>
   );
-}
+});
 
 export function LeftRail({
   appInfo,
@@ -324,6 +310,26 @@ export function LeftRail({
       [workspaceId]: !current[workspaceId]
     }));
   };
+
+  const handleSelectThread = useCallback(
+    (workspaceId: string, threadId: string) => {
+      setConfirmThreadId(null);
+      setOpenProjectMenuId(null);
+      void onSelectThread(workspaceId, threadId);
+    },
+    [onSelectThread]
+  );
+
+  const handleArchiveThread = useCallback(
+    (workspaceId: string, threadId: string) => {
+      void onArchiveThread(workspaceId, threadId);
+    },
+    [onArchiveThread]
+  );
+
+  const handleToggleArchiveConfirm = useCallback((threadId: string) => {
+    setConfirmThreadId((current) => (current === threadId ? null : threadId));
+  }, []);
 
   useEffect(() => {
     if (!confirmThreadId) {
@@ -489,21 +495,35 @@ export function LeftRail({
               {expanded ? (
                 hasThreads ? (
                   <ul className="project-thread-list">
-                    {visibleThreads.map((thread) => (
-                      <ProjectThreadRow
-                        key={thread.id}
-                        projectId={project.id}
-                        currentThreadId={project.currentThreadId}
-                        thread={thread}
-                        archivingThreadId={archivingThreadId}
-                        confirmThreadId={confirmThreadId}
-                        runningThreadId={runningThreadId}
-                        setConfirmThreadId={setConfirmThreadId}
-                        setOpenProjectMenuId={setOpenProjectMenuId}
-                        onSelectThread={onSelectThread}
-                        onArchiveThread={onArchiveThread}
-                      />
-                    ))}
+                    {visibleThreads.map((thread) => {
+                      const threadStatus = resolveThreadStatus(thread, runningThreadId);
+
+                      return (
+                        <ProjectThreadRow
+                          key={thread.id}
+                          projectId={project.id}
+                          thread={thread}
+                          isActiveThread={project.currentThreadId === thread.id}
+                          isConfirmingArchive={confirmThreadId === thread.id}
+                          isArchivingThread={archivingThreadId === thread.id}
+                          isArchiveDisabled={
+                            archivingThreadId !== null ||
+                            thread.isRunning ||
+                            runningThreadId === thread.id
+                          }
+                          archiveTitle={
+                            thread.isRunning || runningThreadId === thread.id
+                              ? "Stop active work before archiving"
+                              : `Archive ${thread.title}`
+                          }
+                          statusLabel={threadStatus?.label ?? null}
+                          statusTone={threadStatus?.tone ?? null}
+                          onSelectThread={handleSelectThread}
+                          onArchiveThread={handleArchiveThread}
+                          onToggleArchiveConfirm={handleToggleArchiveConfirm}
+                        />
+                      );
+                    })}
                     {hasHiddenThreads ? (
                       <li>
                         <button
