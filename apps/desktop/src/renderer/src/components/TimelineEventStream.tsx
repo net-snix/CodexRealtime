@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { memo, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { EditorId } from "@codex-realtime/contracts";
 import type { TimelineDiffEntry, TimelineEntry } from "@shared";
 import type { PresentedTimelineEntry, PresentedTimelineEvent } from "../timeline-event-stream";
@@ -368,7 +368,7 @@ function TimelineEntryCard({
   );
 }
 
-export function TimelineEventStream({
+function TimelineEventStreamComponent({
   entries,
   isWorkingLogMode,
   isRunning,
@@ -438,3 +438,7 @@ export function TimelineEventStream({
     </div>
   );
 }
+
+TimelineEventStreamComponent.displayName = "TimelineEventStream";
+
+export const TimelineEventStream = memo(TimelineEventStreamComponent);

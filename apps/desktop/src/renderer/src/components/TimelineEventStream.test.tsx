@@ -110,6 +110,51 @@ describe("TimelineEventStream", () => {
     expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("skips re-rendering message rows when a parent re-renders with the same stream props", async () => {
+    const entries = [assistantMessageEntry];
+    const streamRef = { current: null };
+
+    await act(async () => {
+      root?.render(
+        <div>
+          <span data-parent-version="1">parent one</span>
+          <TimelineEventStream
+            entries={entries}
+            isWorkingLogMode={false}
+            isRunning={false}
+            isResolvingRequests={false}
+            activeWorkingLabel="Working"
+            latestWorkingStatus="Working"
+            activeWorkStartedAt={null}
+            streamRef={streamRef}
+          />
+        </div>
+      );
+    });
+
+    expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root?.render(
+        <div>
+          <span data-parent-version="2">parent two</span>
+          <TimelineEventStream
+            entries={entries}
+            isWorkingLogMode={false}
+            isRunning={false}
+            isResolvingRequests={false}
+            activeWorkingLabel="Working"
+            latestWorkingStatus="Working"
+            activeWorkStartedAt={null}
+            streamRef={streamRef}
+          />
+        </div>
+      );
+    });
+
+    expect(richTextRenderSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("clusters consecutive command rows into a compact command summary", async () => {
     await act(async () => {
       root?.render(
