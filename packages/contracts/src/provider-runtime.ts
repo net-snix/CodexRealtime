@@ -364,24 +364,33 @@ export type ProviderRuntimeEvent =
 const countDiffStats = (diff: string) => {
   let additions = 0;
   let deletions = 0;
+  let lineStart = 0;
 
-  for (const line of diff.split("\n")) {
-    if (!line) {
-      continue;
+  // Large diffs can arrive in runtime payloads; scan in place to avoid split() allocations.
+  while (lineStart <= diff.length) {
+    const newlineIndex = diff.indexOf("\n", lineStart);
+    const lineEnd = newlineIndex === -1 ? diff.length : newlineIndex;
+
+    if (
+      lineEnd > lineStart &&
+      !diff.startsWith("+++ ", lineStart) &&
+      !diff.startsWith("--- ", lineStart) &&
+      !diff.startsWith("@@", lineStart)
+    ) {
+      const marker = diff[lineStart];
+
+      if (marker === "+") {
+        additions += 1;
+      } else if (marker === "-") {
+        deletions += 1;
+      }
     }
 
-    if (line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("@@")) {
-      continue;
+    if (newlineIndex === -1) {
+      break;
     }
 
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
+    lineStart = newlineIndex + 1;
   }
 
   return { additions, deletions };

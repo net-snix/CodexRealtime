@@ -85,6 +85,18 @@ const collectTextPaths = (value: string) => {
   return normalized.length === lines.length ? normalized : [];
 };
 
+const collectClipboardTextPaths = (clipboardData: DataTransfer) => {
+  const paths = new Set<string>();
+
+  for (const format of ["text/uri-list", "text/plain"] as const) {
+    for (const path of collectTextPaths(clipboardData.getData(format))) {
+      paths.add(path);
+    }
+  }
+
+  return [...paths];
+};
+
 const getClipboardFilePath = (file: File | null) => {
   const path = file && "path" in file ? (file as FileWithPath).path : null;
   if (typeof path !== "string") {
@@ -193,13 +205,7 @@ export const hasPastedAttachmentCandidates = (clipboardData: DataTransfer | null
     return false;
   }
 
-  const uriListPaths = collectTextPaths(clipboardData.getData("text/uri-list"));
-  if (uriListPaths.length > 0) {
-    return true;
-  }
-
-  const plainTextPaths = collectTextPaths(clipboardData.getData("text/plain"));
-  if (plainTextPaths.length > 0) {
+  if (collectClipboardTextPaths(clipboardData).length > 0) {
     return true;
   }
 
@@ -228,13 +234,7 @@ export const readPastedAttachments = async (
     }
   }
 
-  const uriListPaths = collectTextPaths(clipboardData.getData("text/uri-list"));
-  for (const path of uriListPaths) {
-    paths.add(path);
-  }
-
-  const plainTextPaths = collectTextPaths(clipboardData.getData("text/plain"));
-  for (const path of plainTextPaths) {
+  for (const path of collectClipboardTextPaths(clipboardData)) {
     paths.add(path);
   }
 
