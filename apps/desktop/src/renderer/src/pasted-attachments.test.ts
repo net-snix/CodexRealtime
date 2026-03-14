@@ -49,6 +49,18 @@ describe("pasted attachments", () => {
     });
   });
 
+  it("rejects clipboard text batches when any path is invalid", async () => {
+    const clipboardData = createClipboardStub({
+      textPlain: "/tmp/good.png\n/tmp/evil\u0000name.png"
+    });
+
+    expect(hasPastedAttachmentCandidates(clipboardData)).toBe(false);
+    await expect(readPastedAttachments(clipboardData)).resolves.toEqual({
+      paths: [],
+      images: []
+    });
+  });
+
   it("rejects file URLs that decode to control characters", async () => {
     const clipboardData = createClipboardStub({
       textUriList: "file:///tmp/evil%00name.png"
