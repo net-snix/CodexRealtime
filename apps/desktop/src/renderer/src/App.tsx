@@ -17,10 +17,8 @@ import { useRealtimeVoice } from "./use-realtime-voice";
 import { useWorkerSettings } from "./use-worker-settings";
 import { VoiceBar } from "./components/VoiceBar";
 import {
-  applyArchiveThreadTransition,
   applyCreateThreadTransition,
-  applySelectThreadTransition,
-  applyUnarchiveThreadTransition
+  applySelectThreadTransition
 } from "./workspace-state-transitions";
 import {
   applyOptimisticTurnStart,
@@ -116,6 +114,7 @@ export default function App() {
   const [isStartingTurn, setIsStartingTurn] = useState(false);
   const [isStoppingVoice, setIsStoppingVoice] = useState(false);
   const [voiceFeedback, setVoiceFeedback] = useState<VoiceFeedback>(null);
+  const [isVoicePanelOpen, setIsVoicePanelOpen] = useState(false);
   const [mainView, setMainView] = useState<MainView>("thread");
   const [activePane, setActivePane] = useState<PaneKey>("plan");
   const [isRightPaneOpen, setIsRightPaneOpen] = useState(true);
@@ -132,6 +131,7 @@ export default function App() {
   const previousIsRunningRef = useRef(false);
   const previousStatusRef = useRef<string | null>(null);
   const timelineRefreshPromiseRef = useRef<Promise<TimelineState> | null>(null);
+  const workspaceRefreshPromiseRef = useRef<Promise<WorkspaceState> | null>(null);
   const nativeApiRef = useRef<ReturnType<typeof ensureNativeApi> | null>(null);
   if (!nativeApiRef.current) {
     nativeApiRef.current = ensureNativeApi();
@@ -231,6 +231,27 @@ export default function App() {
       });
 
     timelineRefreshPromiseRef.current = request;
+    return request;
+  });
+
+  const refreshWorkspaceState = useEffectEvent(async () => {
+    if (workspaceRefreshPromiseRef.current) {
+      return workspaceRefreshPromiseRef.current;
+    }
+
+    const request = nativeApiRef.current!
+      .getWorkspaceState()
+      .then((nextWorkspaceState) => {
+        setWorkspaceState(nextWorkspaceState);
+        return nextWorkspaceState;
+      })
+      .finally(() => {
+        if (workspaceRefreshPromiseRef.current === request) {
+          workspaceRefreshPromiseRef.current = null;
+        }
+      });
+
+    workspaceRefreshPromiseRef.current = request;
     return request;
   });
 
@@ -415,19 +436,8 @@ export default function App() {
       }
 
       const nextTimeline = await nativeApiRef.current!.createThread(workspaceId);
-      const threadId = nextTimeline.threadId;
       setTimelineState(nextTimeline);
-      if (threadId) {
-        startTransition(() => {
-          setWorkspaceState((current) =>
-            applyCreateThreadTransition(current, {
-              workspaceId,
-              threadId,
-              title: "New thread"
-            })
-          );
-        });
-      }
+      await refreshWorkspaceState();
       setMainView("thread");
     } finally {
       setIsCreatingThread(false);
@@ -463,23 +473,16 @@ export default function App() {
       }
 
       const result: ArchiveThreadResult = await nativeApiRef.current!.archiveThread(workspaceId, threadId);
+      const nextWorkspaceState = await refreshWorkspaceState();
       setTimelineState(result.timelineState);
-      startTransition(() => {
-        setWorkspaceState((current) =>
-          applyArchiveThreadTransition(current, {
-            workspaceId: result.workspaceId,
-            threadId: result.archivedThreadId,
-            nextThreadId: result.selectedThreadId
-          })
-        );
-      });
 
       if (isArchivingCurrentThread) {
+        const nextCurrentProject =
+          nextWorkspaceState.projects.find((project) => project.isCurrent) ?? null;
+        const hasLiveThreads = Boolean(nextCurrentProject?.threads.length);
         clearWorkerAttachments();
         setActivePane("plan");
-        setMainView(
-          mainView === "settings" ? "settings" : result.selectedThreadId ? "thread" : "settings"
-        );
+        setMainView(mainView === "settings" ? "settings" : hasLiveThreads ? "thread" : "settings");
       }
     } catch (error) {
       setArchiveError(toErrorMessage(error, "Archiving thread failed."));
@@ -499,14 +502,7 @@ export default function App() {
 
       const nextTimeline = await nativeApiRef.current!.unarchiveThread(workspaceId, threadId);
       setTimelineState(nextTimeline);
-      startTransition(() => {
-        setWorkspaceState((current) =>
-          applyUnarchiveThreadTransition(current, {
-            workspaceId,
-            threadId
-          })
-        );
-      });
+      await refreshWorkspaceState();
       setActivePane("plan");
       setMainView("thread");
     } catch (error) {
@@ -779,6 +775,8 @@ export default function App() {
   const appShellClassName = [
     "app-shell",
     isMacos ? "app-shell-macos" : "",
+    isVoicePanelOpen ? "app-shell-voice-open" : "",
+    !isVoicePanelOpen ? "app-shell-voice-closed" : "",
     appSettings.density === "compact" ? "app-shell-density-compact" : "",
     appSettings.reduceMotion ? "app-shell-reduced-motion" : "",
     appSettings.developerMode ? "app-shell-developer-mode" : ""
@@ -788,7 +786,9 @@ export default function App() {
 
   const workspaceFrameClassName = [
     "workspace-frame",
+    mainView !== "settings" ? "workspace-frame-thread-view" : "",
     mainView === "settings" ? "workspace-frame-settings" : "",
+    mainView !== "settings" && isRightPaneOpen ? "workspace-frame-right-pane-open" : "",
     mainView !== "settings" && !isRightPaneOpen ? "workspace-frame-right-pane-closed" : ""
   ]
     .filter(Boolean)
@@ -816,10 +816,12 @@ export default function App() {
           removingWorkspaceId={removingWorkspaceId}
           runningThreadId={timelineState.isRunning ? currentThreadId : null}
           isSettingsView={mainView === "settings"}
+          isVoicePanelOpen={isVoicePanelOpen}
           onOpenWorkspace={handleOpenWorkspace}
           onCreateThread={handleCreateThread}
           onRemoveWorkspace={handleRemoveWorkspace}
           onOpenSettings={handleOpenSettings}
+          onToggleVoicePanel={() => setIsVoicePanelOpen((current) => !current)}
           onSelectWorkspace={handleSelectWorkspace}
           onSelectThread={handleSelectThread}
           onArchiveThread={handleArchiveThread}
@@ -894,18 +896,18 @@ export default function App() {
               onDenyRequest={handleDenyRequest}
               onSubmitUserInput={handleSubmitUserInput}
             />
-            {isRightPaneOpen ? (
-              <RightPane
-                activePane={activePane}
-                onSelect={(pane) => setActivePane(pane)}
-                onClose={() => setIsRightPaneOpen(false)}
-                timelineState={timelineState}
-              />
-            ) : null}
+            <RightPane
+              isOpen={isRightPaneOpen}
+              activePane={activePane}
+              onSelect={(pane) => setActivePane(pane)}
+              onClose={() => setIsRightPaneOpen(false)}
+              timelineState={timelineState}
+            />
           </>
         )}
       </main>
       <VoiceBar
+        isOpen={isVoicePanelOpen}
         sessionState={sessionState}
         state={voiceState}
         realtimeState={realtimeState}

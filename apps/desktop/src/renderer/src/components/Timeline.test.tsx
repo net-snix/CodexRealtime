@@ -210,6 +210,7 @@ describe("Timeline", () => {
     expect(container?.textContent).not.toContain("No turns yet.");
     expect(container?.textContent).not.toContain("Thread");
     expect(container?.textContent).not.toContain("Idle");
+    expect(container?.querySelector(".timeline-empty-state-inner")).not.toBeNull();
   });
 
   it("shows a centered repo CTA when no workspace is selected", async () => {
@@ -260,6 +261,7 @@ describe("Timeline", () => {
     expect(container?.textContent).toContain("Add repo");
     expect(container?.textContent).not.toContain("Workspace");
     expect(container?.textContent).not.toContain("Open a repo.");
+    expect(container?.querySelector(".timeline-empty-state-inner")).not.toBeNull();
 
     const addRepoButton = Array.from(container?.querySelectorAll("button") ?? []).find((button) =>
       button.textContent?.includes("Add repo")
@@ -727,7 +729,7 @@ describe("Timeline", () => {
       );
     });
 
-    const input = container?.querySelector<HTMLInputElement>(".timeline-input");
+    const input = container?.querySelector<HTMLTextAreaElement>(".timeline-input");
     expect(input).not.toBeNull();
 
     const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
@@ -793,7 +795,7 @@ describe("Timeline", () => {
       );
     });
 
-    const input = container?.querySelector<HTMLInputElement>(".timeline-input");
+    const input = container?.querySelector<HTMLTextAreaElement>(".timeline-input");
     expect(input).not.toBeNull();
 
     const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
@@ -869,7 +871,7 @@ describe("Timeline", () => {
       );
     });
 
-    const input = container?.querySelector<HTMLInputElement>(".timeline-input");
+    const input = container?.querySelector<HTMLTextAreaElement>(".timeline-input");
     expect(input).not.toBeNull();
 
     const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });

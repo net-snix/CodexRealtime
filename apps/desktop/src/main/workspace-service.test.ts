@@ -187,6 +187,93 @@ describe("WorkspaceService", () => {
     expect(threadChangeCache.has("thread-139")).toBe(true);
   });
 
+  it("drops a fresh unmaterialized thread when archiving it immediately", async () => {
+    const writeFileSync = vi.fn();
+    const archiveThread = vi.fn(async () => {
+      throw new Error(
+        "thread draft-thread is not materialized yet; includeTurns is unavailable before first user message"
+      );
+    });
+    const listThreads = vi.fn(async (_cwd: string, archived = false) => ({
+      data: archived
+        ? []
+        : [
+            {
+              id: "thread-existing",
+              name: "Existing thread",
+              preview: "Existing thread",
+              updatedAt: Math.floor(Date.now() / 1000)
+            }
+          ]
+    }));
+    const readThread = vi.fn(async (threadId: string) => ({
+      thread: {
+        id: threadId,
+        turns: []
+      }
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync: vi.fn(() =>
+        JSON.stringify({
+          currentWorkspaceId: "workspace-1",
+          workspaces: {
+            "workspace-1": {
+              id: "workspace-1",
+              name: "CodexRealtime",
+              path: "/tmp/CodexRealtime",
+              lastOpenedAt: "2026-03-11T00:00:00.000Z",
+              threadId: "draft-thread"
+            }
+          }
+        })
+      ),
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync,
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        start: vi.fn(),
+        archiveThread,
+        listThreads,
+        readThread
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+
+    const result = await service.archiveThread("workspace-1", "draft-thread");
+
+    expect(archiveThread).toHaveBeenCalledWith("draft-thread");
+    expect(listThreads).toHaveBeenCalledWith("/tmp/CodexRealtime", false);
+    expect(readThread).toHaveBeenCalledWith("thread-existing");
+    expect(result.selectedThreadId).toBe("thread-existing");
+    expect(result.timelineState.threadId).toBe("thread-existing");
+    expect(writeFileSync).toHaveBeenCalled();
+  });
+
   it("deduplicates attachment path candidates before filesystem resolution", async () => {
     const realpathSync = vi.fn((value: string) => value.trim());
     const statSync = vi.fn(() => ({

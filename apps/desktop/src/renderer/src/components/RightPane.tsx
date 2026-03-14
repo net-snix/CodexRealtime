@@ -20,6 +20,7 @@ const PANELS = {
 type PaneKey = keyof typeof PANELS;
 
 interface RightPaneProps {
+  isOpen: boolean;
   activePane: PaneKey;
   onSelect: (pane: PaneKey) => void;
   onClose: () => void;
@@ -71,6 +72,7 @@ function ClosePaneIcon() {
 }
 
 export function RightPane({
+  isOpen,
   activePane,
   onSelect,
   onClose,
@@ -267,7 +269,10 @@ export function RightPane({
   };
 
   return (
-    <aside className="right-pane panel stagger-3">
+    <aside
+      className={`right-pane panel${isOpen ? "" : " right-pane-closed"}`}
+      aria-hidden={!isOpen}
+    >
       <div className="right-pane-window-strip" aria-hidden="true" />
 
       <div className="pane-header-bar">

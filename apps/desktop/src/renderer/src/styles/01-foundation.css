@@ -85,11 +85,29 @@ select {
 .app-shell {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 2px;
+  grid-template-rows: minmax(0, 1fr);
+  --voice-panel-height: 72px;
+  --voice-panel-travel: calc(var(--voice-panel-height) + 4px);
+  --voice-panel-space: 0px;
+  --voice-panel-motion-duration: 155ms;
+  --right-pane-width: 292px;
+  --right-pane-travel: calc(var(--right-pane-width) + 4px);
+  --right-pane-space: 0px;
+  --right-pane-motion-duration: 155ms;
+  gap: 0;
   height: 100vh;
   padding: 2px 4px 4px;
   overflow: hidden;
+}
+
+.app-shell-voice-open {
+  --voice-panel-space: var(--voice-panel-travel);
+  --voice-panel-motion-duration: 225ms;
+}
+
+.app-shell-voice-closed {
+  gap: 0;
+  padding-bottom: 2px;
 }
 
 .backdrop {
@@ -105,14 +123,30 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 246px minmax(0, 1fr) 292px;
+  grid-template-columns: 246px minmax(0, 1fr);
   gap: 4px;
+  height: 100%;
   min-height: 0;
+  padding-bottom: var(--voice-panel-space);
+  transition: padding-bottom var(--voice-panel-motion-duration) linear;
   -webkit-app-region: no-drag;
 }
 
+.workspace-frame-thread-view {
+  padding-right: var(--right-pane-space);
+  transition:
+    padding-right var(--right-pane-motion-duration) linear,
+    padding-bottom var(--voice-panel-motion-duration) linear;
+}
+
+.workspace-frame-right-pane-open {
+  --right-pane-space: var(--right-pane-travel);
+  --right-pane-motion-duration: 225ms;
+}
+
 .workspace-frame-right-pane-closed {
-  grid-template-columns: 246px minmax(0, 1fr);
+  --right-pane-space: 0px;
+  --right-pane-motion-duration: 155ms;
 }
 
 .panel {

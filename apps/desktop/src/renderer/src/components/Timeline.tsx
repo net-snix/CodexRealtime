@@ -381,11 +381,6 @@ export function Timeline({
   const composerPlaceholder = hasWorkspace
     ? "Ask anything, @tag files/folders, or use / to show available commands"
     : "Open a repo first";
-  const composerModeLabel =
-    workerSettingsState.settings.collaborationMode === "plan"
-      ? (planModeOption?.label ?? "Plan")
-      : "Chat";
-
   const handleSubmit = async () => {
     const prompt = draft.trim();
 
@@ -643,20 +638,24 @@ export function Timeline({
           />
         ) : (
           <div className="timeline-empty-state timeline-empty-state-prompt">
-            <p>Send a message to start working</p>
+            <div className="timeline-empty-state-inner">
+              <p>Send a message to start working</p>
+            </div>
           </div>
         )
       ) : (
         <div className="timeline-empty-state timeline-empty-state-callout">
-          <p>Open a repo to get started</p>
-          <button
-            type="button"
-            className="timeline-empty-action"
-            onClick={() => void onOpenWorkspace()}
-            disabled={isOpeningWorkspace}
-          >
-            <span>{isOpeningWorkspace ? "Opening repo..." : "Add repo"}</span>
-          </button>
+          <div className="timeline-empty-state-inner">
+            <p>Open a repo to get started</p>
+            <button
+              type="button"
+              className="timeline-empty-action"
+              onClick={() => void onOpenWorkspace()}
+              disabled={isOpeningWorkspace}
+            >
+              <span>{isOpeningWorkspace ? "Opening repo..." : "Add repo"}</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -801,7 +800,12 @@ export function Timeline({
                     disabled={!hasWorkspace || isUpdatingWorkerSettings || isStartingTurn}
                     title={planModeOption?.name ?? "Plan"}
                   >
-                    <span className="timeline-worker-toggle-label">{composerModeLabel}</span>
+                    <span className="timeline-worker-toggle-label">
+                      {planModeOption?.label ?? "Plan"}
+                    </span>
+                    <span className="timeline-worker-switch" aria-hidden="true">
+                      <span className="timeline-worker-switch-thumb" />
+                    </span>
                   </button>
                 </>
               ) : null}

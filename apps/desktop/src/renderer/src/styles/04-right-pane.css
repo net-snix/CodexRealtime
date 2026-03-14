@@ -1,8 +1,21 @@
 .right-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 6px;
+  width: var(--right-pane-width);
   padding: 0 4px 8px;
+  transform: translateX(0);
+  will-change: transform;
+  transition: transform var(--right-pane-motion-duration) linear;
+}
+
+.right-pane-closed {
+  transform: translateX(var(--right-pane-travel));
+  pointer-events: none;
 }
 
 .right-pane-window-strip {

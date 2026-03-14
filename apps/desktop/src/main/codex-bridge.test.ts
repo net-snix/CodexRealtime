@@ -332,6 +332,49 @@ describe("CodexBridge", () => {
     });
   });
 
+  it("requests a larger thread page when listing workspace history", async () => {
+    const bridge = new CodexBridge();
+    const child = attachChild(bridge, new MockChild());
+    (bridge as unknown as { startPromise: Promise<void> | null }).startPromise = Promise.resolve();
+
+    const listThreadsPromise = bridge.listThreads("/tmp/CodexRealtime");
+
+    await vi.waitFor(() => {
+      expect(child.stdin.writes[0]).toBeDefined();
+    });
+
+    const payload = JSON.parse(child.stdin.writes[0]) as {
+      id: string;
+      method: string;
+      params: {
+        cwd: string;
+        archived: boolean;
+        limit: number;
+      };
+    };
+
+    expect(payload.method).toBe("thread/list");
+    expect(payload.params).toEqual({
+      cwd: "/tmp/CodexRealtime",
+      archived: false,
+      limit: 500
+    });
+
+    (bridge as unknown as { handleStdout: (chunk: string) => void }).handleStdout(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: payload.id,
+        result: {
+          data: []
+        }
+      })}\n`
+    );
+
+    await expect(listThreadsPromise).resolves.toEqual({
+      data: []
+    });
+  });
+
   it("ignores non-string method values", () => {
     const bridge = new CodexBridge();
     const notificationListener = vi.fn();

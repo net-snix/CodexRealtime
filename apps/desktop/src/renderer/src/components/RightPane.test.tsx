@@ -127,6 +127,7 @@ describe("RightPane", () => {
     await act(async () => {
       root?.render(
         <RightPane
+          isOpen={true}
           activePane="diff"
           onSelect={vi.fn()}
           onClose={vi.fn()}
@@ -154,6 +155,7 @@ describe("RightPane", () => {
     await act(async () => {
       root?.render(
         <RightPane
+          isOpen={true}
           activePane="diff"
           onSelect={vi.fn()}
           onClose={vi.fn()}
@@ -192,6 +194,7 @@ describe("RightPane", () => {
     await act(async () => {
       root?.render(
         <RightPane
+          isOpen={true}
           activePane="diff"
           onSelect={vi.fn()}
           onClose={vi.fn()}
@@ -240,6 +243,7 @@ describe("RightPane", () => {
     await act(async () => {
       root?.render(
         <RightPane
+          isOpen={true}
           activePane="diff"
           onSelect={vi.fn()}
           onClose={vi.fn()}

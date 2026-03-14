@@ -10,10 +10,12 @@ interface LeftRailProps {
   removingWorkspaceId: string | null;
   runningThreadId: string | null;
   isSettingsView: boolean;
+  isVoicePanelOpen: boolean;
   onOpenWorkspace: () => void | Promise<void>;
   onCreateThread: (workspaceId: string) => void | Promise<void>;
   onRemoveWorkspace: (workspaceId: string) => void | Promise<void>;
   onOpenSettings: () => void | Promise<void>;
+  onToggleVoicePanel: () => void | Promise<void>;
   onSelectWorkspace: (workspaceId: string) => void | Promise<void>;
   onSelectThread: (workspaceId: string, threadId: string) => void | Promise<void>;
   onArchiveThread: (workspaceId: string, threadId: string) => void | Promise<void>;
@@ -100,6 +102,29 @@ function SettingsIcon() {
     <svg aria-hidden="true" viewBox="0 0 16 16">
       <path
         d="M8 3.15a4.85 4.85 0 1 0 0 9.7 4.85 4.85 0 0 0 0-9.7Zm0 2.2a2.65 2.65 0 1 1 0 5.3 2.65 2.65 0 0 1 0-5.3ZM8 1.75v1.4M8 12.85v1.4M3.15 8h-1.4M14.25 8h-1.4M4.56 4.56l-.99-.99M12.43 12.43l-.99-.99M11.44 4.56l.99-.99M3.57 12.43l.99-.99"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.15"
+      />
+    </svg>
+  );
+}
+
+function VoiceIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path
+        d="M8 2.25a2.25 2.25 0 0 1 2.25 2.25v3A2.25 2.25 0 0 1 8 9.75 2.25 2.25 0 0 1 5.75 7.5v-3A2.25 2.25 0 0 1 8 2.25Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.15"
+      />
+      <path
+        d="M3.75 7.25a4.25 4.25 0 0 0 8.5 0M8 11.5v2.25M5.75 13.75h4.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
@@ -274,10 +299,12 @@ export function LeftRail({
   removingWorkspaceId,
   runningThreadId,
   isSettingsView,
+  isVoicePanelOpen,
   onOpenWorkspace,
   onCreateThread,
   onRemoveWorkspace,
   onOpenSettings,
+  onToggleVoicePanel,
   onSelectWorkspace,
   onSelectThread,
   onArchiveThread
@@ -551,6 +578,16 @@ export function LeftRail({
       </div>
 
       <div className="rail-footer">
+        <button
+          type="button"
+          className={isVoicePanelOpen ? "rail-footer-button rail-footer-button-active" : "rail-footer-button"}
+          onClick={() => void onToggleVoicePanel()}
+          aria-label={isVoicePanelOpen ? "Hide voice panel" : "Show voice panel"}
+          title="Voice"
+        >
+          <VoiceIcon />
+          <span>Voice</span>
+        </button>
         <button
           type="button"
           className={isSettingsView ? "rail-footer-button rail-footer-button-active" : "rail-footer-button"}

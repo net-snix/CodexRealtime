@@ -59,44 +59,47 @@ describe("VoiceBar", () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  it("collapses the voice bar and closes the device picker", async () => {
-    await act(async () => {
-      root?.render(
-        <VoiceBar
-          sessionState={sessionState}
-          state="idle"
-          realtimeState={realtimeState}
-          disabled={false}
-          isActive={false}
-          isStopping={false}
-          feedback={null}
-          canStop={false}
-          liveTranscript={[]}
-          inputDevices={devices}
-          outputDevices={devices}
-          selectedInputDeviceId=""
-          selectedOutputDeviceId=""
-          supportsOutputSelection={true}
-          shouldShowDeviceHint={false}
-          onDismissDeviceHint={vi.fn()}
-          onInputDeviceChange={vi.fn()}
-          onOutputDeviceChange={vi.fn()}
-          onToggle={vi.fn()}
-          onStop={vi.fn()}
-        />
-      );
-    });
+  it("closes the device picker when the controlled panel closes", async () => {
+    const renderVoiceBar = async (isOpen: boolean) => {
+      await act(async () => {
+        root?.render(
+          <VoiceBar
+            isOpen={isOpen}
+            sessionState={sessionState}
+            state="idle"
+            realtimeState={realtimeState}
+            disabled={false}
+            isActive={false}
+            isStopping={false}
+            feedback={null}
+            canStop={false}
+            liveTranscript={[]}
+            inputDevices={devices}
+            outputDevices={devices}
+            selectedInputDeviceId=""
+            selectedOutputDeviceId=""
+            supportsOutputSelection={true}
+            shouldShowDeviceHint={false}
+            onDismissDeviceHint={vi.fn()}
+            onInputDeviceChange={vi.fn()}
+            onOutputDeviceChange={vi.fn()}
+            onToggle={vi.fn()}
+            onStop={vi.fn()}
+          />
+        );
+      });
+    };
+
+    await renderVoiceBar(false);
+
+    expect(container?.querySelector(".voice-bar-collapsed")).not.toBeNull();
+    expect(container?.querySelector(".voice-device-panel")).toBeNull();
+
+    await renderVoiceBar(true);
 
     const devicesButton = Array.from(container?.querySelectorAll("button") ?? []).find(
       (button) => button.textContent === "Devices"
     );
-    const buttons = Array.from(container?.querySelectorAll("button") ?? []);
-    const collapseButton = container?.querySelector(
-      'button[aria-label="Hide voice bar"]'
-    ) as HTMLButtonElement | null;
-
-    expect(container?.textContent).not.toContain("State");
-    expect(buttons.at(-1)).toBe(collapseButton);
 
     await act(async () => {
       devicesButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -104,13 +107,10 @@ describe("VoiceBar", () => {
 
     expect(container?.querySelector(".voice-device-panel")).not.toBeNull();
 
-    await act(async () => {
-      collapseButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await renderVoiceBar(false);
 
     expect(container?.querySelector(".voice-bar-collapsed")).not.toBeNull();
     expect(container?.querySelector(".voice-device-panel")).toBeNull();
-    expect(container?.querySelector(".voice-bar-body")).not.toBeNull();
-    expect(container?.querySelector('button[aria-label="Show voice bar"]')).not.toBeNull();
+    expect(container?.textContent).not.toContain("State");
   });
 });

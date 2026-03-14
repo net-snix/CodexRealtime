@@ -141,6 +141,7 @@ const PERSISTED_STATE_VALIDATORS = {
 
 const THREAD_CHANGE_SUMMARY_LIMIT = 6;
 const THREAD_CHANGE_CACHE_LIMIT = 128;
+const THREAD_LIST_REQUEST_TIMEOUT_MS = 3_000;
 const MAX_ATTACHMENT_PATH_CANDIDATES = 128;
 const MAX_ATTACHMENT_PATH_LENGTH = 4_096;
 
@@ -631,7 +632,14 @@ export class WorkspaceService extends EventEmitter {
 
     const wasSelectedThread = workspace.threadId === threadId;
 
-    await codexBridge.archiveThread(threadId);
+    try {
+      await codexBridge.archiveThread(threadId);
+    } catch (error) {
+      // Fresh threads can exist locally before the app-server materializes them.
+      if (!isThreadNotMaterializedError(error)) {
+        throw error;
+      }
+    }
     this.clearTimelineCache(threadId);
 
     if (wasSelectedThread) {
@@ -1179,8 +1187,11 @@ export class WorkspaceService extends EventEmitter {
     includeChangeSummary = true
   ): Promise<ThreadSummary[]> {
     try {
-      await codexBridge.start();
-      const result = (await codexBridge.listThreads(workspacePath, archived)) as ThreadListResult;
+      const result = (await withTimeout(
+        codexBridge.listThreads(workspacePath, archived),
+        THREAD_LIST_REQUEST_TIMEOUT_MS,
+        { data: [] } satisfies ThreadListResult
+      )) as ThreadListResult;
 
       const threads: ThreadSummary[] = (result.data ?? []).map((thread) => ({
         ...defaultThreadState(),
@@ -1192,7 +1203,7 @@ export class WorkspaceService extends EventEmitter {
       }));
 
       if (includeChangeSummary) {
-        await Promise.all(
+        await Promise.allSettled(
           threads.slice(0, THREAD_CHANGE_SUMMARY_LIMIT).map(async (thread) => {
             thread.changeSummary = await this.getThreadChangeSummary(thread.id);
           })
@@ -1210,7 +1221,7 @@ export class WorkspaceService extends EventEmitter {
     archived = false,
     includeChangeSummary = true
   ): Promise<ThreadSummary[]> {
-    return withTimeout(this.listThreads(workspacePath, archived, includeChangeSummary), 1500, []);
+    return this.listThreads(workspacePath, archived, includeChangeSummary);
   }
 
   private async listWorkspaceProjects(

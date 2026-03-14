@@ -51,6 +51,7 @@ const now = () => new Date().toISOString();
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_STDOUT_BUFFER_BYTES = 1_048_576;
 const DEFAULT_MAX_STDOUT_LINE_BYTES = 262_144;
+const THREAD_LIST_LIMIT = 500;
 const MALFORMED_MESSAGE_ERROR = "Codex app-server sent malformed JSON";
 const OVERSIZED_STDOUT_BUFFER_ERROR =
   "Codex app-server sent oversized stdout payload without newline";
@@ -166,7 +167,7 @@ export class CodexBridge extends EventEmitter {
     return this.request("thread/list", {
       cwd,
       archived,
-      limit: 20
+      limit: THREAD_LIST_LIMIT
     });
   }
 

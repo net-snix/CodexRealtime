@@ -1,10 +1,13 @@
 .voice-bar {
-  --voice-bar-edge-toggle-offset: 112px;
-  position: relative;
-  z-index: 1;
-  min-height: 0;
-  overflow: visible;
-  transition: min-height 180ms ease;
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  z-index: 2;
+  height: var(--voice-panel-height);
+  transform: translateY(0);
+  will-change: transform;
+  transition: transform var(--voice-panel-motion-duration) linear;
 }
 
 .voice-bar-body {
@@ -13,61 +16,29 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 68px;
-  max-height: 160px;
-  padding: 10px 12px;
+  min-height: 100%;
+  height: 100%;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
   background: rgba(252, 249, 244, 0.94);
-  box-shadow: var(--shadow);
-  overflow: visible;
-  transition:
-    max-height 180ms ease,
-    padding 180ms ease,
-    border-color 180ms ease,
-    background 180ms ease,
-    box-shadow 180ms ease,
-    opacity 120ms ease;
-}
-
-.voice-bar-body::before {
-  content: none;
+  box-shadow: 0 -4px 14px rgba(28, 23, 18, 0.035), 0 -1px 2px rgba(28, 23, 18, 0.04);
+  overflow: hidden;
 }
 
 .voice-bar-panel-section {
-  transition: opacity 120ms ease;
-}
-
-.voice-bar-collapsed .voice-bar-body {
-  max-height: 0;
-  min-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  opacity: 1;
-}
-
-.voice-bar-collapsed .voice-bar-body::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 11px;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 12px 12px 0 0;
-  background: rgba(252, 249, 244, 0.94);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  transform: none;
+  transition: none;
 }
 
 .voice-bar-collapsed .voice-bar-panel-section {
-  opacity: 0;
   pointer-events: none;
 }
 
 .voice-bar-collapsed {
-  min-height: 11px;
+  transform: translateY(var(--voice-panel-travel));
+  pointer-events: none;
 }
 
 .voice-cluster,
@@ -79,72 +50,6 @@
 
 .voice-actions {
   justify-content: flex-end;
-}
-
-.voice-bar-edge-toggle {
-  position: absolute;
-  top: 0;
-  left: var(--voice-bar-edge-toggle-offset);
-  z-index: 3;
-  display: inline-grid;
-  place-items: center;
-  width: 50px;
-  height: 24px;
-  border: 1px solid rgba(24, 23, 20, 0.08);
-  border-bottom: 0;
-  border-radius: 10px 10px 0 0;
-  background: rgba(252, 249, 244, 0.98);
-  color: var(--muted-strong);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transform: translateY(calc(-100% + 1px));
-  transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease,
-    box-shadow 220ms ease,
-    transform 180ms ease;
-}
-
-.voice-bar-edge-toggle::after {
-  content: "";
-  position: absolute;
-  left: -1px;
-  right: -1px;
-  bottom: -1px;
-  height: 2px;
-  background: rgba(252, 249, 244, 0.98);
-}
-
-.voice-bar-edge-toggle svg {
-  width: 12px;
-  height: 12px;
-}
-
-.voice-bar-edge-toggle:hover {
-  border-color: rgba(24, 23, 20, 0.14);
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text);
-  transform: translateY(calc(-100% + 1px));
-}
-
-@media (max-width: 880px) {
-  .voice-bar {
-    --voice-bar-edge-toggle-offset: 96px;
-  }
-}
-
-.voice-bar-edge-toggle:hover::after {
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.voice-bar-collapsed .voice-bar-edge-toggle {
-  background: rgba(252, 249, 244, 0.98);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transform: translateY(calc(-100% + 1px));
-}
-
-.voice-bar-collapsed .voice-bar-edge-toggle::after {
-  background: rgba(252, 249, 244, 0.98);
 }
 
 .voice-button {

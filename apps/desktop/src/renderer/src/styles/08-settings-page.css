@@ -7,7 +7,6 @@
 }
 
 .app-shell-density-compact {
-  gap: 4px;
   padding: 4px;
 }
 
@@ -20,11 +19,6 @@
 .app-shell-density-compact .right-pane,
 .app-shell-density-compact .settings-page {
   padding-top: 4px;
-}
-
-.app-shell-density-compact .voice-bar {
-  padding-top: 8px;
-  padding-bottom: 8px;
 }
 
 .app-shell-reduced-motion *,

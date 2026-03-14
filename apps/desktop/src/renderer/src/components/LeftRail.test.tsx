@@ -114,10 +114,12 @@ describe("LeftRail", () => {
           removingWorkspaceId={null}
           runningThreadId={null}
           isSettingsView={false}
+          isVoicePanelOpen={false}
           onOpenWorkspace={onOpenWorkspace}
           onCreateThread={onCreateThread as CreateThreadHandler}
           onRemoveWorkspace={onRemoveWorkspace as RemoveWorkspaceHandler}
           onOpenSettings={vi.fn()}
+          onToggleVoicePanel={vi.fn()}
           onSelectWorkspace={vi.fn()}
           onSelectThread={vi.fn()}
           onArchiveThread={onArchiveThread as ArchiveThreadHandler}
@@ -144,6 +146,8 @@ describe("LeftRail", () => {
 
     expect(openRepoButton?.textContent).toContain("Open repo");
     expect(container?.textContent).toContain("Threads");
+    expect(container?.textContent).toContain("Voice");
+    expect(container?.textContent).toContain("Settings");
     expect(container?.textContent).not.toContain("Projects");
     expect(container?.textContent).not.toContain("1 thread");
     expect(container?.querySelector('button[aria-label="New thread"]')).toBeNull();

@@ -1,25 +1,23 @@
 @media (max-width: 1280px) {
-  .workspace-frame {
-    grid-template-columns: minmax(228px, 246px) minmax(0, 1fr) clamp(248px, 24vw, 272px);
+  .app-shell {
+    --right-pane-width: clamp(248px, 24vw, 272px);
   }
 
-  .workspace-frame-right-pane-closed {
+  .workspace-frame {
     grid-template-columns: minmax(228px, 246px) minmax(0, 1fr);
   }
 }
 
 @media (max-width: 960px) {
   .app-shell {
+    --voice-panel-height: 148px;
+    --right-pane-width: clamp(220px, 30vw, 240px);
     padding: 2px 4px 4px;
   }
 
   .workspace-frame {
-    grid-template-columns: clamp(168px, 24vw, 196px) minmax(0, 1fr) clamp(220px, 30vw, 240px);
-    min-height: 0;
-  }
-
-  .workspace-frame-right-pane-closed {
     grid-template-columns: clamp(168px, 24vw, 196px) minmax(0, 1fr);
+    min-height: 0;
   }
 
   .workspace-action-row {

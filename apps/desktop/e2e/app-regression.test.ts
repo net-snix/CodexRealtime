@@ -358,7 +358,7 @@ describe("desktop electron regressions", () => {
     const before = await getWorkspaceState(window);
     const beforeCurrentThreadId = before.currentThreadId;
 
-    await window.locator(".rail-action-list").getByRole("button", { name: "New thread" }).click();
+    await window.getByRole("button", { name: "New thread in AskInLine" }).click();
     await window.waitForTimeout(250);
 
     const afterCreate = await getWorkspaceState(window);
@@ -369,21 +369,62 @@ describe("desktop electron regressions", () => {
     await composer.fill("Ship the regression suite");
     await composer.press("Enter");
 
-    await window.waitForTimeout(300);
-
     expect(await composer.inputValue()).toBe("");
-    await window.locator(".timeline-thinking-chip").waitFor();
-    expect(await window.locator(".timeline-thinking-chip").innerText()).toMatch(
-      /Thinking|Working|Starting|Running/i
-    );
+    await expect.poll(async () => (await getTimelineState(window)).isRunning, {
+      timeout: 5_000
+    }).toBe(true);
 
     const timeline = await getTimelineState(window);
     expect(timeline.isRunning).toBe(true);
     expect(timeline.threadId).toBe(afterCreate.currentThreadId);
 
+    await expect.poll(
+      async () =>
+        (await getWorkspaceState(window)).projects.find((project) => project.isCurrent)?.threads[0]
+          ?.title,
+      {
+        timeout: 5_000
+      }
+    ).toBe("Ship the regression suite");
+
     const afterSend = await getWorkspaceState(window);
     const currentProject = afterSend.projects.find((project) => project.isCurrent);
     expect(currentProject?.threads[0]?.title).toBe("Ship the regression suite");
+  });
+
+  it("creates a new thread and archives it before the first message", async () => {
+    const context = createFixtureContext();
+    tempDirs.push(context.rootDir);
+
+    const { app, window } = await launchFixtureApp(context);
+    openApps.push(app);
+
+    const before = await getWorkspaceState(window);
+    const previousThreadId = before.currentThreadId;
+
+    await window.getByRole("button", { name: "New thread in AskInLine" }).click();
+    await window.waitForTimeout(250);
+
+    const afterCreate = await getWorkspaceState(window);
+    const createdThreadId = afterCreate.currentThreadId;
+    expect(createdThreadId).toBeTruthy();
+    expect(createdThreadId).not.toBe(previousThreadId);
+
+    const createdThreadRow = window.locator(`[data-thread-id="${createdThreadId}"]`);
+    await createdThreadRow.hover();
+    await window.getByRole("button", { name: "Archive New thread" }).click();
+    await window.getByRole("button", { name: "Confirm archive New thread" }).click();
+
+    await expect.poll(async () => (await getWorkspaceState(window)).currentThreadId, {
+      timeout: 5_000
+    }).toBe(previousThreadId);
+    await window.locator(".timeline-input").waitFor();
+
+    const afterArchive = await getWorkspaceState(window);
+    const currentProject = afterArchive.projects.find((project) => project.isCurrent);
+
+    expect(afterArchive.currentThreadId).toBe(previousThreadId);
+    expect(currentProject?.threads.some((thread) => thread.id === createdThreadId)).toBe(false);
   });
 
   it("auto-names a fresh thread from Codex when enabled", async () => {
@@ -398,7 +439,7 @@ describe("desktop electron regressions", () => {
     await window.getByRole("switch", { name: "Auto-name new chats" }).click();
     await window.getByRole("button", { name: "Back to thread" }).click();
 
-    await window.locator(".rail-action-list").getByRole("button", { name: "New thread" }).click();
+    await window.getByRole("button", { name: "New thread in AskInLine" }).click();
     await window.waitForTimeout(250);
 
     const composer = window.locator(".timeline-input");
@@ -446,7 +487,7 @@ describe("desktop electron regressions", () => {
     expect(await modelButton.locator(".timeline-model-trigger-icon").count()).toBe(0);
     expect(await approvalButton.textContent()).toContain("On request");
 
-    await window.locator(".rail-action-list").getByRole("button", { name: "New thread" }).click();
+    await window.getByRole("button", { name: "New thread in AskInLine" }).click();
     await window.waitForTimeout(350);
 
     expect(await modelButton.textContent()).toContain("gpt-5.4");
