@@ -1349,26 +1349,22 @@
 
 .app-shell-dark .timeline-message .timeline-message-copy {
   border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
-  box-shadow: 0 10px 18px color-mix(in srgb, var(--surface) 20%, transparent);
 }
 
 .app-shell-dark .timeline-message-user .timeline-message-copy {
   background: color-mix(in srgb, var(--accent) 28%, var(--surface-soft) 72%);
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   color: var(--text);
-  box-shadow: 0 10px 18px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .app-shell-dark .timeline-message-assistant .timeline-message-copy {
   background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
   border-color: color-mix(in srgb, var(--line) 84%, transparent);
-  box-shadow: 0 8px 14px color-mix(in srgb, var(--surface) 18%, transparent);
 }
 
 .app-shell-dark .timeline-message-plan .timeline-message-copy {
   background: color-mix(in srgb, var(--surface-soft) 90%, transparent);
   border-color: color-mix(in srgb, var(--line) 72%, transparent);
-  box-shadow: 0 8px 14px color-mix(in srgb, var(--surface) 22%, transparent);
 }
 
 .app-shell-dark .timeline-input::placeholder,
