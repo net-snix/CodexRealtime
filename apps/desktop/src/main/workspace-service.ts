@@ -61,7 +61,12 @@ import {
   type RequestPayload,
   type TurnRecord
 } from "./workspace-timeline";
-import { isThreadNotMaterializedError } from "./thread-materialization";
+import {
+  isThreadNotMaterializedError,
+  isThreadNotFoundError,
+  isThreadUnavailableError,
+  isThreadUnavailableForArchiveError
+} from "./thread-materialization";
 
 type PersistedWorkspace = WorkspaceSummary & {
   lastOpenedAt: string;
@@ -88,13 +93,41 @@ type ConversationSummaryResult = {
   };
 };
 
-type ThreadListResult = {
-  data?: Array<{
-    id?: string;
-    name?: string | null;
-    preview?: string;
-    updatedAt?: number;
-  }>;
+type ThreadListPayload =
+  | Array<ThreadListItem>
+  | Record<string, unknown>
+  | null
+  | undefined;
+
+type ThreadListResult =
+  | ThreadListPayload
+  | {
+      data?: ThreadListPayload;
+      threads?: ThreadListPayload;
+      conversations?: ThreadListPayload;
+      items?: ThreadListPayload;
+      [key: string]: unknown;
+    };
+
+type ThreadListItem = {
+  id?: unknown;
+  threadId?: unknown;
+  thread_id?: unknown;
+  conversationId?: unknown;
+  conversation_id?: unknown;
+  conversation?: {
+    id?: unknown;
+  };
+  thread?: {
+    id?: unknown;
+    threadId?: unknown;
+  };
+  _id?: unknown;
+  name?: string | null;
+  title?: string | null;
+  preview?: string;
+  updatedAt?: number | string;
+  updated_at?: number | string;
 };
 
 type ThreadReadResult = {
@@ -144,6 +177,176 @@ const THREAD_CHANGE_CACHE_LIMIT = 128;
 const THREAD_LIST_REQUEST_TIMEOUT_MS = 3_000;
 const MAX_ATTACHMENT_PATH_CANDIDATES = 128;
 const MAX_ATTACHMENT_PATH_LENGTH = 4_096;
+
+const asNormalizedThreadId = (value: unknown): string | null =>
+  typeof value === "string"
+    ? value.trim() || null
+    : typeof value === "number" && Number.isInteger(value)
+      ? `${value}`
+      : null;
+
+const asNormalizedTimestamp = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = Math.floor(value);
+    return normalized > 0
+      ? normalized > 10_000_000_000
+        ? Math.floor(normalized / 1000)
+        : normalized
+      : null;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : Math.floor(parsed / 1000);
+  }
+
+  return null;
+};
+
+type ThreadListResponse = {
+  data?: ThreadListPayload;
+  threads?: ThreadListPayload;
+  conversations?: ThreadListPayload;
+  items?: ThreadListPayload;
+  [key: string]: unknown;
+};
+
+const isThreadListItemRecord = (value: unknown): value is ThreadListItem =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const isThreadListFieldContainer = (key: string) =>
+  key === "data" || key === "threads" || key === "conversations" || key === "items";
+
+const normalizeThreadId = (thread: unknown) =>
+  asNormalizedThreadId(isThreadListItemRecord(thread) ? (thread as { id?: unknown }).id : null) ??
+  asNormalizedThreadId(isThreadListItemRecord(thread) ? (thread as { threadId?: unknown }).threadId : null) ??
+  asNormalizedThreadId(
+    isThreadListItemRecord(thread) ? (thread as { conversationId?: unknown }).conversationId : null
+  ) ??
+  asNormalizedThreadId(isThreadListItemRecord(thread) ? (thread as { thread_id?: unknown }).thread_id : null) ??
+  asNormalizedThreadId(
+    isThreadListItemRecord(thread) ? (thread as { conversation_id?: unknown }).conversation_id : null
+  ) ??
+  asNormalizedThreadId(isThreadListItemRecord(thread) ? (thread as { _id?: unknown })._id : null) ??
+  asNormalizedThreadId(
+    isThreadListItemRecord(thread) && isThreadListItemRecord((thread as { conversation?: unknown }).conversation)
+      ? ((thread as { conversation: { id?: unknown } }).conversation?.id)
+      : null
+  ) ??
+  asNormalizedThreadId(
+    isThreadListItemRecord(thread) && isThreadListItemRecord((thread as { thread?: unknown }).thread)
+      ? ((thread as { thread: { id?: unknown } }).thread?.id)
+      : null
+  ) ??
+  (isThreadListItemRecord(thread) && isThreadListItemRecord((thread as { thread?: unknown }).thread)
+    ? asNormalizedThreadId((thread as { thread: { threadId?: unknown } }).thread.threadId)
+    : null) ??
+  null;
+
+const normalizeThreadListRecord = (
+  thread: ThreadListItem,
+  fallbackId: string | null = null
+): ThreadListItem | null => {
+  const id = normalizeThreadId(thread) ?? asNormalizedThreadId(fallbackId);
+
+  if (!id) {
+    return isLikelyThreadItem(thread) ? thread : null;
+  }
+
+  if (normalizeThreadId(thread)) {
+    return thread;
+  }
+
+  return {
+    ...thread,
+    id
+  };
+};
+
+const isLikelyThreadItem = (thread: ThreadListItem | null | undefined) => {
+  if (!thread) {
+    return false;
+  }
+
+  return (
+    normalizeThreadId(thread) !== null ||
+    typeof thread.name === "string" ||
+    typeof thread.title === "string" ||
+    typeof thread.preview === "string"
+  );
+};
+
+const readThreadListEntries = (result: ThreadListResult): ThreadListItem[] => {
+  if (Array.isArray(result)) {
+    return normalizeThreadListEntries(result);
+  }
+
+  if (result === null || result === undefined) {
+    return [];
+  }
+
+  if (!isThreadListItemRecord(result)) {
+    return [];
+  }
+
+  const listPayload = result as ThreadListResponse;
+
+  return normalizeThreadListEntries(
+    listPayload.data ??
+      listPayload.threads ??
+      listPayload.conversations ??
+    listPayload.items ??
+      result
+  );
+};
+
+const normalizeThreadListEntries = (value: ThreadListPayload): ThreadListItem[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((thread) =>
+        isThreadListItemRecord(thread) ? normalizeThreadListRecord(thread as ThreadListItem) : null
+      )
+      .filter((thread): thread is ThreadListItem => thread !== null);
+  }
+
+  if (!isThreadListItemRecord(value)) {
+    return [];
+  }
+
+  const entries: ThreadListItem[] = [];
+
+  for (const [key, thread] of Object.entries(value)) {
+    if (isThreadListFieldContainer(key)) {
+      entries.push(...normalizeThreadListEntries(thread as ThreadListPayload));
+      continue;
+    }
+
+    if (!isThreadListItemRecord(thread)) {
+      if (typeof thread === "string" || typeof thread === "number") {
+        const primitiveThread: ThreadListItem = {
+          id: key,
+          preview: `${thread}`
+        };
+        entries.push(primitiveThread);
+      }
+      continue;
+    }
+
+    const normalized = normalizeThreadListRecord(thread as ThreadListItem, key);
+    if (normalized) {
+      entries.push(normalized);
+    }
+  }
+
+  return entries;
+};
+
+const readThreadListUpdatedAt = (thread: ThreadListItem) =>
+  asNormalizedTimestamp(
+    (thread as { updated_at?: unknown }).updated_at ??
+      (thread as { updated?: unknown }).updated ??
+      thread.updatedAt
+  );
 
 const normalizeRuntimeMethod = (value: string) =>
   value
@@ -636,7 +839,9 @@ export class WorkspaceService extends EventEmitter {
       await codexBridge.archiveThread(threadId);
     } catch (error) {
       // Fresh threads can exist locally before the app-server materializes them.
-      if (!isThreadNotMaterializedError(error)) {
+      // Missing thread entries can happen right after creation if the thread
+      // has not fully synced yet.
+      if (!isThreadUnavailableForArchiveError(error)) {
         throw error;
       }
     }
@@ -1165,6 +1370,16 @@ export class WorkspaceService extends EventEmitter {
           }
         };
       }
+      if (isThreadNotFoundError(error)) {
+        this.clearActiveTurn(threadId);
+        return {
+          ...emptyTimelineState(threadId),
+          runState: {
+            phase: "historyUnavailable",
+            label: "History unavailable"
+          }
+        };
+      }
 
       throw error;
     }
@@ -1193,14 +1408,30 @@ export class WorkspaceService extends EventEmitter {
         { data: [] } satisfies ThreadListResult
       )) as ThreadListResult;
 
-      const threads: ThreadSummary[] = (result.data ?? []).map((thread) => ({
-        ...defaultThreadState(),
-        id: thread.id ?? randomUUID(),
-        title: thread.name ?? thread.preview ?? "Untitled thread",
-        updatedAt: formatUpdatedAt(thread.updatedAt),
-        preview: typeof thread.preview === "string" ? thread.preview.trim() || null : null,
-        changeSummary: null
-      }));
+      const entries = readThreadListEntries(result);
+      const threads: ThreadSummary[] = [];
+
+      for (const thread of entries) {
+        const threadId = normalizeThreadId(thread);
+
+        if (!threadId) {
+          continue;
+        }
+
+        threads.push({
+          ...defaultThreadState(),
+          id: threadId,
+          title: thread.name ?? thread.title ?? thread.preview ?? "Untitled thread",
+          updatedAt: formatUpdatedAt(readThreadListUpdatedAt(thread)),
+          preview:
+            typeof thread.preview === "string"
+              ? thread.preview.trim() || null
+              : typeof thread.title === "string"
+                ? thread.title.trim() || null
+                : null,
+          changeSummary: null
+        });
+      }
 
       if (includeChangeSummary) {
         await Promise.allSettled(
@@ -1319,7 +1550,7 @@ export class WorkspaceService extends EventEmitter {
     try {
       result = (await codexBridge.readThread(threadId)) as ThreadReadResult;
     } catch (error) {
-      if (isThreadNotMaterializedError(error)) {
+      if (isThreadUnavailableError(error)) {
         return null;
       }
 

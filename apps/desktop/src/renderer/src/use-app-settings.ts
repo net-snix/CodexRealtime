@@ -11,6 +11,7 @@ const emptyState: AppSettingsState = {
     autoStartVoice: false,
     showVoiceCaptions: true,
     density: "comfortable",
+    theme: "system",
     reduceMotion: false,
     desktopNotifications: true,
     notifyOnApprovals: true,

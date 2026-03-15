@@ -274,6 +274,434 @@ describe("WorkspaceService", () => {
     expect(writeFileSync).toHaveBeenCalled();
   });
 
+  it("drops a fresh unpersisted thread when archive reports not found", async () => {
+    const writeFileSync = vi.fn();
+    const archiveThread = vi.fn(async () => {
+      throw new Error("no outline found for thread id draft-thread");
+    });
+    const listThreads = vi.fn(async (_cwd: string, archived = false) => ({
+      data: archived
+        ? []
+        : [
+            {
+              id: "thread-existing",
+              name: "Existing thread",
+              preview: "Existing thread",
+              updatedAt: Math.floor(Date.now() / 1000)
+            }
+          ]
+    }));
+    const readThread = vi.fn(async (threadId: string) => ({
+      thread: {
+        id: threadId,
+        turns: []
+      }
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync: vi.fn(() =>
+        JSON.stringify({
+          currentWorkspaceId: "workspace-1",
+          workspaces: {
+            "workspace-1": {
+              id: "workspace-1",
+              name: "CodexRealtime",
+              path: "/tmp/CodexRealtime",
+              lastOpenedAt: "2026-03-11T00:00:00.000Z",
+              threadId: "draft-thread"
+            }
+          }
+        })
+      ),
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync,
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        start: vi.fn(),
+        archiveThread,
+        listThreads,
+        readThread
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+
+    const result = await service.archiveThread("workspace-1", "draft-thread");
+
+    expect(archiveThread).toHaveBeenCalledWith("draft-thread");
+    expect(listThreads).toHaveBeenCalledWith("/tmp/CodexRealtime", false);
+    expect(readThread).toHaveBeenCalledWith("thread-existing");
+    expect(result.selectedThreadId).toBe("thread-existing");
+    expect(result.timelineState.threadId).toBe("thread-existing");
+    expect(writeFileSync).toHaveBeenCalled();
+  });
+
+  it("normalizes alternate thread identifier fields from thread/list", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        currentWorkspaceId: "workspace-1",
+        workspaces: {
+          "workspace-1": {
+            id: "workspace-1",
+            name: "CodexRealtime",
+            path: "/tmp/CodexRealtime",
+            lastOpenedAt: "2026-03-11T00:00:00.000Z",
+            threadId: null
+          }
+        }
+      })
+    );
+    const listThreads = vi.fn(
+      async (_cwd: string, archived = false) =>
+        archived
+          ? { data: [] }
+          : {
+              data: [
+                {
+                  threadId: "thread-legacy-id",
+                  name: "Legacy thread",
+                  preview: "Legacy thread",
+                  updatedAt: Math.floor(Date.now() / 1000)
+                },
+                {
+                  name: "Missing id thread"
+                }
+              ]
+            }
+    );
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        listThreads
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const workspaceState = await service.getWorkspaceState();
+    const project = workspaceState.projects.find((entry) => entry.id === "workspace-1");
+
+    expect(project?.threads).toHaveLength(1);
+    expect(project?.threads[0]?.id).toBe("thread-legacy-id");
+    expect(project?.threads[0]?.title).toBe("Legacy thread");
+    expect(listThreads).toHaveBeenCalledWith("/tmp/CodexRealtime", false);
+  });
+
+  it("normalizes map-shaped thread/list payloads", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        currentWorkspaceId: "workspace-1",
+        workspaces: {
+          "workspace-1": {
+            id: "workspace-1",
+            name: "CodexRealtime",
+            path: "/tmp/CodexRealtime",
+            lastOpenedAt: "2026-03-11T00:00:00.000Z",
+            threadId: null
+          }
+        }
+      })
+    );
+    const listThreads = vi.fn(async () => ({
+      data: {
+        "thread-map-1": {
+          title: "Mapped thread",
+          preview: "Mapped thread preview",
+          updated_at: Math.floor(Date.now() / 1000)
+        }
+      }
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        listThreads
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const workspaceState = await service.getWorkspaceState();
+    const project = workspaceState.projects.find((entry) => entry.id === "workspace-1");
+
+    expect(project?.threads).toHaveLength(1);
+    expect(project?.threads[0]?.id).toBe("thread-map-1");
+    expect(project?.threads[0]?.title).toBe("Mapped thread");
+    expect(project?.threads[0]?.preview).toBe("Mapped thread preview");
+  });
+
+  it("normalizes map-shaped payloads with primitive thread values", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        currentWorkspaceId: "workspace-1",
+        workspaces: {
+          "workspace-1": {
+            id: "workspace-1",
+            name: "CodexRealtime",
+            path: "/tmp/CodexRealtime",
+            lastOpenedAt: "2026-03-11T00:00:00.000Z",
+            threadId: null
+          }
+        }
+      })
+    );
+    const listThreads = vi.fn(async () => ({
+      data: {
+        "thread-primitive": "Primitive thread title"
+      }
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        listThreads
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const workspaceState = await service.getWorkspaceState();
+    const project = workspaceState.projects.find((entry) => entry.id === "workspace-1");
+
+    expect(project?.threads).toHaveLength(1);
+    expect(project?.threads[0]?.id).toBe("thread-primitive");
+    expect(project?.threads[0]?.title).toBe("Primitive thread title");
+    expect(project?.threads[0]?.preview).toBe("Primitive thread title");
+  });
+
+  it("normalizes direct thread/list array payloads", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        currentWorkspaceId: "workspace-1",
+        workspaces: {
+          "workspace-1": {
+            id: "workspace-1",
+            name: "CodexRealtime",
+            path: "/tmp/CodexRealtime",
+            lastOpenedAt: "2026-03-11T00:00:00.000Z",
+            threadId: null
+          }
+        }
+      })
+    );
+    const listThreads = vi.fn(async () => [
+      {
+        id: "thread-direct-array",
+        title: "Direct array thread",
+        updatedAt: Math.floor(Date.now() / 1000)
+      }
+    ]);
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        listThreads
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const workspaceState = await service.getWorkspaceState();
+    const project = workspaceState.projects.find((entry) => entry.id === "workspace-1");
+
+    expect(project?.threads).toHaveLength(1);
+    expect(project?.threads[0]?.id).toBe("thread-direct-array");
+    expect(project?.threads[0]?.title).toBe("Direct array thread");
+    expect(listThreads).toHaveBeenCalled();
+  });
+
+  it("normalizes nested thread payload wrappers from legacy list responses", async () => {
+    const readFileSync = vi.fn(() =>
+      JSON.stringify({
+        currentWorkspaceId: "workspace-1",
+        workspaces: {
+          "workspace-1": {
+            id: "workspace-1",
+            name: "CodexRealtime",
+            path: "/tmp/CodexRealtime",
+            lastOpenedAt: "2026-03-11T00:00:00.000Z",
+            threadId: null
+          }
+        }
+      })
+    );
+    const listThreads = vi.fn(async () => ({
+      data: {
+        conversations: {
+          "thread-legacy-wrapper": {
+            name: "Wrapped thread",
+            updatedAt: Math.floor(Date.now() / 1000)
+          }
+        }
+      }
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync,
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync: vi.fn(),
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        listThreads
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+    const workspaceState = await service.getWorkspaceState();
+    const project = workspaceState.projects.find((entry) => entry.id === "workspace-1");
+
+    expect(project?.threads).toHaveLength(1);
+    expect(project?.threads[0]?.id).toBe("thread-legacy-wrapper");
+    expect(project?.threads[0]?.title).toBe("Wrapped thread");
+  });
+
   it("deduplicates attachment path candidates before filesystem resolution", async () => {
     const realpathSync = vi.fn((value: string) => value.trim());
     const statSync = vi.fn(() => ({

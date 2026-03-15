@@ -146,7 +146,7 @@ describe("LeftRail", () => {
 
     expect(openRepoButton?.textContent).toContain("Open repo");
     expect(container?.textContent).toContain("Threads");
-    expect(container?.textContent).toContain("Realtime");
+    expect(container?.textContent).toContain("Voice");
     expect(container?.textContent).toContain("Settings");
     expect(container?.textContent).not.toContain("Projects");
     expect(container?.textContent).not.toContain("1 thread");

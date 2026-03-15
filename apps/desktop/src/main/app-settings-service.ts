@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoStartVoice: false,
   showVoiceCaptions: true,
   density: "comfortable",
+  theme: "system",
   reduceMotion: false,
   desktopNotifications: true,
   notifyOnApprovals: true,
@@ -32,6 +33,8 @@ const APP_SETTINGS_VALIDATORS = {
   autoStartVoice: (value: unknown): value is boolean => typeof value === "boolean",
   showVoiceCaptions: (value: unknown): value is boolean => typeof value === "boolean",
   density: (value: unknown): value is AppSettings["density"] => value === "comfortable" || value === "compact",
+  theme: (value: unknown): value is AppSettings["theme"] =>
+    value === "system" || value === "light" || value === "dark",
   reduceMotion: (value: unknown): value is boolean => typeof value === "boolean",
   desktopNotifications: (value: unknown): value is boolean => typeof value === "boolean",
   notifyOnApprovals: (value: unknown): value is boolean => typeof value === "boolean",

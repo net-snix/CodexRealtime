@@ -15,6 +15,7 @@ export interface AppInfo {
 }
 
 export type AppDensity = "comfortable" | "compact";
+export type AppTheme = "light" | "dark" | "system";
 
 export interface AppSettings {
   launchAtLogin: boolean;
@@ -24,6 +25,7 @@ export interface AppSettings {
   autoStartVoice: boolean;
   showVoiceCaptions: boolean;
   density: AppDensity;
+  theme: AppTheme;
   reduceMotion: boolean;
   desktopNotifications: boolean;
   notifyOnApprovals: boolean;

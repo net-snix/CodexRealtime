@@ -199,6 +199,61 @@ function SelectRow({
   );
 }
 
+function ThemeSegmentRow({
+  label,
+  description,
+  value,
+  disabled,
+  onChange
+}: {
+  label: string;
+  description: string;
+  value: AppSettings["theme"];
+  disabled?: boolean;
+  onChange: (value: AppSettings["theme"]) => void;
+}) {
+  return (
+    <div className="settings-row settings-row-segment">
+      <div className="settings-row-copy">
+        <strong>{label}</strong>
+        <span>{description}</span>
+      </div>
+      <div className="settings-segmented" role="radiogroup" aria-label={`${label} options`}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === "system"}
+          className={`settings-segment ${value === "system" ? "settings-segment-selected" : ""}`}
+          onClick={() => onChange("system")}
+          disabled={disabled}
+        >
+          System
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === "light"}
+          className={`settings-segment ${value === "light" ? "settings-segment-selected" : ""}`}
+          onClick={() => onChange("light")}
+          disabled={disabled}
+        >
+          Light
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === "dark"}
+          className={`settings-segment ${value === "dark" ? "settings-segment-selected" : ""}`}
+          onClick={() => onChange("dark")}
+          disabled={disabled}
+        >
+          Dark
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ActionRow({
   label,
   description,
@@ -404,10 +459,19 @@ export function SettingsPage({
     }
   }, [voiceApiKeyState.configured]);
 
+  const settingsContentRef = useRef<HTMLDivElement | null>(null);
+
   const scrollToSection = (key: SettingsSectionKey) => {
-    settingsRefs.current[key]?.scrollIntoView({
-      behavior: appSettingsState.settings.reduceMotion ? "auto" : "smooth",
-      block: "start"
+    const targetSection = settingsRefs.current[key];
+    const container = settingsContentRef.current;
+
+    if (!targetSection || !container) {
+      return;
+    }
+
+    container.scrollTo({
+      top: targetSection.offsetTop,
+      behavior: appSettingsState.settings.reduceMotion ? "auto" : "smooth"
     });
   };
 
@@ -417,7 +481,7 @@ export function SettingsPage({
 
       <header className="settings-page-header pane-header">
         <div>
-          <h2>App preferences</h2>
+          <h2>Settings</h2>
         </div>
       </header>
 
@@ -425,7 +489,7 @@ export function SettingsPage({
         <aside className="settings-sidebar">
           <button
             type="button"
-            className="settings-button settings-button-ghost settings-back-button"
+            className="settings-button settings-back-button"
             onClick={onClose}
           >
             <BackArrowIcon />
@@ -445,7 +509,7 @@ export function SettingsPage({
           </nav>
         </aside>
 
-        <div className="settings-content">
+        <div className="settings-content" ref={settingsContentRef}>
           <section
             ref={(node) => {
               settingsRefs.current.general = node;
@@ -512,6 +576,17 @@ export function SettingsPage({
                   <option value="comfortable">Comfortable</option>
                   <option value="compact">Compact</option>
                 </SelectRow>
+                <ThemeSegmentRow
+                  label="Theme"
+                  description="Pick system default, or force a specific look."
+                  value={appSettingsState.settings.theme}
+                  disabled={isUpdatingAppSettings}
+                  onChange={(value) =>
+                    void onUpdateAppSettings({
+                      theme: value
+                    })
+                  }
+                />
                 <ToggleRow
                   label="Reduce motion"
                   description="Trim animations and smooth scrolling."
@@ -539,146 +614,158 @@ export function SettingsPage({
             <div className="settings-section-head">
               <h3>Devices & captions</h3>
             </div>
-            <div className="settings-card-grid">
-              <SectionCard
-                title="Voice backend"
-                description="Choose the OpenAI voice path and keep narration behavior predictable."
-              >
-                <SelectRow
-                  label="Voice mode"
-                  description="Transcription is best for Codex-style work; realtime is for lower-latency conversation."
-                  value={voiceMode}
-                  onChange={(value) =>
-                    void onUpdateVoicePreferences({
-                      mode: value as VoiceMode
-                    })
-                  }
+            <div className="settings-card-grid settings-card-grid-wide settings-voice-card-grid">
+              <div className="settings-voice-stack">
+                <SectionCard
+                  title="Provider & authentication"
+                  description="Choose mode and connect your OpenAI key."
                 >
-                  <option value="transcription">Transcription (recommended)</option>
-                  <option value="realtime">Realtime</option>
-                </SelectRow>
-                <InputActionRow
-                  label="OpenAI API key"
-                  description="Stored locally in main process only. Required for both voice modes."
-                  value={voiceApiKeyDraft}
-                  placeholder="sk-..."
-                  disabled={isSavingVoiceApiKey}
-                  actionLabel={isSavingVoiceApiKey ? "Saving..." : "Save"}
-                  secondaryActionLabel={voiceApiKeyState.configured ? "Clear" : undefined}
-                  note={
-                    voiceApiKeyState.error
-                      ? `${formatVoiceApiKeyStatus(voiceApiKeyState)}: ${voiceApiKeyState.error}`
-                      : `${formatVoiceApiKeyStatus(voiceApiKeyState)}${
-                          voiceApiKeyState.lastValidatedAt
-                            ? ` • checked ${new Date(voiceApiKeyState.lastValidatedAt).toLocaleString()}`
-                            : ""
-                        }`
-                  }
-                  onChange={setVoiceApiKeyDraft}
-                  onAction={() => onSaveVoiceApiKey(voiceApiKeyDraft)}
-                  onSecondaryAction={voiceApiKeyState.configured ? onClearVoiceApiKey : undefined}
-                />
-                <ActionRow
-                  label="Test connection"
-                  description="Verify the currently saved key can talk to OpenAI."
-                  actionLabel={isTestingVoiceApiKey ? "Testing..." : "Test"}
-                  disabled={isTestingVoiceApiKey || isSavingVoiceApiKey || !voiceApiKeyState.configured}
-                  onAction={onTestVoiceApiKey}
-                />
-                <ToggleRow
-                  label="Speak agent activity"
-                  description="Read short summaries when Codex starts, finishes, or changes state."
-                  checked={speakAgentActivity}
-                  onChange={(checked) =>
-                    void onUpdateVoicePreferences({
-                      speakAgentActivity: checked
-                    })
-                  }
-                />
-                <ToggleRow
-                  label="Speak tool calls"
-                  description="Read compact updates for commands and tool activity."
-                  checked={speakToolCalls}
-                  onChange={(checked) =>
-                    void onUpdateVoicePreferences({
-                      speakToolCalls: checked
-                    })
-                  }
-                />
-                <ToggleRow
-                  label="Speak plan updates"
-                  description="Announce plan changes and checklist progress."
-                  checked={speakPlanUpdates}
-                  onChange={(checked) =>
-                    void onUpdateVoicePreferences({
-                      speakPlanUpdates: checked
-                    })
-                  }
-                />
-                <ToggleRow
-                  label="Auto-start voice"
-                  description="Start the voice assistant when a repo is ready."
-                  checked={appSettingsState.settings.autoStartVoice}
-                  disabled={isUpdatingAppSettings}
-                  onChange={(checked) => void onUpdateAppSettings({ autoStartVoice: checked })}
-                />
-                <ToggleRow
-                  label="Show voice captions"
-                  description="Keep live transcript ribbons visible in chat and voice bar."
-                  checked={appSettingsState.settings.showVoiceCaptions}
-                  disabled={isUpdatingAppSettings}
-                  onChange={(checked) => void onUpdateAppSettings({ showVoiceCaptions: checked })}
-                />
-                <ToggleRow
-                  label="Hide setup hint"
-                  description="Dismiss the device setup note once and keep it gone."
-                  checked={!shouldShowDeviceHint}
-                  onChange={(checked) => {
-                    if (checked) {
-                      onDismissDeviceHint();
-                    } else {
-                      void onResetVoicePreferences();
+                  <SelectRow
+                    label="Mode"
+                    description="Choose voice latency vs reliability."
+                    value={voiceMode}
+                    onChange={(value) =>
+                      void onUpdateVoicePreferences({
+                        mode: value as VoiceMode
+                      })
                     }
-                  }}
-                />
-              </SectionCard>
+                  >
+                    <option value="transcription">Transcription (recommended)</option>
+                    <option value="realtime">Voice realtime</option>
+                  </SelectRow>
+                  <InputActionRow
+                    label="OpenAI API key"
+                    description="Stored in main process only."
+                    value={voiceApiKeyDraft}
+                    placeholder="sk-..."
+                    disabled={isSavingVoiceApiKey}
+                    actionLabel={isSavingVoiceApiKey ? "Saving..." : "Save"}
+                    secondaryActionLabel={voiceApiKeyState.configured ? "Clear" : undefined}
+                    note={
+                      voiceApiKeyState.error
+                        ? `${formatVoiceApiKeyStatus(voiceApiKeyState)}: ${voiceApiKeyState.error}`
+                        : `${formatVoiceApiKeyStatus(voiceApiKeyState)}${
+                            voiceApiKeyState.lastValidatedAt
+                              ? ` • checked ${new Date(voiceApiKeyState.lastValidatedAt).toLocaleString()}`
+                              : ""
+                          }`
+                    }
+                    onChange={setVoiceApiKeyDraft}
+                    onAction={() => onSaveVoiceApiKey(voiceApiKeyDraft)}
+                    onSecondaryAction={voiceApiKeyState.configured ? onClearVoiceApiKey : undefined}
+                  />
+                  <ActionRow
+                    label="Test connection"
+                    description="Check current key + selected mode."
+                    actionLabel={isTestingVoiceApiKey ? "Testing..." : "Test"}
+                    disabled={isTestingVoiceApiKey || isSavingVoiceApiKey || !voiceApiKeyState.configured}
+                    onAction={onTestVoiceApiKey}
+                  />
+                </SectionCard>
 
-              <SectionCard
-                title="Devices"
-                description="Keep input/output stable between launches."
-              >
-                <SelectRow
-                  label="Input device"
-                  description="Microphone used for voice capture."
-                  value={selectedInputDeviceId}
-                  onChange={onInputDeviceChange}
+                <SectionCard
+                  title="Speech behavior"
+                  description="Tune how voice updates sound."
                 >
-                  {inputDevices.map((device) => (
-                    <option key={`input-${device.id || "default"}`} value={device.id}>
-                      {device.label}
-                    </option>
-                  ))}
-                </SelectRow>
-                <SelectRow
-                  label="Output device"
-                  description="Speaker used for assistant audio."
-                  value={selectedOutputDeviceId}
-                  disabled={!supportsOutputSelection}
-                  onChange={onOutputDeviceChange}
+                  <ToggleRow
+                    label="Speak agent activity"
+                    description="Speak short state updates while Codex works."
+                    checked={speakAgentActivity}
+                    onChange={(checked) =>
+                      void onUpdateVoicePreferences({
+                        speakAgentActivity: checked
+                      })
+                    }
+                  />
+                  <ToggleRow
+                    label="Speak tool calls"
+                    description="Speak concise tool execution updates."
+                    checked={speakToolCalls}
+                    onChange={(checked) =>
+                      void onUpdateVoicePreferences({
+                        speakToolCalls: checked
+                      })
+                    }
+                  />
+                  <ToggleRow
+                    label="Speak plan updates"
+                    description="Speak key plan and checklist changes."
+                    checked={speakPlanUpdates}
+                    onChange={(checked) =>
+                      void onUpdateVoicePreferences({
+                        speakPlanUpdates: checked
+                      })
+                    }
+                  />
+                  <ToggleRow
+                    label="Auto-start voice"
+                    description="Start voice automatically when repo is ready."
+                    checked={appSettingsState.settings.autoStartVoice}
+                    disabled={isUpdatingAppSettings}
+                    onChange={(checked) => void onUpdateAppSettings({ autoStartVoice: checked })}
+                  />
+                  <ToggleRow
+                    label="Show captions"
+                    description="Display live transcript text."
+                    checked={appSettingsState.settings.showVoiceCaptions}
+                    disabled={isUpdatingAppSettings}
+                    onChange={(checked) => void onUpdateAppSettings({ showVoiceCaptions: checked })}
+                  />
+                  <ToggleRow
+                    label="Show setup tip"
+                    description="Keep setup guidance visible."
+                    checked={shouldShowDeviceHint}
+                    onChange={(checked) => {
+                      if (checked) {
+                        void onResetVoicePreferences();
+                      } else {
+                        onDismissDeviceHint();
+                      }
+                    }}
+                  />
+                </SectionCard>
+              </div>
+
+              <div className="settings-voice-device-card">
+                <SectionCard
+                  title="Devices"
+                  description="Input and output mapping."
                 >
-                  {outputDevices.map((device) => (
-                    <option key={`output-${device.id || "default"}`} value={device.id}>
-                      {device.label}
-                    </option>
-                  ))}
-                </SelectRow>
-                <ActionRow
-                  label="Reset voice preferences"
-                  description="Clear saved devices and show the setup hint again."
-                  actionLabel="Reset"
-                  onAction={onResetVoicePreferences}
-                />
-              </SectionCard>
+                  <div className="settings-voice-device-compact">
+                    <SelectRow
+                      label="Microphone"
+                      description="Audio source for speech."
+                      value={selectedInputDeviceId}
+                      onChange={onInputDeviceChange}
+                    >
+                      {inputDevices.map((device) => (
+                        <option key={`input-${device.id || "default"}`} value={device.id}>
+                          {device.label}
+                        </option>
+                      ))}
+                    </SelectRow>
+                    <SelectRow
+                      label="Speaker"
+                      description="Where voice audio plays."
+                      value={selectedOutputDeviceId}
+                      disabled={!supportsOutputSelection}
+                      onChange={onOutputDeviceChange}
+                    >
+                      {outputDevices.map((device) => (
+                        <option key={`output-${device.id || "default"}`} value={device.id}>
+                          {device.label}
+                        </option>
+                      ))}
+                    </SelectRow>
+                    <ActionRow
+                      label="Reset voice preferences"
+                      description="Clear saved devices and setup state."
+                      actionLabel="Reset"
+                      onAction={onResetVoicePreferences}
+                    />
+                  </div>
+                </SectionCard>
+              </div>
             </div>
           </section>
 

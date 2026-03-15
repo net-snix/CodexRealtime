@@ -163,7 +163,7 @@ const createMainWindow = () => {
     ...(isMac
       ? {
           titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: { x: 16, y: 18 }
+          trafficLightPosition: { x: 10, y: 10 }
         }
       : {}),
     webPreferences: {

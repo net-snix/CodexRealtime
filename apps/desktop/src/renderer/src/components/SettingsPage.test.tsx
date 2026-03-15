@@ -44,6 +44,7 @@ const appSettingsState: AppSettingsState = {
     autoStartVoice: false,
     showVoiceCaptions: true,
     density: "comfortable",
+    theme: "system",
     reduceMotion: false,
     desktopNotifications: true,
     notifyOnApprovals: true,
@@ -256,7 +257,7 @@ describe("SettingsPage", () => {
       );
     });
 
-    expect(container?.textContent).toContain("App preferences");
+    expect(container?.textContent).toContain("Settings");
     expect(container?.textContent).toContain("Voice");
     expect(container?.textContent).toContain("Workers");
     expect(container?.textContent).toContain("Archived thread");
