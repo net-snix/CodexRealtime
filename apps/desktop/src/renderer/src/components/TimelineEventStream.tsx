@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { Fragment, memo, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { EditorId } from "@codex-realtime/contracts";
 import type { TimelineDiffEntry, TimelineEntry } from "@shared";
 import type {
@@ -52,6 +52,12 @@ const formatElapsed = (startedAt: string | null, now: number) => {
   return `${minutes}m ${seconds % 60}s`;
 };
 
+const formatWorkedDuration = (elapsedMs: number) => {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+};
+
 const buildDiffMap = (entries: TimelineEntry[]) => {
   const diffsByMessageId = new Map<string, TimelineDiffEntry>();
   const detachedDiffIds = new Set<string>();
@@ -69,6 +75,68 @@ const buildDiffMap = (entries: TimelineEntry[]) => {
     diffsByMessageId,
     detachedDiffIds
   };
+};
+
+const buildTurnWorkSummaryMap = (entries: TimelineEntry[]) => {
+  const summaryByTurnId = new Map<string, { durationLabel: string }>();
+
+  for (const entry of entries) {
+    if (entry.kind !== "message" || entry.role !== "assistant" || entry.isStreaming || !entry.turnId) {
+      continue;
+    }
+
+    const completedAt = entry.completedAt ?? entry.createdAt;
+    const completedAtMs = Date.parse(completedAt);
+    if (Number.isNaN(completedAtMs)) {
+      continue;
+    }
+
+    const activityEntries = entries.filter(
+      (candidate): candidate is Extract<TimelineEntry, { kind: "activity" }> =>
+        candidate.kind === "activity" && candidate.turnId === entry.turnId
+    );
+
+    if (activityEntries.length === 0) {
+      continue;
+    }
+
+    const startedAtMs = activityEntries
+      .map((candidate) => Date.parse(candidate.createdAt))
+      .filter((candidate) => !Number.isNaN(candidate))
+      .sort((left, right) => left - right)[0];
+
+    if (startedAtMs === undefined || startedAtMs > completedAtMs) {
+      continue;
+    }
+
+    summaryByTurnId.set(entry.turnId, {
+      durationLabel: formatWorkedDuration(completedAtMs - startedAtMs)
+    });
+  }
+
+  return summaryByTurnId;
+};
+
+function TimelineWorkedDivider({ durationLabel }: { durationLabel: string }) {
+  return (
+    <div className="timeline-worked-divider" aria-label={`Worked for ${durationLabel}`}>
+      <span className="timeline-worked-divider-line" aria-hidden="true" />
+      <span className="timeline-worked-divider-label">Worked for {durationLabel}</span>
+      <span className="timeline-worked-divider-line" aria-hidden="true" />
+    </div>
+  );
+}
+
+const isWorkEntryForTurn = (entry: PresentedTimelineEntry | undefined, turnId: string) => {
+  if (!entry) {
+    return false;
+  }
+
+  if (entry.kind === "activityCluster") {
+    return entry.items.some((item) => item.entry.turnId === turnId);
+  }
+
+  return entry.item.entry.kind === "activity" && entry.item.entry.turnId === turnId;
 };
 
 const clusterLabel = (items: PresentedTimelineEvent[]) => {
@@ -384,6 +452,7 @@ function TimelineEventStreamComponent({
   availableEditors = []
 }: TimelineEventStreamProps) {
   const diffState = useMemo(() => buildDiffMap(entries), [entries]);
+  const turnWorkSummary = useMemo(() => buildTurnWorkSummaryMap(entries), [entries]);
   const { entries: groupedEntries, latestWorkingStatus } = presentedTimeline;
 
   return (
@@ -393,7 +462,7 @@ function TimelineEventStreamComponent({
         isWorkingLogMode ? "timeline-stream-log-active" : ""
       }`}
     >
-      {groupedEntries.map((entry) => {
+      {groupedEntries.map((entry, index) => {
         if (entry.kind === "activityCluster") {
           return <TimelineActivityCluster key={entry.id} {...entry} />;
         }
@@ -410,14 +479,34 @@ function TimelineEventStreamComponent({
             ? diffState.diffsByMessageId.get(entry.item.entry.id) ?? null
             : null;
 
+        const workedSummary =
+          entry.item.entry.kind === "message" &&
+          entry.item.entry.role === "assistant" &&
+          entry.item.entry.turnId
+            ? turnWorkSummary.get(entry.item.entry.turnId) ?? null
+            : null;
+
+        const shouldShowWorkedDivider =
+          !!workedSummary &&
+          entry.item.entry.kind === "message" &&
+          entry.item.entry.role === "assistant" &&
+          !!entry.item.entry.turnId &&
+          isWorkEntryForTurn(groupedEntries[index - 1], entry.item.entry.turnId);
+
         return (
-          <TimelineEntryCard
-            key={entry.item.entry.id}
-            item={entry.item}
-            attachedDiff={attachedDiff}
-            cwd={cwd}
-            availableEditors={availableEditors}
-          />
+          <Fragment key={entry.item.entry.id}>
+            {shouldShowWorkedDivider ? (
+              <TimelineWorkedDivider
+                durationLabel={workedSummary.durationLabel}
+              />
+            ) : null}
+            <TimelineEntryCard
+              item={entry.item}
+              attachedDiff={attachedDiff}
+              cwd={cwd}
+              availableEditors={availableEditors}
+            />
+          </Fragment>
         );
       })}
 

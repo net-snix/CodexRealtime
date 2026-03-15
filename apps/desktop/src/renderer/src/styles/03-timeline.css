@@ -886,6 +886,28 @@
   line-height: 1.35;
 }
 
+.timeline-worked-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timeline-worked-divider-line {
+  flex: 1;
+  min-width: 22px;
+  height: 1px;
+  background: color-mix(in srgb, var(--line-strong) 88%, transparent);
+}
+
+.timeline-worked-divider-label {
+  white-space: nowrap;
+}
+
 .timeline-message {
   display: grid;
   gap: 16px;
@@ -1372,6 +1394,14 @@
 .app-shell-dark .timeline-message-output,
 .app-shell-dark .timeline-activity-output {
   background: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+}
+
+.app-shell-dark .timeline-worked-divider {
+  color: color-mix(in srgb, var(--muted) 82%, #dcc3a6 18%);
+}
+
+.app-shell-dark .timeline-worked-divider-line {
+  background: color-mix(in srgb, var(--line) 92%, #b49a7f 8%);
 }
 
 .app-shell-dark .timeline-message .timeline-message-copy {

@@ -243,4 +243,42 @@ describe("TimelineEventStream", () => {
     expect(container?.textContent).not.toContain("output 1");
     expect(container?.textContent).toContain("Ran command-7");
   });
+
+  it("separates work logs from the final assistant answer with a worked-for divider", async () => {
+    const entries = [
+      makeCommandEntry({
+        id: "command-1",
+        createdAt: "2026-03-13T20:00:00.000Z",
+        label: "Ran command",
+        command: "pwd",
+        detail: "/Users/espenmac/Code/CodexRealtime"
+      }),
+      {
+        ...assistantMessageEntry,
+        id: "entry-2",
+        createdAt: "2026-03-13T20:00:07.000Z",
+        completedAt: "2026-03-13T20:00:07.000Z"
+      } satisfies TimelineEntry
+    ];
+
+    await act(async () => {
+      root?.render(
+        <TimelineEventStream
+          entries={entries}
+          presentedTimeline={buildPresentedTimeline(entries, false)}
+          isWorkingLogMode={false}
+          isRunning={false}
+          isResolvingRequests={false}
+          activeWorkingLabel="Working"
+          activeWorkStartedAt={null}
+          streamRef={{ current: null }}
+        />
+      );
+    });
+
+    const divider = container?.querySelector(".timeline-worked-divider");
+
+    expect(divider?.textContent).toContain("Worked for 0m 7s");
+    expect(container?.textContent).toContain("Hello from the worker");
+  });
 });
