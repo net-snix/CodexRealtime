@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  --bg-top: #f8f4ec;
   --bg: #f3ede3;
   --bg-deep: #e9e0d2;
   --surface: rgba(248, 243, 235, 0.96);
@@ -36,7 +37,7 @@ body,
 
 body {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f8f4ec 0%, var(--bg) 54%, var(--bg-deep) 100%);
+  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 54%, var(--bg-deep) 100%);
   color: var(--text);
 }
 
@@ -98,6 +99,40 @@ select {
   height: 100vh;
   padding: 2px 4px 4px;
   overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 54%, var(--bg-deep) 100%);
+}
+
+.app-shell-light {
+  color-scheme: light;
+}
+
+.app-shell-dark {
+  color-scheme: dark;
+  --bg-top: #10131a;
+  --bg: #0c1017;
+  --bg-deep: #070a0f;
+  --surface: rgba(28, 33, 41, 0.92);
+  --surface-strong: #1f2530;
+  --surface-soft: #252f3f;
+  --text: #edf2f7;
+  --muted: #8ea0b8;
+  --muted-strong: #c6d2e2;
+  --line: rgba(214, 223, 236, 0.14);
+  --line-strong: rgba(214, 223, 236, 0.22);
+  --accent: #8db0d9;
+  --accent-soft: #1f2f46;
+  --success: #65b58f;
+  --success-soft: rgba(101, 181, 143, 0.2);
+  --warning: #e6a97b;
+  --warning-soft: rgba(230, 169, 123, 0.2);
+  --danger: #df8d85;
+  --danger-soft: rgba(223, 141, 133, 0.2);
+  --shadow: 0 6px 18px rgba(2, 3, 4, 0.34), 0 1px 2px rgba(2, 3, 4, 0.4);
+}
+
+.app-shell-dark .backdrop {
+  border-color: rgba(214, 223, 236, 0.08);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .app-shell-voice-open {
@@ -230,6 +265,18 @@ select {
   border-color: rgba(156, 113, 54, 0.22);
   background: rgba(247, 239, 223, 0.96);
   color: #9c7136;
+}
+
+.app-shell-dark .status-pill-live {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--text);
+}
+
+.app-shell-dark .status-pill-warning {
+  border-color: color-mix(in srgb, var(--warning) 34%, transparent);
+  background: color-mix(in srgb, var(--warning-soft) 55%, transparent);
+  color: var(--warning);
 }
 
 .session-meta,

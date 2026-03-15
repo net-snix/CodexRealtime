@@ -9,6 +9,7 @@
 .rail-window-strip {
   min-height: 14px;
   -webkit-app-region: drag;
+  background: transparent;
 }
 
 .app-shell-macos .rail-window-strip {
@@ -539,5 +540,87 @@
 .rail-footer-button-active {
   border-color: rgba(24, 23, 20, 0.06);
   background: rgba(255, 255, 255, 0.68);
+  color: var(--text);
+}
+
+.app-shell-dark .rail-window-strip,
+.app-shell-dark .left-rail,
+.app-shell-dark .rail-utility-button,
+.app-shell-dark .rail-utility-button:hover:not(:disabled),
+.app-shell-dark .project-row-action-button:hover:not(:disabled),
+.app-shell-dark .project-row-action-button-active,
+.app-shell-dark .project-row-menu,
+.app-shell-dark .project-row-menu-item,
+.app-shell-dark .project-select-button:hover,
+.app-shell-dark .project-thread-row:hover,
+.app-shell-dark .project-thread-row-hovered,
+.app-shell-dark .project-thread-button-active,
+.app-shell-dark .project-thread-archive-button,
+.app-shell-dark .project-thread-archive-button:hover:not(:disabled),
+.app-shell-dark .project-thread-confirm-button,
+.app-shell-dark .project-thread-confirm-button:hover:not(:disabled),
+.app-shell-dark .rail-footer-button:hover,
+.app-shell-dark .rail-footer-button-active,
+.app-shell-dark .project-thread-status-pill-running,
+.app-shell-dark .project-thread-status-pill-approval,
+.app-shell-dark .project-thread-status-pill-input {
+  background: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+}
+
+.app-shell-dark .rail-window-strip {
+  background: transparent;
+}
+
+.app-shell-dark .left-rail {
+  background: var(--surface);
+}
+
+.app-shell-dark .project-row-action-button:hover:not(:disabled),
+.app-shell-dark .project-row-action-button-active,
+.app-shell-dark .project-row-menu,
+.app-shell-dark .project-select-button:hover,
+.app-shell-dark .project-thread-row:hover,
+.app-shell-dark .project-thread-row-hovered,
+.app-shell-dark .project-thread-button-active,
+.app-shell-dark .project-thread-archive-button,
+.app-shell-dark .project-thread-confirm-button,
+.app-shell-dark .project-thread-archive-button:hover:not(:disabled),
+.app-shell-dark .project-thread-confirm-button:hover:not(:disabled),
+.app-shell-dark .rail-footer-button:hover,
+.app-shell-dark .rail-footer-button-active {
+  border-color: color-mix(in srgb, var(--line) 50%, transparent);
+  color: var(--text);
+}
+
+.app-shell-dark .project-row-menu-item-danger:hover:not(:disabled),
+.app-shell-dark .project-thread-status-pill-running,
+.app-shell-dark .project-thread-status-pill-approval,
+.app-shell-dark .project-thread-status-pill-input {
+  color: var(--text);
+}
+
+.app-shell-dark .project-thread-status-pill-running,
+.app-shell-dark .project-row-menu-item-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.app-shell-dark .project-thread-status-pill-approval,
+.app-shell-dark .project-thread-row-approval {
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  color: var(--warning);
+}
+
+.app-shell-dark .project-thread-status-pill-input,
+.app-shell-dark .project-thread-row-input {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+
+.app-shell-dark .project-row-action-button-active,
+.app-shell-dark .project-thread-button-active,
+.app-shell-dark .project-select-button:hover,
+.app-shell-dark .project-thread-row:hover,
+.app-shell-dark .project-thread-row-hovered {
   color: var(--text);
 }

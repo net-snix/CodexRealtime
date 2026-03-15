@@ -260,3 +260,29 @@
 .voice-device-field select:disabled {
   opacity: 0.56;
 }
+
+.app-shell-dark .voice-bar-body,
+.app-shell-dark .voice-button.primary,
+.app-shell-dark .voice-button.danger,
+.app-shell-dark .voice-button.ghost,
+.app-shell-dark .voice-device-panel,
+.app-shell-dark .voice-device-hint-dismiss {
+  background: color-mix(in srgb, var(--surface-soft) 98%, transparent);
+}
+
+.app-shell-dark .voice-button.primary {
+  color: var(--text);
+}
+
+.app-shell-dark .voice-button.primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.app-shell-dark .voice-button.danger {
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+  color: var(--danger);
+}
+
+.app-shell-dark .voice-device-hint-dismiss {
+  color: var(--text);
+}

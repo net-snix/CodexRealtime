@@ -613,3 +613,89 @@
 .request-error {
   color: var(--danger);
 }
+
+.app-shell-dark .pane-icon-button:hover,
+.app-shell-dark .pane-action-popover,
+.app-shell-dark .pane-tab.active,
+.app-shell-dark .pane-empty-state,
+.app-shell-dark .dossier-card,
+.app-shell-dark .dossier-card-alert,
+.app-shell-dark .dossier-card-active,
+.app-shell-dark .pane-plan-summary,
+.app-shell-dark .pane-file-row,
+.app-shell-dark .pane-file-path,
+.app-shell-dark .diff-preview,
+.app-shell-dark .option-pill,
+.app-shell-dark .request-action-button-primary,
+.app-shell-dark .request-action-button-ghost,
+.app-shell-dark .request-input,
+.app-shell-dark .request-action-button-primary,
+.app-shell-dark .request-action-button-ghost,
+.app-shell-dark .request-input-list,
+.app-shell-dark .archive-thread-row,
+.app-shell-dark .request-input,
+.app-shell-dark .request-input:focus,
+.app-shell-dark .pane-code,
+.app-shell-dark .archive-thread-copy {
+  background: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+}
+
+.app-shell-dark .pane-icon-button:hover,
+.app-shell-dark .pane-action-popover,
+.app-shell-dark .pane-tab.active,
+.app-shell-dark .dossier-card,
+.app-shell-dark .dossier-card-active,
+.app-shell-dark .pane-plan-summary,
+.app-shell-dark .pane-file-row,
+.app-shell-dark .option-pill,
+.app-shell-dark .request-action-button-primary,
+.app-shell-dark .request-action-button-ghost,
+.app-shell-dark .request-input,
+.app-shell-dark .request-action-button-ghost,
+.app-shell-dark .archive-thread-row,
+.app-shell-dark .request-input-list {
+  border-color: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.app-shell-dark .dossier-card-alert,
+.app-shell-dark .dossier-status-alert {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.app-shell-dark .dossier-card-alert,
+.app-shell-dark .dossier-status-alert {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+.app-shell-dark .request-action-button-primary {
+  color: var(--text);
+}
+
+.app-shell-dark .request-action-button-primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.app-shell-dark .pane-code {
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+  color: var(--muted);
+}
+
+.app-shell-dark .request-input,
+.app-shell-dark .request-input:focus,
+.app-shell-dark .request-input-list {
+  color: var(--text);
+}
+
+.app-shell-dark .pane-file-path {
+  color: var(--muted-strong);
+}
+
+.app-shell-dark .option-pill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+}
+
+.app-shell-dark .diff-preview {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--muted-strong);
+}

@@ -293,3 +293,62 @@
     max-height: 260px;
   }
 }
+
+.app-shell-dark .diff-browser-scope-chip:hover,
+.app-shell-dark .diff-browser-mode-button:hover,
+.app-shell-dark .diff-browser-file-row:hover,
+.app-shell-dark .diff-browser-scope-chip,
+.app-shell-dark .diff-browser-scope-chip.active,
+.app-shell-dark .diff-browser-mode-button.active,
+.app-shell-dark .diff-browser-summary,
+.app-shell-dark .diff-browser-viewer,
+.app-shell-dark .diff-browser-empty-panel,
+.app-shell-dark .diff-browser-file-row,
+.app-shell-dark .diff-browser-file-list,
+.app-shell-dark .diff-browser-codeframe {
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+}
+
+.app-shell-dark .diff-browser-scope-chip.active,
+.app-shell-dark .diff-browser-mode-button.active {
+  border-color: color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.app-shell-dark .diff-browser-line-list {
+  border-color: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.app-shell-dark .diff-browser-line {
+  border-top-color: color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.app-shell-dark .diff-browser-line code {
+  color: var(--text);
+}
+
+.app-shell-dark .diff-browser-line-meta code,
+.app-shell-dark .diff-browser-line-hunk code,
+.app-shell-dark .diff-browser-gutter {
+  color: var(--muted-strong);
+}
+
+.app-shell-dark .diff-browser-line-added {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.app-shell-dark .diff-browser-line-added code {
+  color: var(--success);
+}
+
+.app-shell-dark .diff-browser-line-removed {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.app-shell-dark .diff-browser-line-removed code {
+  color: var(--danger);
+}
+
+.app-shell-dark .diff-browser-line-meta,
+.app-shell-dark .diff-browser-line-hunk {
+  background: color-mix(in srgb, var(--surface) 20%, transparent);
+}

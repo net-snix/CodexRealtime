@@ -61,6 +61,7 @@
   display: grid;
   align-content: start;
   gap: 10px;
+  padding-top: 34px;
 }
 
 .settings-sidebar-card,
@@ -111,7 +112,8 @@
 .settings-nav-button,
 .settings-button,
 .settings-switch,
-.settings-select {
+.settings-select,
+.settings-segment {
   -webkit-app-region: no-drag;
 }
 
@@ -146,6 +148,7 @@
   min-height: 0;
   padding-right: 4px;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .settings-section {
@@ -172,6 +175,25 @@
 
 .settings-card-grid-wide {
   grid-template-columns: 1.2fr 0.8fr;
+}
+
+.settings-voice-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-voice-device-card {
+  align-self: start;
+  min-height: auto;
+}
+
+.settings-voice-card-grid {
+  align-items: start;
+}
+
+.settings-voice-device-compact {
+  display: grid;
+  gap: 10px;
 }
 
 .settings-card {
@@ -221,6 +243,49 @@
 .settings-row-select,
 .settings-row-input {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-row-segment {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-segmented {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(24, 23, 20, 0.14);
+  border-radius: 999px;
+  padding: 2px;
+  background: var(--surface-soft);
+}
+
+.settings-segment {
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 0.76rem;
+  font-weight: 600;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.settings-segment + .settings-segment {
+  margin-left: 2px;
+}
+
+.settings-segment:hover:not(:disabled) {
+  border-color: rgba(24, 23, 20, 0.16);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.settings-segment-selected {
+  border-color: rgba(33, 53, 61, 0.22);
+  background: rgba(33, 53, 61, 0.88);
+  color: #fffdfa;
 }
 
 .settings-row-copy {
@@ -433,6 +498,10 @@
   font-size: 0.76rem;
 }
 
+.settings-archive-project-head strong {
+  color: var(--text);
+}
+
 .settings-archive-thread-copy {
   display: grid;
   gap: 3px;
@@ -468,6 +537,78 @@
 
 .app-shell-density-compact .settings-content {
   gap: 12px;
+}
+
+.app-shell-dark .settings-empty-note,
+.app-shell-dark .settings-nav-button:hover,
+.app-shell-dark .settings-segment:hover:not(:disabled),
+.app-shell-dark .settings-segment-selected,
+.app-shell-dark .settings-sidebar-card,
+.app-shell-dark .settings-card,
+.app-shell-dark .settings-feature-pill,
+.app-shell-dark .settings-input,
+.app-shell-dark .settings-select,
+.app-shell-dark .settings-row-select,
+.app-shell-dark .settings-row-input,
+.app-shell-dark .settings-button,
+.app-shell-dark .settings-switch-thumb {
+  background: color-mix(in srgb, var(--surface-soft) 98%, transparent);
+}
+
+.app-shell-dark .settings-nav-button:hover,
+.app-shell-dark .settings-segment:hover:not(:disabled),
+.app-shell-dark .settings-row-select,
+.app-shell-dark .settings-row-input,
+.app-shell-dark .settings-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--line) 50%, transparent);
+}
+
+.app-shell-dark .settings-segment-selected {
+  background: var(--accent);
+  color: var(--text);
+}
+
+.app-shell-dark .settings-switch-thumb {
+  background: var(--text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.app-shell-dark .settings-switch {
+  border-color: color-mix(in srgb, var(--line) 56%, transparent);
+  background: color-mix(in srgb, var(--line) 32%, transparent);
+}
+
+.app-shell-dark .settings-switch-on {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+.app-shell-dark .settings-button,
+.app-shell-dark .settings-button:hover:not(:disabled),
+.app-shell-dark .settings-input,
+.app-shell-dark .settings-select {
+  color: var(--muted-strong);
+  border-color: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.app-shell-dark .settings-button-ghost {
+  background: transparent;
+}
+
+.app-shell-dark .settings-archive-project-head strong,
+.app-shell-dark .settings-archive-thread-copy strong {
+  color: var(--text);
+}
+
+.app-shell-dark .settings-archive-project-head span,
+.app-shell-dark .settings-archive-thread-copy span {
+  color: var(--muted);
+}
+
+.app-shell-dark .settings-button-danger {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
 }
 
 @media (max-width: 1180px) {
