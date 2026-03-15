@@ -1358,8 +1358,8 @@
 }
 
 .app-shell-dark .timeline-message-assistant .timeline-message-copy {
-  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
-  border-color: color-mix(in srgb, var(--line) 84%, transparent);
+  background: transparent;
+  border: none;
 }
 
 .app-shell-dark .timeline-message-plan .timeline-message-copy {
