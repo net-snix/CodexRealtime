@@ -432,6 +432,7 @@ export function LeftRail({
           const hasHiddenThreads = project.threads.length > THREAD_PREVIEW_LIMIT;
           const visibleThreads = visibleThreadsForProject(project, isThreadListExpanded);
           const hiddenThreadCount = Math.max(project.threads.length - THREAD_PREVIEW_LIMIT, 0);
+          const isActiveProject = currentProjectId === project.id;
 
           return (
             <section
@@ -530,7 +531,7 @@ export function LeftRail({
                           key={thread.id}
                           projectId={project.id}
                           thread={thread}
-                          isActiveThread={project.currentThreadId === thread.id}
+                          isActiveThread={isActiveProject && project.currentThreadId === thread.id}
                           isConfirmingArchive={confirmThreadId === thread.id}
                           isArchivingThread={archivingThreadId === thread.id}
                           isArchiveDisabled={

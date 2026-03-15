@@ -302,6 +302,56 @@ describe("LeftRail", () => {
     expect(commitPhases.length - baselineCommitCount).toBe(1);
   });
 
+  it("highlights only the current project's active thread", async () => {
+    const workspaceStateOverride: WorkspaceState = {
+      ...workspaceState,
+      currentThreadId: "thread-a",
+      projects: [
+        {
+          id: "workspace-1",
+          name: "First",
+          path: "/tmp/first",
+          isCurrent: true,
+          currentThreadId: "thread-a",
+          threads: [createThread("thread-a", "Thread A", "5m", { preview: "First project active thread" })]
+        },
+        {
+          id: "workspace-2",
+          name: "Second",
+          path: "/tmp/second",
+          isCurrent: true,
+          currentThreadId: "thread-b",
+          threads: [createThread("thread-b", "Thread B", "6m", { preview: "Second project inactive thread" })]
+        }
+      ]
+    };
+
+    await renderLeftRail({
+      workspaceStateOverride
+    });
+
+    const expandSecondProject = container?.querySelector(
+      'button[aria-label="Expand Second"]'
+    ) as HTMLButtonElement | null;
+    expect(expandSecondProject).not.toBeNull();
+    if (!expandSecondProject) {
+      throw new Error("Second project toggle not found");
+    }
+
+    await act(async () => {
+      expandSecondProject.click();
+    });
+
+    const firstThreadRow = container?.querySelector('[data-thread-id="thread-a"]') as HTMLDivElement | null;
+    const secondThreadRow = container?.querySelector('[data-thread-id="thread-b"]') as HTMLDivElement | null;
+
+    expect(firstThreadRow).not.toBeNull();
+    expect(secondThreadRow).not.toBeNull();
+
+    expect(firstThreadRow?.className).toContain("project-thread-button-active");
+    expect(secondThreadRow?.className).not.toContain("project-thread-button-active");
+  });
+
   it("opens the project menu and removes the project", async () => {
     const { onRemoveWorkspace } = await renderLeftRail({
       onRemoveWorkspace: vi.fn<RemoveWorkspaceHandler>()
