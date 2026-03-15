@@ -19,7 +19,9 @@ import { useWorkerSettings } from "./use-worker-settings";
 import { VoiceBar } from "./components/VoiceBar";
 import {
   applyCreateThreadTransition,
-  applySelectThreadTransition
+  applySelectThreadTransition,
+  applyArchiveThreadTransition,
+  applyUnarchiveThreadTransition
 } from "./workspace-state-transitions";
 import {
   applyOptimisticTurnStart,
@@ -75,6 +77,14 @@ const toThreadDraftTitle = (prompt: string) => {
   return normalized ? normalized.slice(0, 72) : "New thread";
 };
 
+const getSystemTheme = () => {
+  if (typeof window.matchMedia !== "function") {
+    return "light";
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+};
+
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
@@ -124,6 +134,7 @@ export default function App() {
   const [isStartingTurn, setIsStartingTurn] = useState(false);
   const [isStoppingVoice, setIsStoppingVoice] = useState(false);
   const [voiceFeedback, setVoiceFeedback] = useState<VoiceFeedback>(null);
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark">(getSystemTheme);
   const [isVoicePanelOpen, setIsVoicePanelOpen] = useState(false);
   const [mainView, setMainView] = useState<MainView>("thread");
   const [activePane, setActivePane] = useState<PaneKey>("plan");
@@ -228,6 +239,7 @@ export default function App() {
     userInputCount > 0 ||
     submittingApprovalCount > 0 ||
     submittingUserInputCount > 0;
+  const resolvedTheme = appSettings.theme === "system" ? systemTheme : appSettings.theme;
 
   const refreshTimelineState = useEffectEvent(async () => {
     if (timelineRefreshPromiseRef.current) {
@@ -354,6 +366,32 @@ export default function App() {
     timelineState.threadId,
     userInputCount
   ]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleMatch = () => {
+      setSystemTheme(mediaQuery.matches ? "dark" : "light");
+    };
+
+    handleMatch();
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleMatch);
+
+      return () => {
+        mediaQuery.removeEventListener("change", handleMatch);
+      };
+    }
+
+    mediaQuery.addListener(handleMatch);
+
+    return () => {
+      mediaQuery.removeListener(handleMatch);
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -489,16 +527,19 @@ export default function App() {
       }
 
       const result: ArchiveThreadResult = await nativeApiRef.current!.archiveThread(workspaceId, threadId);
-      const nextWorkspaceState = await refreshWorkspaceState();
       setTimelineState(result.timelineState);
+      setWorkspaceState((current) =>
+        applyArchiveThreadTransition(current, {
+          workspaceId,
+          threadId,
+          nextThreadId: result.selectedThreadId
+        })
+      );
 
       if (isArchivingCurrentThread) {
-        const nextCurrentProject =
-          nextWorkspaceState.projects.find((project) => project.isCurrent) ?? null;
-        const hasLiveThreads = Boolean(nextCurrentProject?.threads.length);
         clearWorkerAttachments();
         setActivePane("plan");
-        setMainView(mainView === "settings" ? "settings" : hasLiveThreads ? "thread" : "settings");
+        setMainView("thread");
       }
     } catch (error) {
       setArchiveError(toErrorMessage(error, "Archiving thread failed."));
@@ -518,7 +559,12 @@ export default function App() {
 
       const nextTimeline = await nativeApiRef.current!.unarchiveThread(workspaceId, threadId);
       setTimelineState(nextTimeline);
-      await refreshWorkspaceState();
+      setWorkspaceState((current) =>
+        applyUnarchiveThreadTransition(current, {
+          workspaceId,
+          threadId
+        })
+      );
       setActivePane("plan");
       setMainView("thread");
     } catch (error) {
@@ -714,7 +760,7 @@ export default function App() {
   ]);
 
   const handleOpenSettings = () => {
-    setMainView("settings");
+    setMainView((current) => (current === "settings" ? "thread" : "settings"));
   };
 
   const handleCloseSettings = () => {
@@ -806,7 +852,8 @@ export default function App() {
     !isVoicePanelOpen ? "app-shell-voice-closed" : "",
     appSettings.density === "compact" ? "app-shell-density-compact" : "",
     appSettings.reduceMotion ? "app-shell-reduced-motion" : "",
-    appSettings.developerMode ? "app-shell-developer-mode" : ""
+    appSettings.developerMode ? "app-shell-developer-mode" : "",
+    resolvedTheme === "dark" ? "app-shell-dark" : "app-shell-light"
   ]
     .filter(Boolean)
     .join(" ");
