@@ -358,6 +358,10 @@
   width: 210px;
   height: 34px;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
   accent-color: rgba(33, 53, 61, 0.9);
   cursor: pointer;
 }
@@ -372,6 +376,23 @@
 .settings-slider::-webkit-slider-thumb {
   margin-top: -4px;
   appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 23, 20, 0.22);
+  background: var(--text);
+  cursor: pointer;
+}
+
+.settings-slider::-moz-range-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(24, 23, 20, 0.14);
+  border: 0;
+}
+
+.settings-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 999px;
@@ -646,6 +667,19 @@
 .app-shell-dark .settings-slider::-webkit-slider-thumb {
   border-color: color-mix(in srgb, var(--line) 62%, transparent);
   background: var(--text);
+}
+
+.app-shell-dark .settings-slider::-moz-range-track {
+  background: color-mix(in srgb, var(--line) 28%, transparent);
+}
+
+.app-shell-dark .settings-slider::-moz-range-thumb {
+  border-color: color-mix(in srgb, var(--line) 62%, transparent);
+  background: var(--text);
+}
+
+.app-shell-dark .settings-slider {
+  background: transparent;
 }
 
 .app-shell-dark .settings-button-ghost {
