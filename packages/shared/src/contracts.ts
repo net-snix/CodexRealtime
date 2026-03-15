@@ -14,6 +14,7 @@ export interface AppSettings {
   autoNameNewThreads: boolean;
   autoStartVoice: boolean;
   showVoiceCaptions: boolean;
+  windowScale: 25 | 50 | 100 | 150 | 200;
   density: AppDensity;
   theme: AppTheme;
   reduceMotion: boolean;

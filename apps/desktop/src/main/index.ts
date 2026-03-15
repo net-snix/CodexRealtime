@@ -5,7 +5,9 @@ import { createBootstrapLogger } from "./bootstrap-logger";
 import { codexBridge } from "./codex-bridge";
 import { registerIpcHandlers } from "./ipc";
 import { LocalServerProcess } from "./local-server-process";
+import { appSettingsService } from "./app-settings-service";
 import { realtimeService } from "./realtime-service";
+import { applyWindowScaleToWindow } from "./window-scale";
 import { workspaceService } from "./workspace-service";
 
 const userDataOverride = process.env.CODEX_REALTIME_USER_DATA_DIR;
@@ -211,6 +213,8 @@ const createMainWindow = () => {
   window.webContents.on("did-finish-load", () => {
     window.setTitle(app.getName());
   });
+
+  applyWindowScaleToWindow(window, appSettingsService.getSettings().windowScale);
 
   window.once("ready-to-show", () => {
     window.show();

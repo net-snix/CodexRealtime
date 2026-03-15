@@ -42,6 +42,7 @@ describe("AppSettingsService", () => {
 
     expect(service.getSettingsState().settings.reduceMotion).toBe(true);
     expect(service.getSettingsState().settings.autoNameNewThreads).toBe(true);
+    expect(service.getSettingsState().settings.windowScale).toBe(100);
     expect(service.getSettingsState().settings.reduceMotion).toBe(true);
     expect(readFileSync).toHaveBeenCalledTimes(1);
   });
@@ -87,6 +88,7 @@ describe("AppSettingsService", () => {
     });
     expect(nextState.settings.autoStartVoice).toBe(true);
     expect(nextState.settings.autoNameNewThreads).toBe(true);
+    expect(nextState.settings.windowScale).toBe(100);
     expect(service.getSettings().autoStartVoice).toBe(true);
     expect(readFileSync).toHaveBeenCalledTimes(1);
     expect(writeFileSync).toHaveBeenCalledWith(
@@ -99,12 +101,23 @@ describe("AppSettingsService", () => {
       expect.stringContaining('"autoStartVoice": true'),
       "utf8"
     );
+
+    service.updateSettings({
+      windowScale: 200
+    });
+
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/tmp/codex/app-settings.json",
+      expect.stringContaining('"windowScale": 200'),
+      "utf8"
+    );
   });
 
   it("ignores invalid persisted fields and keeps defaults", async () => {
     const readFileSync = vi.fn(() =>
       JSON.stringify({
         reduceMotion: "true",
+        windowScale: "150",
         density: "ultra-compact",
         notifyOnErrors: false,
         __proto__: {
@@ -141,6 +154,7 @@ describe("AppSettingsService", () => {
     const state = service.getSettingsState().settings;
 
     expect(state.reduceMotion).toBe(false);
+    expect(state.windowScale).toBe(100);
     expect(state.density).toBe("comfortable");
     expect(state.notifyOnErrors).toBe(false);
     expect(({} as { polluted?: boolean }).polluted).toBeUndefined();

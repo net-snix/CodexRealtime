@@ -241,7 +241,8 @@
 .settings-row-toggle,
 .settings-row-action,
 .settings-row-select,
-.settings-row-input {
+.settings-row-input,
+.settings-row-slider {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
@@ -340,9 +341,56 @@
 .settings-switch:disabled,
 .settings-button:disabled,
 .settings-select:disabled,
-.settings-input:disabled {
+.settings-input:disabled,
+.settings-slider:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.settings-slider-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: end;
+}
+
+.settings-slider {
+  width: 210px;
+  height: 34px;
+  margin: 0;
+  accent-color: rgba(33, 53, 61, 0.9);
+  cursor: pointer;
+}
+
+.settings-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(24, 23, 20, 0.14);
+}
+
+.settings-slider::-webkit-slider-thumb {
+  margin-top: -4px;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 23, 20, 0.22);
+  background: var(--text);
+  cursor: pointer;
+}
+
+.settings-slider:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.settings-slider-value {
+  min-width: 3.5ch;
+  text-align: right;
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .settings-select-wrap {
@@ -591,6 +639,15 @@
   border-color: color-mix(in srgb, var(--line) 45%, transparent);
 }
 
+.app-shell-dark .settings-slider::-webkit-slider-runnable-track {
+  background: color-mix(in srgb, var(--line) 28%, transparent);
+}
+
+.app-shell-dark .settings-slider::-webkit-slider-thumb {
+  border-color: color-mix(in srgb, var(--line) 62%, transparent);
+  background: var(--text);
+}
+
 .app-shell-dark .settings-button-ghost {
   background: transparent;
 }
@@ -640,6 +697,7 @@
   .settings-row-action,
   .settings-row-select,
   .settings-row-input,
+  .settings-row-slider,
   .settings-archive-thread-row {
     grid-template-columns: 1fr;
   }
@@ -660,6 +718,10 @@
   .settings-input {
     width: 100%;
     min-width: 0;
+  }
+
+  .settings-slider {
+    width: 100%;
   }
 
   .settings-input-stack {

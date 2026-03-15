@@ -43,6 +43,7 @@ const appSettingsState: AppSettingsState = {
     autoNameNewThreads: false,
     autoStartVoice: false,
     showVoiceCaptions: true,
+    windowScale: 100,
     density: "comfortable",
     theme: "system",
     reduceMotion: false,
@@ -285,6 +286,25 @@ describe("SettingsPage", () => {
 
     expect(onUpdateAppSettings).toHaveBeenCalledWith({ autoNameNewThreads: true });
 
+    const windowScaleSlider = container?.querySelector(
+      'input[aria-label="Window scale"]'
+    ) as HTMLInputElement | null;
+
+    expect(windowScaleSlider).not.toBeNull();
+    expect(windowScaleSlider?.value).toBe("2");
+    expect(container?.textContent).toContain("100%");
+
+    await act(async () => {
+      if (!windowScaleSlider) {
+        return;
+      }
+
+      windowScaleSlider.value = "4";
+      windowScaleSlider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(onUpdateAppSettings).toHaveBeenLastCalledWith({ windowScale: 200 });
+
     const restoreButton = Array.from(container?.querySelectorAll("button") ?? []).find((button) =>
       button.textContent?.includes("Restore")
     ) as HTMLButtonElement | undefined;
@@ -309,5 +329,75 @@ describe("SettingsPage", () => {
     });
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps window scale slider steps to canonical percentages", async () => {
+    const onUpdateAppSettings = vi.fn();
+
+    await act(async () => {
+      root?.render(
+        <SettingsPage
+          appInfo={appInfo}
+          appSettingsState={appSettingsState}
+          isUpdatingAppSettings={false}
+          onUpdateAppSettings={onUpdateAppSettings}
+          sessionState={sessionState}
+          workspaceState={workspaceState}
+          timelineState={timelineState}
+          workerSettingsState={workerSettingsState}
+          isUpdatingWorkerSettings={false}
+          onUpdateWorkerSettings={vi.fn()}
+          voiceMode="transcription"
+          speakAgentActivity={true}
+          speakToolCalls={true}
+          speakPlanUpdates={true}
+          onUpdateVoicePreferences={vi.fn()}
+          voiceApiKeyState={voiceApiKeyState}
+          isSavingVoiceApiKey={false}
+          isTestingVoiceApiKey={false}
+          onSaveVoiceApiKey={vi.fn()}
+          onClearVoiceApiKey={vi.fn()}
+          onTestVoiceApiKey={vi.fn()}
+          inputDevices={[{ id: "", label: "System default input" }]}
+          outputDevices={[{ id: "", label: "System default output" }]}
+          selectedInputDeviceId=""
+          selectedOutputDeviceId=""
+          supportsOutputSelection={true}
+          onInputDeviceChange={vi.fn()}
+          onOutputDeviceChange={vi.fn()}
+          shouldShowDeviceHint={true}
+          onDismissDeviceHint={vi.fn()}
+          onResetVoicePreferences={vi.fn()}
+          archivingThreadId={null}
+          restoringThreadId={null}
+          archiveError={null}
+          onArchiveThread={vi.fn()}
+          onUnarchiveThread={vi.fn()}
+          onOpenUserDataDirectory={vi.fn()}
+          onClearRecentWorkspaces={vi.fn()}
+          onClose={vi.fn()}
+        />
+      );
+    });
+
+    const windowScaleSlider = container?.querySelector(
+      'input[aria-label="Window scale"]'
+    ) as HTMLInputElement | null;
+    const values = [25, 50, 100, 150, 200];
+
+    for (const value of values) {
+      const sliderIndex = values.indexOf(value);
+
+      await act(async () => {
+        if (!windowScaleSlider) {
+          return;
+        }
+
+        windowScaleSlider.value = String(sliderIndex);
+        windowScaleSlider.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+
+      expect(onUpdateAppSettings).toHaveBeenLastCalledWith({ windowScale: value });
+    }
   });
 });

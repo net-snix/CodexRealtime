@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoNameNewThreads: false,
   autoStartVoice: false,
   showVoiceCaptions: true,
+  windowScale: 100,
   density: "comfortable",
   theme: "system",
   reduceMotion: false,
@@ -32,6 +33,8 @@ const APP_SETTINGS_VALIDATORS = {
   autoNameNewThreads: (value: unknown): value is boolean => typeof value === "boolean",
   autoStartVoice: (value: unknown): value is boolean => typeof value === "boolean",
   showVoiceCaptions: (value: unknown): value is boolean => typeof value === "boolean",
+  windowScale: (value: unknown): value is AppSettings["windowScale"] =>
+    value === 25 || value === 50 || value === 100 || value === 150 || value === 200,
   density: (value: unknown): value is AppSettings["density"] => value === "comfortable" || value === "compact",
   theme: (value: unknown): value is AppSettings["theme"] =>
     value === "system" || value === "light" || value === "dark",

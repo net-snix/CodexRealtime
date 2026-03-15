@@ -10,6 +10,7 @@ const emptyState: AppSettingsState = {
     autoNameNewThreads: false,
     autoStartVoice: false,
     showVoiceCaptions: true,
+    windowScale: 100,
     density: "comfortable",
     theme: "system",
     reduceMotion: false,

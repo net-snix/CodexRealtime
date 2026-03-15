@@ -1,10 +1,11 @@
 import { app, BrowserWindow, ipcMain } from "electron";
-import type { AppInfo, EditorId } from "@codex-realtime/contracts";
+import type { AppInfo, AppSettings, EditorId } from "@codex-realtime/contracts";
 import { IPC_CHANNELS } from "@codex-realtime/contracts/ipc";
 import { appNotificationService } from "./notification-service";
 import { appSettingsService } from "./app-settings-service";
 import { codexBridge } from "./codex-bridge";
 import { openInEditor, resolveAvailableEditors } from "./editor-launch";
+import { applyWindowScaleToWindows } from "./window-scale";
 import { realtimeService } from "./realtime-service";
 import { voiceApiKeyService } from "./voice-api-key-service";
 import { voicePreferencesService } from "./voice-preferences-service";
@@ -18,6 +19,10 @@ const readAppInfo = (): AppInfo => ({
 });
 
 export const registerIpcHandlers = () => {
+  const applyWindowScale = (settings: AppSettings) => {
+    applyWindowScaleToWindows(settings.windowScale);
+  };
+
   realtimeService.removeAllListeners("event");
   realtimeService.on("event", (event) => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -36,9 +41,11 @@ export const registerIpcHandlers = () => {
   ipcMain.removeHandler(IPC_CHANNELS.appSettingsGet);
   ipcMain.handle(IPC_CHANNELS.appSettingsGet, () => appSettingsService.getSettingsState());
   ipcMain.removeHandler(IPC_CHANNELS.appSettingsUpdate);
-  ipcMain.handle(IPC_CHANNELS.appSettingsUpdate, (_event, patch) =>
-    appSettingsService.updateSettings(patch)
-  );
+  ipcMain.handle(IPC_CHANNELS.appSettingsUpdate, (_event, patch) => {
+    const nextState = appSettingsService.updateSettings(patch);
+    applyWindowScale(nextState.settings);
+    return nextState;
+  });
   ipcMain.removeHandler(IPC_CHANNELS.appNotificationShow);
   ipcMain.handle(IPC_CHANNELS.appNotificationShow, (_event, request) =>
     appNotificationService.show(request)

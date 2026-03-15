@@ -105,6 +105,19 @@ const SETTINGS_SECTIONS: Array<{ key: SettingsSectionKey; label: string }> = [
   { key: "diagnostics", label: "Diagnostics" }
 ];
 
+const WINDOW_SCALE_OPTIONS: AppSettings["windowScale"][] = [25, 50, 100, 150, 200];
+
+const getWindowScaleIndex = (value: AppSettings["windowScale"]) =>
+  WINDOW_SCALE_OPTIONS.indexOf(value);
+
+const getWindowScaleFromIndex = (index: number): AppSettings["windowScale"] => {
+  if (index < 0 || index > WINDOW_SCALE_OPTIONS.length - 1) {
+    return 100;
+  }
+
+  return WINDOW_SCALE_OPTIONS[index];
+};
+
 function SectionCard({
   title,
   description,
@@ -196,6 +209,49 @@ function SelectRow({
         </select>
       </span>
     </label>
+  );
+}
+
+function ScaleSliderRow({
+  label,
+  description,
+  value,
+  disabled,
+  onChange
+}: {
+  label: string;
+  description: string;
+  value: AppSettings["windowScale"];
+  disabled?: boolean;
+  onChange: (value: AppSettings["windowScale"]) => void;
+}) {
+  const valueIndex = getWindowScaleIndex(value);
+  const safeIndex = valueIndex === -1 ? 2 : valueIndex;
+
+  return (
+    <div className="settings-row settings-row-slider">
+      <div className="settings-row-copy">
+        <strong>{label}</strong>
+        <span>{description}</span>
+      </div>
+      <div className="settings-slider-stack">
+        <input
+          className="settings-slider"
+          type="range"
+          min={0}
+          max={WINDOW_SCALE_OPTIONS.length - 1}
+          step={1}
+          value={safeIndex}
+          aria-label={label}
+          onInput={(event) => {
+            const nextValue = getWindowScaleFromIndex(Number(event.currentTarget.value));
+            onChange(nextValue);
+          }}
+          disabled={disabled}
+        />
+        <span className="settings-slider-value">{value}%</span>
+      </div>
+    </div>
   );
 }
 
@@ -584,6 +640,17 @@ export function SettingsPage({
                   onChange={(value) =>
                     void onUpdateAppSettings({
                       theme: value
+                    })
+                  }
+                />
+                <ScaleSliderRow
+                  label="Window scale"
+                  description="Scale the entire app UI from 25% to 200%."
+                  value={appSettingsState.settings.windowScale}
+                  disabled={isUpdatingAppSettings}
+                  onChange={(value) =>
+                    void onUpdateAppSettings({
+                      windowScale: value
                     })
                   }
                 />

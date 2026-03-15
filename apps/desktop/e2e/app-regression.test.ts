@@ -60,6 +60,7 @@ const createFixtureContext = (): FixtureContext => {
     autoNameNewThreads: false,
     autoStartVoice: false,
     showVoiceCaptions: true,
+    windowScale: 100,
     density: "comfortable",
     theme: "system",
     reduceMotion: false,
@@ -168,6 +169,7 @@ const createFixtureContext = (): FixtureContext => {
 const readPersistedSettings = (userDataDir: string) =>
   JSON.parse(readFileSync(join(userDataDir, "app-settings.json"), "utf8")) as {
     density: string;
+    windowScale: number;
     reduceMotion: boolean;
   };
 
@@ -248,15 +250,28 @@ describe("desktop electron regressions", () => {
 
     await launched.window.getByRole("switch", { name: "Reduce motion" }).click();
     await launched.window.getByLabel("Density").selectOption("compact");
+    await launched.window
+      .getByRole("slider", { name: "Window scale" })
+      .evaluate((slider) => {
+        const input = slider as { value: string; dispatchEvent: (event: Event) => boolean };
+        input.value = "4";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    const windowScaleValueLabel = launched.window.locator(
+      'input[aria-label="Window scale"] + .settings-slider-value'
+    );
     await launched.window.waitForTimeout(300);
 
     expect(
       await launched.window.getByRole("switch", { name: "Reduce motion" }).getAttribute("aria-checked")
     ).toBe("true");
     expect(await launched.window.getByLabel("Density").inputValue()).toBe("compact");
+    expect(await launched.window.getByRole("slider", { name: "Window scale" }).inputValue()).toBe("4");
+    expect(await windowScaleValueLabel.innerText()).toContain("200%");
     expect(readPersistedSettings(context.userDataDir)).toMatchObject({
       density: "compact",
-      reduceMotion: true
+      reduceMotion: true,
+      windowScale: 200
     });
 
     await launched.app.close();
@@ -273,6 +288,11 @@ describe("desktop electron regressions", () => {
     await launched.window.locator(".settings-page").waitFor();
     expect(await launched.window.getByRole("switch", { name: "Reduce motion" }).getAttribute("aria-checked")).toBe("true");
     expect(await launched.window.getByLabel("Density").inputValue()).toBe("compact");
+    expect(await launched.window.getByRole("slider", { name: "Window scale" }).inputValue()).toBe("4");
+    const relaunchWindowScaleValueLabel = launched.window.locator(
+      'input[aria-label="Window scale"] + .settings-slider-value'
+    );
+    expect(await relaunchWindowScaleValueLabel.innerText()).toContain("200%");
   });
 
   it("archives from the thread list and restores from settings", async () => {
