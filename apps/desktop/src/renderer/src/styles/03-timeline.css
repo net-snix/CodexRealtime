@@ -1,10 +1,16 @@
 .timeline {
   --timeline-chat-column-width: 760px;
+  --timeline-zoom: 0.9;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 0 4px 6px;
   overflow: hidden;
+}
+
+.timeline-stream,
+.timeline-composer {
+  zoom: var(--timeline-zoom);
 }
 
 .timeline-window-strip {
@@ -829,11 +835,17 @@
 .timeline-stream-log {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 28px;
   height: 100%;
-  padding: 8px 6px 16px;
+  padding: 14px 6px 16px;
   background: transparent;
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.timeline-stream-log::-webkit-scrollbar {
+  display: none;
 }
 
 .timeline-stream-log > * {
@@ -876,7 +888,7 @@
 
 .timeline-message {
   display: grid;
-  gap: 8px;
+  gap: 16px;
   justify-items: start;
 }
 
@@ -903,11 +915,11 @@
 
 .timeline-message-copy {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   color: var(--text);
-  font-size: 0.92rem;
-  line-height: 1.48;
+  font-size: 0.98rem;
+  line-height: 1.58;
   word-break: break-word;
 }
 
@@ -919,32 +931,42 @@
 
 .timeline-rich-text-list {
   display: grid;
-  gap: 6px;
-  padding-left: 1.35rem;
+  gap: 10px;
+  padding-left: 1.55rem;
 }
 
 .timeline-rich-text-list li {
   margin: 0;
+  padding-left: 0.16rem;
+}
+
+.timeline-rich-text-list li::marker {
+  color: color-mix(in srgb, var(--muted) 78%, var(--text) 22%);
 }
 
 .timeline-rich-text-inline-code {
   display: inline-flex;
   align-items: center;
-  padding: 0.08rem 0.34rem;
-  border-radius: 6px;
-  background: rgba(24, 23, 20, 0.06);
+  padding: 0.14rem 0.52rem;
+  border: 1px solid rgba(24, 23, 20, 0.08);
+  border-radius: 999px;
+  background: rgba(24, 23, 20, 0.065);
   color: var(--muted-strong);
   font-family: "SFMono-Regular", "SF Mono", "Menlo", monospace;
-  font-size: 0.84em;
+  font-size: 0.82em;
+  font-weight: 560;
   line-height: 1.45;
+  letter-spacing: 0.01em;
+  vertical-align: baseline;
 }
 
 .timeline-rich-text-link,
 .timeline-diff-file-path-button {
   color: var(--accent);
   text-decoration: underline;
-  text-decoration-color: rgba(33, 53, 61, 0.26);
-  text-underline-offset: 0.16em;
+  text-decoration-color: rgba(33, 53, 61, 0.18);
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.2em;
 }
 
 .timeline-rich-text-link:hover,
@@ -964,13 +986,14 @@
 }
 
 .timeline-rich-text-code-block {
-  padding: 11px 12px;
-  border-radius: 10px;
-  background: rgba(24, 23, 20, 0.04);
+  padding: 13px 14px;
+  border: 1px solid rgba(24, 23, 20, 0.08);
+  border-radius: 14px;
+  background: rgba(24, 23, 20, 0.045);
   color: rgba(73, 69, 63, 0.84);
   font-family: "SFMono-Regular", "SF Mono", "Menlo", monospace;
-  font-size: 0.8rem;
-  line-height: 1.45;
+  font-size: 0.81rem;
+  line-height: 1.56;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1005,6 +1028,10 @@
 
 .timeline-message-commentary .timeline-message-copy {
   font-size: 0.88rem;
+}
+
+.timeline-message-assistant .timeline-message-copy {
+  max-width: min(100%, 76ch);
 }
 
 .timeline-message-plan .timeline-message-copy {
@@ -1360,6 +1387,10 @@
 .app-shell-dark .timeline-message-assistant .timeline-message-copy {
   background: transparent;
   border: none;
+  color: color-mix(in srgb, var(--text) 92%, #f2e0c8 8%);
+  font-size: 1.04rem;
+  line-height: 1.66;
+  letter-spacing: -0.012em;
 }
 
 .app-shell-dark .timeline-message-plan .timeline-message-copy {
@@ -1466,7 +1497,33 @@
 
 .app-shell-dark .timeline-rich-text-code-block,
 .app-shell-dark .timeline-rich-text-inline-code {
-  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  border-color: color-mix(in srgb, var(--line) 42%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 72%, #443b31 28%);
+}
+
+.app-shell-dark .timeline-message-assistant .timeline-rich-text-list {
+  gap: 13px;
+  padding-left: 1.7rem;
+}
+
+.app-shell-dark .timeline-message-assistant .timeline-rich-text-list li::marker {
+  color: color-mix(in srgb, var(--muted) 64%, #ead3b2 36%);
+}
+
+.app-shell-dark .timeline-message-assistant .timeline-rich-text-inline-code {
+  color: color-mix(in srgb, var(--text) 84%, #f0d0a8 16%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.app-shell-dark .timeline-message-assistant .timeline-rich-text-code-block {
+  background: color-mix(in srgb, var(--surface-soft) 84%, #17120f 16%);
+  color: color-mix(in srgb, var(--text) 78%, #ecd9bf 22%);
+}
+
+.app-shell-dark .timeline-message-assistant .timeline-rich-text-link,
+.app-shell-dark .timeline-message-assistant .timeline-diff-file-path-button {
+  color: color-mix(in srgb, var(--text) 78%, var(--accent) 22%);
+  text-decoration-color: color-mix(in srgb, var(--line) 56%, transparent);
 }
 
 .app-shell-dark .timeline-worker-toggle-active,

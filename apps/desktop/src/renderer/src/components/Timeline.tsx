@@ -380,7 +380,7 @@ export function Timeline({
     APPROVAL_OPTIONS.find((option) => option.value === workerSettingsState.settings.approvalPolicy)
       ?.label ?? "Never";
   const composerPlaceholder = hasWorkspace
-    ? "Ask anything, @tag files/folders, or use / to show available commands"
+    ? "Ask anything, @tag files/folders, or type / for quick command hints"
     : "Open a repo first";
   const handleSubmit = async () => {
     const prompt = draft.trim();

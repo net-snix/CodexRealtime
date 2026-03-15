@@ -187,6 +187,191 @@ describe("WorkspaceService", () => {
     expect(threadChangeCache.has("thread-139")).toBe(true);
   });
 
+  it("persists active-thread worker settings in workspace state and restores them after restart", async () => {
+    let persistedState = JSON.stringify({
+      currentWorkspaceId: "workspace-1",
+      workspaces: {
+        "workspace-1": {
+          id: "workspace-1",
+          name: "CodexRealtime",
+          path: "/tmp/CodexRealtime",
+          lastOpenedAt: "2026-03-11T00:00:00.000Z",
+          threadId: "thread-existing",
+          threadSettings: {
+            "thread-existing": {
+              model: "gpt-5.3-codex",
+              reasoningEffort: "medium",
+              fastMode: true,
+              approvalPolicy: "on-request",
+              collaborationMode: "default"
+            }
+          }
+        }
+      }
+    });
+    const writeFileSync = vi.fn((_: string, payload: string) => {
+      persistedState = payload;
+    });
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync: vi.fn(() => persistedState),
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync,
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        readConfig: vi.fn(async () => ({
+          config: {
+            model: "gpt-5.4",
+            model_reasoning_effort: "xhigh",
+            approval_policy: "never",
+            service_tier: "fast"
+          }
+        }))
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+
+    const initialState = await service.getWorkerSettingsState();
+    expect(initialState.settings.model).toBe("gpt-5.3-codex");
+    expect(initialState.settings.reasoningEffort).toBe("medium");
+    expect(initialState.settings.fastMode).toBe(true);
+    expect(initialState.settings.approvalPolicy).toBe("on-request");
+    expect(initialState.settings.collaborationMode).toBe("default");
+
+    await service.updateWorkerSettings({ model: "gpt-5.4", reasoningEffort: "xhigh" });
+
+    const currentState = JSON.parse(persistedState) as {
+      workspaces: Record<string, { threadSettings?: Record<string, unknown> }>;
+    };
+    expect(currentState.workspaces["workspace-1"].threadSettings?.["thread-existing"]).toEqual({
+      model: "gpt-5.4",
+      reasoningEffort: "xhigh",
+      fastMode: true,
+      approvalPolicy: "on-request",
+      collaborationMode: "default"
+    });
+
+    const restartedService = new WorkspaceService();
+    const restartedSettings = await restartedService.getWorkerSettingsState();
+    expect(restartedSettings.settings.model).toBe("gpt-5.4");
+    expect(restartedSettings.settings.reasoningEffort).toBe("xhigh");
+  });
+
+  it("uses workspace config defaults when creating a new thread", async () => {
+    let persistedState = JSON.stringify({
+      currentWorkspaceId: "workspace-1",
+      workspaces: {
+        "workspace-1": {
+          id: "workspace-1",
+          name: "CodexRealtime",
+          path: "/tmp/CodexRealtime",
+          lastOpenedAt: "2026-03-11T00:00:00.000Z",
+          threadId: "thread-existing",
+          threadSettings: {
+            "thread-existing": {
+              model: "gpt-5.3-codex",
+              reasoningEffort: "medium",
+              fastMode: true,
+              approvalPolicy: "on-request",
+              collaborationMode: "default"
+            }
+          }
+        }
+      }
+    });
+    const writeFileSync = vi.fn((_: string, payload: string) => {
+      persistedState = payload;
+    });
+    const startThread = vi.fn(async () => ({
+      thread: {
+        id: "thread-created"
+      }
+    }));
+
+    vi.doMock("node:fs", () => ({
+      mkdirSync: vi.fn(),
+      readFileSync: vi.fn(() => persistedState),
+      statSync: vi.fn(() => ({ size: 1_024 })),
+      writeFileSync,
+      realpathSync: vi.fn((value: string) => value)
+    }));
+    vi.doMock("electron", () => ({
+      app: {
+        getPath: () => "/tmp/codex",
+        focus: vi.fn(),
+        getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+        setLoginItemSettings: vi.fn()
+      },
+      BrowserWindow: {
+        getFocusedWindow: vi.fn(() => null),
+        getAllWindows: vi.fn(() => [])
+      },
+      dialog: {
+        showOpenDialog: vi.fn()
+      },
+      Notification: {
+        isSupported: () => true
+      }
+    }));
+    vi.doMock("./codex-bridge", () => ({
+      codexBridge: {
+        on: vi.fn(),
+        startThread,
+        readConfig: vi.fn(async () => ({
+          config: {
+            model: "gpt-5.4",
+            model_reasoning_effort: "xhigh",
+            approval_policy: "never",
+            service_tier: "fast"
+          }
+        }))
+      }
+    }));
+
+    const { WorkspaceService } = await import("./workspace-service");
+    const service = new WorkspaceService();
+
+    const beforeCreate = await service.getWorkerSettingsState();
+    expect(beforeCreate.settings.model).toBe("gpt-5.3-codex");
+
+    await service.createThread("workspace-1");
+
+    const afterCreate = await service.getWorkerSettingsState();
+    expect(afterCreate.settings).toMatchObject({
+      model: "gpt-5.4",
+      reasoningEffort: "xhigh",
+      fastMode: true,
+      approvalPolicy: "never",
+      collaborationMode: "default"
+    });
+    expect(afterCreate.settings.model).not.toBe("gpt-5.3-codex");
+    expect(startThread).toHaveBeenCalledWith("/tmp/CodexRealtime");
+  });
+
   it("drops a fresh unmaterialized thread when archiving it immediately", async () => {
     const writeFileSync = vi.fn();
     const archiveThread = vi.fn(async () => {

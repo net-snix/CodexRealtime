@@ -42,6 +42,7 @@ import {
   getSelectedWorkerModel,
   mapWorkerCollaborationMode,
   mapWorkerModel,
+  normalizeWorkerSettings,
   resolveWorkerSettings,
   supportsImageAttachments,
   toWorkerAttachment,
@@ -71,6 +72,7 @@ import {
 type PersistedWorkspace = WorkspaceSummary & {
   lastOpenedAt: string;
   threadId: string | null;
+  threadSettings?: Record<string, WorkerExecutionSettings>;
 };
 
 type PersistedState = {
@@ -160,7 +162,11 @@ const isPersistedWorkspace = (value: unknown): value is PersistedWorkspace =>
   typeof (value as PersistedWorkspace).path === "string" &&
   typeof (value as PersistedWorkspace).lastOpenedAt === "string" &&
   (typeof (value as PersistedWorkspace).threadId === "string" ||
-    (value as PersistedWorkspace).threadId === null);
+    (value as PersistedWorkspace).threadId === null) &&
+  (typeof (value as PersistedWorkspace).threadSettings === "undefined" ||
+    (typeof (value as PersistedWorkspace).threadSettings === "object" &&
+      !Array.isArray((value as PersistedWorkspace).threadSettings) &&
+      (value as PersistedWorkspace).threadSettings !== null));
 
 const PERSISTED_STATE_VALIDATORS = {
   currentWorkspaceId: (value: unknown): value is string | null =>
@@ -622,6 +628,12 @@ export class WorkspaceService extends EventEmitter {
 
     if (workspace?.threadId) {
       this.workerSettingsByThread.set(workspace.threadId, nextSettings);
+      workspace.threadSettings = {
+        ...(workspace.threadSettings ?? {}),
+        [workspace.threadId]: nextSettings
+      };
+      persisted.workspaces[workspace.id] = workspace;
+      this.writeState(persisted);
     } else if (workspace) {
       this.workerDraftSettingsByWorkspace.set(workspace.id, nextSettings);
     }
@@ -743,6 +755,11 @@ export class WorkspaceService extends EventEmitter {
 
     delete persisted.workspaces[workspaceId];
     this.workerDraftSettingsByWorkspace.delete(workspaceId);
+    if (workspace.threadSettings && typeof workspace.threadSettings === "object") {
+      for (const threadId of Object.keys(workspace.threadSettings)) {
+        this.workerSettingsByThread.delete(threadId);
+      }
+    }
 
     if (workspace.threadId) {
       this.workerSettingsByThread.delete(workspace.threadId);
@@ -1633,12 +1650,36 @@ export class WorkspaceService extends EventEmitter {
   ): Promise<WorkerExecutionSettings> {
     const configSettings = await this.readConfigWorkerSettings(workspace?.path ?? process.cwd());
     const threadSettings = workspace?.threadId
-      ? this.workerSettingsByThread.get(workspace.threadId) ?? null
+      ? this.workerSettingsByThread.get(workspace.threadId) ??
+        this.resolvePersistedThreadSettings(workspace, workspace.threadId) ??
+        null
       : workspace
         ? this.workerDraftSettingsByWorkspace.get(workspace.id) ?? null
         : null;
 
     return resolveWorkerSettings(threadSettings ?? configSettings, models);
+  }
+
+  private resolvePersistedThreadSettings(
+    workspace: PersistedWorkspace,
+    threadId: string
+  ): WorkerExecutionSettings | null {
+    if (
+      !workspace.threadSettings ||
+      typeof workspace.threadSettings !== "object" ||
+      Array.isArray(workspace.threadSettings)
+    ) {
+      return null;
+    }
+
+    const stored = workspace.threadSettings[threadId];
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+      return null;
+    }
+
+    const nextSettings = normalizeWorkerSettings(stored);
+    this.workerSettingsByThread.set(threadId, nextSettings);
+    return nextSettings;
   }
 
   private async autoNameThread(threadId: string, prompt: string) {
